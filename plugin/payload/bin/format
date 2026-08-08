@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# bin/format — format exactly one file, given as $1. Must be idempotent.
+#
+# Called by the format-on-write hook after every edit, so it needs to be quick
+# and silent on success.
+#
+# TODO: pick one. Either a single formatter:
+#   exec npx prettier --write "$1"
+#
+# ...or dispatch by extension, which is what you want in a polyglot repo. The
+# `command -v` guard matters: a missing formatter should be a no-op, never an
+# error, or every edit to an unrelated file starts failing.
+set -euo pipefail
+
+# shellcheck disable=SC2034  # used by the dispatch table below, which is commented
+FILE="${1:?usage: bin/format <file>}"
+
+# riprap:stub
+echo "bin/format is not configured yet — edit bin/format and delete the marker line." >&2
+exit 127
+
+# case "$FILE" in
+#   *.ts|*.tsx|*.js|*.jsx|*.json|*.css|*.md)
+#     command -v npx >/dev/null 2>&1 && exec npx --no-install prettier --write "$FILE" ;;
+#   *.py)  command -v ruff   >/dev/null 2>&1 && exec ruff format "$FILE" ;;
+#   *.go)  command -v gofmt  >/dev/null 2>&1 && exec gofmt -w "$FILE" ;;
+#   *.rs)  command -v rustfmt>/dev/null 2>&1 && exec rustfmt "$FILE" ;;
+#   *.rb)  command -v rubocop>/dev/null 2>&1 && exec rubocop -a --force-exclusion "$FILE" ;;
+#   *.sh)  command -v shfmt  >/dev/null 2>&1 && exec shfmt -w "$FILE" ;;
+# esac
+# exit 0

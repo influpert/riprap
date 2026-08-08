@@ -1,0 +1,226 @@
+#!/usr/bin/env bash
+# scrub-check — fail on anything that must not be published.
+#
+# Riprap is distilled from a private codebase. This is the gate that keeps the
+# private parts private. It runs in three places (see the README): riprap's own
+# CI over plugin/ and docs/, which is also what gates every contribution, since
+# those arrive as pull requests; and on demand over an installed project.
+#
+# Exit 0 = clean, 1 = findings, 2 = usage error.
+#
+# Two rules do most of the work here and are worth stating plainly:
+#   1. Binary and generated files are refused outright, never scanned. A text
+#      scrubber cannot see inside a .pyc, and compiled artifacts routinely embed
+#      absolute source paths and hardcoded identifiers.
+#   2. Patterns are matched case-insensitively and anchored loosely, because the
+#      failure mode we care about is "someone missed one", not "someone was
+#      clever". False positives are cheap; a false negative is published forever.
+set -euo pipefail
+
+PROG=${0##*/}
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: scrub-check [--quiet] <path> [<path>...]
+
+Scans files for content that must not be published: identifiers, absolute paths,
+vendor names, infrastructure details, incident dates, and business posture.
+
+  --quiet   only print findings, not the per-check progress
+USAGE
+  exit 2
+}
+
+QUIET=0
+PATHS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --quiet) QUIET=1; shift ;;
+    -h|--help) usage ;;
+    -*) printf '%s: unknown option %s\n' "$PROG" "$1" >&2; usage ;;
+    *) PATHS+=("$1"); shift ;;
+  esac
+done
+[ ${#PATHS[@]} -gt 0 ] || usage
+
+FINDINGS=0
+
+say() { [ "$QUIET" -eq 1 ] || printf '%s\n' "$1"; }
+
+report() {  # $1=label  $2=detail
+  printf '❌ %s\n   %s\n' "$1" "$2" >&2
+  FINDINGS=$((FINDINGS + 1))
+}
+
+# ---------------------------------------------------------------------------
+# Allow-list. Each entry MUST carry a reason — an unexplained exemption is
+# indistinguishable from an oversight, which is how the one real exception in
+# the source repo went unnoticed for months.
+# ---------------------------------------------------------------------------
+allowed() {  # $1 = repo-relative path
+  case "$1" in
+    # Vendor token PREFIXES here are detection signatures, not integrations:
+    # they catch a leaked credential in any repo regardless of what it uses.
+    # Verified to contain no actual secret values. Both path forms are listed
+    # because the namespacing move renamed hooks/lib to hooks/riprap/lib, and an
+    # exemption that silently stops matching is worse than no exemption at all.
+    */hooks/lib/secret-patterns.sh|*/hooks/riprap/lib/secret-patterns.sh) return 0 ;;
+    # This file necessarily contains every banned term, as data.
+    */bin/scrub-check|bin/scrub-check) return 0 ;;
+    # The Required Notice names the copyright holder, and a licence is the one place that
+    # name belongs — it is precisely what the Notices clause obliges every redistributor to
+    # carry onward. The holder shares its name with the organisation the source-project scan
+    # bans below, so without this exemption all three licence copies would be findings.
+    LICENSE|*/LICENSE|*/LICENSE.txt|*/LICENSE.md) return 0 ;;
+  esac
+  return 1
+}
+
+# ---------------------------------------------------------------------------
+# 1. Refuse binary and generated files rather than scanning them.
+# ---------------------------------------------------------------------------
+check_binaries() {
+  local found=0 f
+  while IFS= read -r f; do
+    case "$f" in
+      */__pycache__/*|*.pyc|*.pyo|*.class|*.o|*.so|*.dylib) ;;
+      */.DS_Store|*.swp|*.swo|*~) ;;
+      */node_modules/*|*/.git/*|*/vendor/*) ;;
+      *) # not on the obvious list — ask the filesystem.
+         # An empty file has no bytes to be non-text, so it is text by default;
+         # without this guard every .gitkeep reads as binary.
+         [ -s "$f" ] || continue
+         if [ -f "$f" ] && ! LC_ALL=C grep -Iq . "$f" 2>/dev/null; then
+           report "binary file (cannot be scrubbed, refuse to publish)" "$f"
+           found=1
+         fi
+         continue ;;
+    esac
+    report "generated or editor artifact (never publish)" "$f"
+    found=1
+  done < <(find "$@" -type f 2>/dev/null)
+  return $found
+}
+
+# ---------------------------------------------------------------------------
+# 2. Banned literals. Grouped so a hit tells you WHY it matters.
+# ---------------------------------------------------------------------------
+# Lines that are exempt wherever they appear, each for a stated reason. Kept
+# deliberately narrow: this is the mechanism most likely to be widened until the
+# scan means nothing, so every entry names what it permits and why.
+allowed_line() {  # $1 = the matched line
+  case "$1" in
+    # riprap's own repository path. The organisation name is half of the address
+    # people clone, browse, and register as a marketplace — it is the project's
+    # public identity, not a leak. Anchored to `<org>/riprap`, which covers the
+    # https and ssh URLs, `/plugin marketplace add`, and prose naming the repo.
+    # A BARE organisation name — which is what a reference to the private source
+    # project looks like — matches none of these and still fails.
+    *influpert/riprap*) return 0 ;;
+    # The qualified install command, `/plugin install riprap@influpert`. The suffix
+    # is the marketplace name, so it necessarily carries the organisation without
+    # the `/riprap` path above. Anchored to the `riprap@` prefix for that reason.
+    *riprap@influpert*) return 0 ;;
+    # The organisation's own site, linked from the footer of every docs page via
+    # docs/_config.yml. A published domain, not a name dropped in prose. Change
+    # that URL and this entry has to change with it.
+    *influpert.com*) return 0 ;;
+    # That link's display text, one line above the URL in the same file. The label
+    # and the href are the same published fact, so exempting one without the other
+    # would only invite someone to delete the credit to get CI green. Anchored to
+    # that one file and that one key.
+    *_config.yml:*title:\ [Ii]nflupert*) return 0 ;;
+    # The reviewing team, in the only file that can name one. `@org/team` is forge
+    # syntax for an access-control group, not a mention of a codebase, and every
+    # rule in CODEOWNERS has to carry it. Anchored to that file AND to the `@org/`
+    # form: a bare organisation name in the same file still fails.
+    *CODEOWNERS:*@influpert/*) return 0 ;;
+    # The copyright holder, in the documents whose whole purpose is to name them:
+    # the trademark policy asserting who owns the name, and the contributor
+    # agreement naming who the grant runs to. Anchored to those two paths AND to
+    # that value — anything else in the same files still fails, which is the
+    # difference between this and exempting the files in allowed(). An entry there
+    # would skip every scan on the file, and CLA.md is exactly the kind of
+    # document that grows an address and a date.
+    *TRADEMARK.md:*[Ii]nflupert\ LLC*|*CLA.md:*[Ii]nflupert\ LLC*) return 0 ;;
+    # The plugin manifest's author field. This is the attribution the licence
+    # requires, rendered by the harness where a user can see who wrote the thing
+    # they installed — publishing it is the point, not an accident. Anchored to
+    # that one file and that one value.
+    *plugin.json:*\"name\":\ \"[Ii]nflupert\ LLC\"*) return 0 ;;
+  esac
+  return 1
+}
+
+scan() {  # $1=label  $2=extended-regex
+  local label="$1" re="$2" hits f
+  hits=$(grep -rniE -- "$re" "${PATHS[@]}" 2>/dev/null || true)
+  [ -n "$hits" ] || return 0
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    f=${line%%:*}
+    allowed "$f" && continue
+    allowed_line "$line" && continue
+    report "$label" "$line"
+  done <<< "$hits"
+}
+
+say "scrub-check: scanning ${PATHS[*]}"
+
+check_binaries "${PATHS[@]}" || true
+
+# -- identity --------------------------------------------------------------
+scan "absolute home path (identity + layout disclosure)" \
+  '/(Users|home)/[a-z0-9_.-]+/'
+# The project moved to an organisation account and the copyright moved to an entity, so
+# nothing published names either the old handle or the individual any more. Both are kept
+# here with NO exemptions at all: a stale URL or a missed attribution is now a finding
+# rather than something that quietly passes because a carve-out outlived its reason.
+scan "personal name or handle" \
+  '@owahab|owahab|omar[[:space:]]+ali'
+
+# -- source project --------------------------------------------------------
+# The private codebase riprap was distilled from shares its name with the organisation that
+# now publishes riprap, so this scan cannot ban the string outright. The exemptions in
+# allowed_line() carve out exactly the published forms — the repo path, the install command,
+# the website, and the copyright holder. A bare mention in prose is still a finding, which
+# is the case that matters: it is how a reference to the private project would look.
+scan "source project name" \
+  'influpert'
+
+# -- infrastructure --------------------------------------------------------
+scan "IP address (infrastructure topology)" \
+  '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
+scan "hostname or private subnet" \
+  '\bhz[0-9]{2}\b|\.hosts\.|vswitch'
+
+# -- identifiers -----------------------------------------------------------
+scan "32-hex or UUID identifier (tracker/database ID)" \
+  '\b[0-9a-f]{32}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-'
+scan "issue or PR reference from the source repo" \
+  '\bPR #[0-9]{3,}|\bWEB-[0-9A-Z]+\b'
+scan "ISO date (incident timestamp)" \
+  '\b20[0-9]{2}-[0-9]{2}-[0-9]{2}\b'
+
+# -- vendors ---------------------------------------------------------------
+scan "vendor or service name" \
+  '\bnotion\b|\bbitwarden\b|\bbws_|\bkamal\b|\bhetzner\b|\bsentry\b|\bmailgun\b|designsync|\bstripe\b|\badyen\b'
+scan "chat channel" \
+  '#dev-agents|slack_bot_token'
+
+# -- business posture (the class no identifier scrub catches) --------------
+scan "business posture (team size, stage, or revenue)" \
+  'solo[- ](founder|developer)|pre-launch|\bfounder\b|[0-9]+[.,][0-9]+[€$£]'
+scan "documented unfixed defect (tells a reader where to push)" \
+  'unfixed|not fixed yet|known gap|not yet actioned'
+
+# ---------------------------------------------------------------------------
+if [ "$FINDINGS" -gt 0 ]; then
+  printf '\n%s: %d finding(s) — nothing publishes until these are resolved.\n' \
+    "$PROG" "$FINDINGS" >&2
+  printf 'If a hit is deliberate, add it to allowed() WITH a reason.\n' >&2
+  exit 1
+fi
+
+say "✅ scrub-check: clean"
+exit 0

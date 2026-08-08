@@ -1,0 +1,20 @@
+{
+  "name": "riprap",
+  "description": "Baseline engineering guardrails for Claude Code, enforced rather than suggested.",
+  "version": "0.2.1",
+  "homepage": "https://riprap.dev",
+  "repository": "https://github.com/influpert/riprap",
+  "author": {
+    "name": "Influpert LLC",
+    "url": "https://riprap.dev"
+  },
+  "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
+  "keywords": [
+    "guardrails",
+    "standards",
+    "hooks",
+    "git-hooks",
+    "code-review",
+    "secret-hygiene"
+  ]
+}

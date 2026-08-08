@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# bin/riprap — riprap's repo-side tool. Upstream owns this file.
+#
+#   bin/riprap wire              wire riprap into this repository
+#   bin/riprap verify            check the wiring, change nothing (= wire --check)
+#   bin/riprap wire --uninstall  undo the wiring
+#
+# This exists as a script, rather than only as the /riprap:install command, for
+# two reasons that are easy to forget:
+#
+#   - core.hooksPath is local git config. It is not cloned. A teammate who checks
+#     this repo out has no hooks until something runs here, and they may not have
+#     the riprap plugin installed at all.
+#   - CI has no Claude Code. Wiring that can only be performed by a model is
+#     wiring that cannot be tested.
+#
+# /riprap:install calls this same script, so the command and the humans cannot
+# drift apart.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+
+HOOK_DIR="bin/hooks/riprap/claude"
+SETTINGS=".claude/settings.json"
+GIT_HOOKS="bin/hooks/git"
+CHECK=0
+
+UNINSTALL=0
+
+usage() { sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+
+case "${1:-}" in
+  wire)   shift ;;
+  verify) shift; CHECK=1 ;;
+  -h|--help|"") usage 0 ;;
+  *) printf 'unknown command: %s\n\n' "$1" >&2; usage 1 ;;
+esac
+case "${1:-}" in
+  --check)     CHECK=1 ;;
+  --uninstall) UNINSTALL=1 ;;
+  "") ;;
+  *) printf 'unknown option: %s\n\n' "$1" >&2; usage 1 ;;
+esac
+
+FAILED=0
+note() { printf '%s\n' "$*"; }
+fail() { printf '%s\n' "$*" >&2; FAILED=1; }
+
+# --- git hooks --------------------------------------------------------------
+# The full decision tree — husky, lefthook, an incumbent hooks directory — lands
+# with `wire`'s block insertion. What is here handles the greenfield case and,
+# critically, refuses to silently take core.hooksPath off another hook manager:
+# doing that disables every one of their hooks with no error and no output.
+wire_git_hooks() {
+  local current
+  current="$(git config --get core.hooksPath || true)"
+
+  if [ -n "$current" ] && [ "$current" != "$GIT_HOOKS" ]; then
+    fail "❌ core.hooksPath is already set to '$current'.
+   riprap will not take it: that would disable every hook in that directory
+   without telling you. Add this line to $current/pre-commit instead:
+       \"\$(git rev-parse --show-toplevel)\"/bin/hooks/riprap/git/pre-commit \"\$@\" || exit \$?"
+    return
+  fi
+
+  if [ "$CHECK" -eq 1 ]; then
+    [ "$current" = "$GIT_HOOKS" ] || fail "❌ core.hooksPath is unset — git hooks are not running."
+    return
+  fi
+
+  git config core.hooksPath "$GIT_HOOKS"
+  # Record that riprap set it, so --uninstall can tell "we claimed this" from
+  # "it was already pointing here and is not ours to unset".
+  [ -n "$current" ] || git config riprap.hooksPath.owned true
+  chmod +x "$GIT_HOOKS"/* bin/hooks/riprap/git/* 2>/dev/null || true
+  note "✅ git hooks wired (core.hooksPath = $GIT_HOOKS)"
+}
+
+# --- undo ---------------------------------------------------------------------
+# Reverses only what wire did, and only where riprap did it. Deliberately does
+# not delete files: an uninstall that runs rm -rf on a flag is a footgun, and the
+# adopter can read a path.
+unwire() {
+  if [ "$(git config --get riprap.hooksPath.owned || true)" = "true" ]; then
+    git config --unset core.hooksPath || true
+    git config --unset riprap.hooksPath.owned || true
+    note "✅ core.hooksPath unset — riprap set it, so riprap removed it"
+  else
+    local current
+    current="$(git config --get core.hooksPath || true)"
+    if [ -n "$current" ]; then
+      note "ℹ️  Leaving core.hooksPath = $current alone: riprap did not set it."
+      note "   If you added riprap's delegation line to $current/pre-commit, delete it."
+    else
+      note "ℹ️  core.hooksPath is already unset. Nothing to undo."
+    fi
+  fi
+
+  note ""
+  note "riprap's files are still on disk. To remove them:"
+  note "    rm -rf bin/hooks/riprap bin/riprap"
+  note "Your bin/hooks/git/* and bin/{test,lint,format,setup} are yours — left alone."
+}
+
+# --- the effective git wiring ------------------------------------------------
+# Verifying the config value alone is not enough. core.hooksPath can point at a
+# directory that holds no pre-commit at all, which looks configured and enforces
+# nothing — the exact state a repo lands in when a hook installer was never run.
+verify_git_hooks_effective() {
+  local dir hook
+  dir="$(git config --get core.hooksPath || true)"
+  [ -n "$dir" ] || { fail "❌ core.hooksPath is unset — no git hooks are running."; return; }
+
+  hook="$dir/pre-commit"
+  [ -f "$hook" ] || { fail "❌ core.hooksPath points at $dir, which has no pre-commit. Nothing is enforced."; return; }
+  [ -x "$hook" ] || { fail "❌ $hook is not executable. git ignores a hook it cannot run, silently."; return; }
+
+  if [ "$dir" != "$GIT_HOOKS" ] && ! grep -q 'bin/hooks/riprap/git/pre-commit' "$hook"; then
+    # Not "run bin/riprap wire": that refuses to touch a hooks directory it does
+    # not own, so it cannot fix this. Print the line instead of naming a command
+    # that will decline.
+    fail "❌ $hook is the active hook and does not call riprap's checks.
+   Add this line to it, just after the shebang:
+       \"\$(git rev-parse --show-toplevel)\"/bin/hooks/riprap/git/pre-commit \"\$@\" || exit \$?"
+  fi
+}
+
+# --- Claude hooks ------------------------------------------------------------
+# Registration lives in the plugin's hooks.json, not in this repository, so there
+# is nothing here to check it against — riprap's own CI cross-checks that list
+# against the payload, upstream, where both halves are present.
+#
+# What is checkable from inside a project is the half that can rot here: a script
+# that is missing, that lost its executable bit, or whose pattern library does not
+# resolve. Each of those makes the hook a silent no-op, and a guardrail that
+# silently stops guarding is the failure mode this whole tool exists for.
+verify_claude_hooks() {
+  local f name lib
+  local -i found=0
+
+  for f in "$HOOK_DIR"/*.sh; do
+    [ -f "$f" ] || continue
+    found=1
+    name="$(basename "$f")"
+    [ -x "$f" ] || fail "❌ $f is not executable. The plugin skips it silently."
+    # Resolve each library the hook sources, relative to the hook itself.
+    while IFS= read -r lib; do
+      [ -n "$lib" ] || continue
+      [ -r "$HOOK_DIR/$lib" ] || \
+        fail "❌ $name sources $lib, which does not resolve from $HOOK_DIR."
+    done < <(grep -oE '\$SCRIPT_DIR/\.\./lib/[a-z0-9-]+\.sh' "$f" \
+             | sed 's|\$SCRIPT_DIR/||' | sort -u || true)
+  done
+
+  [ "$found" -eq 1 ] || fail "❌ $HOOK_DIR holds no hooks. Re-run /riprap:install."
+
+  if [ -f "$SETTINGS" ] && grep -q '"riprap"[[:space:]]*:[[:space:]]*false' "$SETTINGS"; then
+    fail "❌ $SETTINGS disables the riprap plugin, so none of these hooks run."
+  fi
+}
+
+# --- stack seams -------------------------------------------------------------
+verify_stubs() {
+  local s f pending="" missing=""
+  for s in test lint format setup; do
+    f="bin/$s"
+    if [ ! -f "$f" ]; then
+      # Report rather than skip. Silently treating an absent seam as "fine" is how
+      # you end up with a pre-push hook that has quietly never run anything.
+      missing="$missing $s"
+    elif grep -q '^# riprap:stub$' "$f" 2>/dev/null; then
+      pending="$pending $s"
+    fi
+  done
+
+  [ -z "$pending$missing" ] && { note "✅ all stack seams configured"; return; }
+
+  if [ -n "$pending" ]; then
+    note "Unconfigured seams — hooks and CI call these, so they enforce nothing until you edit them:"
+    for s in $pending; do
+      printf '  bin/%-8s %s\n' "$s" "$(sed -n '2s/^# bin\/[a-z]* — //p' "bin/$s")"
+    done
+    note "Edit each one, then delete its line reading '# riprap:stub'."
+  fi
+  if [ -n "$missing" ]; then
+    note "Missing entirely — nothing will call these:"
+    for s in $missing; do printf '  bin/%s\n' "$s"; done
+    note "Re-run /riprap:install to restore them."
+  fi
+}
+
+# --- run ---------------------------------------------------------------------
+if [ "$UNINSTALL" -eq 1 ]; then
+  unwire
+  exit 0
+fi
+
+if [ "$CHECK" -eq 1 ]; then
+  verify_git_hooks_effective
+else
+  wire_git_hooks
+fi
+verify_claude_hooks
+verify_stubs
+
+if [ "$FAILED" -ne 0 ]; then
+  # Deliberately not "run bin/riprap wire": the most common failure here is wire
+  # refusing to take core.hooksPath from an incumbent, and telling someone to
+  # re-run the command that just declined is how a clear refusal reads as a bug.
+  printf '\nriprap is not fully wired. Each ❌ above says what to do about it.\n' >&2
+  exit 1
+fi
+exit 0

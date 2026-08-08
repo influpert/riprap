@@ -1,0 +1,19 @@
+{
+  "name": "influpert",
+  "owner": {
+    "name": "Influpert LLC",
+    "url": "https://riprap.dev"
+  },
+  "metadata": {
+    "description": "Engineering guardrails for Claude Code, enforced rather than suggested.",
+    "version": "0.2.1"
+  },
+  "plugins": [
+    {
+      "name": "riprap",
+      "description": "Baseline engineering guardrails for Claude Code: instruction docs loaded every session, four skills, and hooks that block rather than advise. Run /riprap:install to add the repo-side half — git hooks and the stack seams they call.",
+      "source": "./plugin",
+      "homepage": "https://riprap.dev"
+    }
+  ]
+}

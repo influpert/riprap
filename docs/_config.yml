@@ -1,0 +1,89 @@
+# The site at riprap.dev.
+#
+# GitHub Pages builds this directory from the default branch with the github-pages gem
+# bundle. Preview it with the same toolchain, and never into docs/ itself:
+#
+#   jekyll serve --source docs --destination tmp/site --livereload
+#
+# tmp/ is git-ignored and outside every path CI hands to bin/scrub-check, which walks the
+# filesystem rather than git. A build inside docs/ would be scanned, and Jekyll's cache is
+# not text. Never use --destination tmp on its own: Jekyll cleans its destination of
+# anything it did not generate, which would delete tmp/tasks/ and tmp/handover/.
+
+title: riprap
+tagline: Guardrails for Claude Code, enforced rather than suggested
+description: >-
+  Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
+  documents loaded every session, four skills, and hooks that block rather than advise.
+url: https://riprap.dev
+baseurl: ""
+
+# The github-pages gem defaults this to jekyll-theme-primer, which is what riprap.dev
+# rendered with before this file existed — the site read as a rendered README. Leaving the
+# key present and empty is the supported way to take the layout over.
+theme:
+
+# Gives /install/ and /guardrails/ rather than /install.html. The README sends readers to
+# riprap.dev/install, and GitHub Pages redirects the extensionless form here.
+permalink: pretty
+
+# Belt and braces. If CNAME ever misses the published output, GitHub clears the custom
+# domain and riprap.dev goes dark.
+include:
+  - CNAME
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: page
+
+kramdown:
+  input: GFM
+  auto_ids: true
+  # 2..3 keeps the page's own h1 out of {:toc}. Without it every table of contents opens
+  # with a link to the title immediately above it.
+  toc_levels: 2..3
+
+# All three are on GitHub Pages' plugin allowlist. redirect-from exists for two URLs:
+# /install.html and /guardrails.html are live today, and pretty permalinks would 404 them.
+#
+# relative-links is listed even though GitHub Pages unions it in whether or not we ask,
+# because a local `jekyll build` does not. Without it declared, an `install.md` link renders
+# as a dead href locally and a working one in production — a divergence that hides itself
+# from exactly the person checking their work.
+plugins:
+  - jekyll-redirect-from
+  - jekyll-relative-links
+  - jekyll-sitemap
+
+# Navigation as data, so adding a page is two lines rather than an edit to every layout.
+nav:
+  - title: Install
+    url: /install/
+  - title: Guardrails
+    url: /guardrails/
+  - title: Rules
+    url: /rules/
+  - title: Reference
+    url: /reference/
+
+# Keep each GitHub URL on ONE line. bin/scrub-check exempts the owner handle only in a line
+# containing github.com/influpert/riprap, so a wrapped URL becomes a finding.
+footer_links:
+  - title: Licence
+    url: /license/
+  - title: Trademark
+    url: "https://github.com/influpert/riprap/blob/main/TRADEMARK.md"
+  - title: Contributing
+    url: "https://github.com/influpert/riprap/blob/main/CONTRIBUTING.md"
+  - title: Source
+    url: "https://github.com/influpert/riprap"
+
+# The organisation behind riprap, credited in the footer of every page. Kept as data for the
+# same reason nav is: one edit here rather than one per layout. bin/scrub-check bans the bare
+# organisation name everywhere except a handful of anchored forms, and `influpert.com` is one
+# of them — change this URL and the exemption in allowed_line() has to change with it.
+powered_by:
+  title: Influpert
+  url: "https://influpert.com"

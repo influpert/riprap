@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Git pre-commit hook — yours.
+#
+# riprap wrote this file once, on install, and will never touch it again. Edit it
+# freely: add your project's own checks below the riprap block. Same convention
+# throughout — exit 1 rejects the commit.
+#
+# riprap's own checks live in bin/hooks/riprap/git/pre-commit, which upstream
+# keeps current. They run as a subprocess rather than being sourced, so nothing
+# riprap does can collide with a variable name you chose here.
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# riprap:begin — managed by bin/riprap wire. Delete this block to unwire riprap's checks.
+"$REPO_ROOT"/bin/hooks/riprap/git/pre-commit "$@" || exit $?
+# riprap:end
+
+# --- your checks go here ---------------------------------------------------
+# Pattern libraries you write live in bin/hooks/lib/ — riprap never writes there.
+# To extend one of riprap's rules rather than replace it, add
+# bin/hooks/lib/<rule>-patterns.local.sh; riprap's library sources it if present.
+
+exit 0

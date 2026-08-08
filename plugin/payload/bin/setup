@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# bin/setup — get a fresh clone ready to work in. Safe to re-run.
+#
+# Installs the git hooks, then whatever your project needs.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Wire the git hooks. This line matters more than it looks: core.hooksPath is
+# local git config, so it is NOT cloned — a teammate checking this repo out has
+# no hooks at all until something runs it, and bin/setup is the script people
+# already run on a fresh clone.
+bin/riprap wire
+
+# TODO: add your project's bootstrap below, then delete the marker line.
+#   npm ci
+#   uv sync
+#   bundle install
+#   go mod download
+
+# riprap:stub
+echo "ℹ️  bin/setup has no project bootstrap yet — edit bin/setup to add one."

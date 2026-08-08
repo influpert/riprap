@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+# riprap's pre-commit checks. Upstream owns this file; `/riprap:install` overwrites
+# it. Your own checks belong in bin/hooks/git/pre-commit, which calls this one.
+#
+# Two jobs: auto-fix what a linter can fix, then run the pattern guardrails
+# against what is actually being committed.
+#
+# Exit codes here are git's convention (1 = reject the commit), NOT the Claude
+# hook convention (2 = block the tool call). Same libraries, different callers —
+# which is the entire point of keeping the patterns in bin/hooks/riprap/lib.
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# --- 1. Lint and re-stage --------------------------------------------------
+# --diff-filter=ACM skips deletions: there is nothing to lint in a file that is
+# going away, and passing one to a linter is just an error.
+#
+# Read into an array with -z (NUL-delimited) rather than splitting a string.
+# Filenames with spaces are rare, and a hook that mangles them is the kind of
+# bug that surfaces once, confusingly, long after anyone remembers this code.
+STAGED=()
+while IFS= read -r -d '' f; do
+  STAGED+=("$f")
+done < <(git diff --cached --name-only --diff-filter=ACM -z || true)
+
+# Files that also have UNSTAGED changes right now. These are the `git add -p`
+# cases: someone staged one hunk of a file and deliberately left the rest out.
+# Re-staging such a file wholesale would sweep the hunks they excluded into the
+# commit — silently changing what they chose to commit. That is the one thing a
+# convenience feature must never do, so these are left alone and reported.
+PARTIAL=()
+while IFS= read -r -d '' f; do
+  PARTIAL+=("$f")
+done < <(git diff --name-only -z --diff-filter=ACM || true)
+
+is_partial() {
+  local f needle="$1"
+  for f in ${PARTIAL[@]+"${PARTIAL[@]}"}; do [ "$f" = "$needle" ] && return 0; done
+  return 1
+}
+
+if [ ${#STAGED[@]} -gt 0 ] && [ -x bin/lint ] && ! grep -q '^# riprap:stub$' bin/lint 2>/dev/null; then
+  # Every staged path goes to bin/lint, including ones it has no opinion about.
+  # Deciding here which extensions matter would mean this hook knowing the
+  # project's stack, which is exactly what bin/lint exists to avoid — so the
+  # contract is that bin/lint ignores what it does not handle rather than erroring.
+  if ! bin/lint "${STAGED[@]}"; then
+    echo "❌ bin/lint failed. Fix the issues, or commit with --no-verify to skip." >&2
+    exit 1
+  fi
+
+  skipped=()
+  for f in "${STAGED[@]}"; do
+    [ -f "$f" ] || continue
+    if is_partial "$f"; then skipped+=("$f"); continue; fi
+    git add -- "$f"     # re-stage whatever the linter fixed
+  done
+
+  if [ ${#skipped[@]} -gt 0 ]; then
+    {
+      echo "ℹ️  Not re-staging these — they have unstaged changes, so you staged them"
+      echo "   selectively and re-staging would commit hunks you left out:"
+      printf '     %s\n' "${skipped[@]}"
+      echo "   If bin/lint changed them, stage that change yourself."
+    } >&2
+  fi
+  echo "✅ lint passed"
+fi
+
+# --- 2. Pattern guardrails -------------------------------------------------
+# Each rule is registered once here. Adding a guardrail is: write the library,
+# write the Claude hook, add one line below.
+#
+# Scanning strategy per rule matters:
+#   - added lines only  -> pre-existing violations do not block unrelated work
+#   - whole file        -> needed for co-occurrence and proximity rules
+# Secrets use added-lines-only: a secret already committed is a rotation
+# problem, not a reason to block today's unrelated commit.
+
+# Sourced $SCRIPT_DIR-relative, not from $REPO_ROOT: this hook has to keep
+# working wherever the namespace is mounted, and a path spelled out from the repo
+# root has to be edited in every caller the day that changes.
+# shellcheck source=../lib/hook-common.sh
+. "$SCRIPT_DIR/../lib/hook-common.sh"
+# shellcheck source=../lib/secret-patterns.sh
+. "$SCRIPT_DIR/../lib/secret-patterns.sh"
+
+FAILED=0
+
+# -- secret hygiene: file-level --
+for f in "${STAGED[@]}"; do
+  if secret_env_file_path "$f"; then
+    echo "❌ Refusing to commit a secret-bearing file: $f" >&2
+    echo "   Add it to .gitignore. Commit a .example instead." >&2
+    FAILED=1
+  fi
+done
+
+# -- secret hygiene: token values in added lines --
+ADDED=$(git diff --cached -U0 | grep -E '^\+' | grep -v '^+++' || true)
+if [ -n "$ADDED" ]; then
+  HITS=$(secret_scan_text "$ADDED" || true)
+  if [ -n "$HITS" ]; then
+    {
+      echo "❌ Secret token in staged changes (value redacted):"
+      echo ""
+      echo "$HITS"
+      echo ""
+      echo "   Remove it and rotate the credential — it is in your reflog either way."
+      echo "   If this is a documented example, add 'lint-ok:secrets' to the line."
+    } >&2
+    FAILED=1
+  fi
+fi
+[ "$FAILED" -eq 0 ] && echo "✅ secret hygiene passed"
+
+# -- riprap's rules go here; yours go in bin/hooks/git/pre-commit --
+# . "$SCRIPT_DIR/../lib/example-patterns.sh"
+# for f in "${STAGED[@]}"; do
+#   example_relevant_extension "$f" || continue
+#   example_path_allowed "$f" && continue
+#   [ -f "$f" ] || continue
+#   HITS=$(example_scan_text "$(cat "$f")" || true)
+#   [ -n "$HITS" ] && { echo "❌ <rule> violation in $f:" >&2; echo "$HITS" >&2; FAILED=1; }
+# done
+
+if [ "$FAILED" -ne 0 ]; then
+  echo "" >&2
+  echo "Commit rejected. Use --no-verify to override, sparingly — bypassing a" >&2
+  echo "hook defeats the reason it exists." >&2
+  exit 1
+fi
+
+exit 0

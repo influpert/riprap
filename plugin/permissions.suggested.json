@@ -1,0 +1,72 @@
+{
+  "//": [
+    "Suggested permissions. riprap PRINTS this; it never applies it.",
+    "",
+    "Widening an adopter's allowlist is a privilege grant, and merge-gates.md says",
+    "changes to .claude/settings.json need a human on them. riprap does not get to",
+    "exempt itself from its own rule, so this is a snippet to merge deliberately",
+    "into your .claude/settings.json — not something an installer writes for you.",
+    "",
+    "Read permissions.md before trusting the deny list. Short version: these are",
+    "literal prefix matches, they stop mistakes rather than adversaries, and the",
+    "real enforcement is the hooks."
+  ],
+  "permissions": {
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Edit",
+      "Write",
+      "WebFetch",
+      "WebSearch",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(bin/test:*)",
+      "Bash(bin/lint:*)",
+      "Bash(bin/format:*)",
+      "Bash(bin/setup:*)",
+      "Bash(bin/riprap:*)"
+    ],
+    "deny": [
+      "Bash(sudo*)",
+      "Bash(sudo rm *)",
+      "Bash(rm -rf /)",
+      "Bash(rm -rf / *)",
+      "Bash(rm -rf ~)",
+      "Bash(rm -rf ~ *)",
+      "Bash(rm -rf ~/*)",
+      "Bash(rm -rf $HOME)",
+      "Bash(rm -rf $HOME *)",
+      "Bash(rm -rf $HOME/*)",
+      "Bash(pkill*)",
+      "Bash(killall*)",
+      "Bash(kill -9*)",
+      "Bash(lsof -ti*)",
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/id_rsa*)",
+      "Read(./**/id_ed25519*)",
+      "Read(./secrets/**)",
+      "Read(./config/master.key)",
+      "Read(./config/credentials/**)",
+      "Read(./.npmrc)",
+      "Read(./.netrc)",
+      "Read(./.claude/settings.local.json)"
+    ],
+    "ask": [
+      "Bash(git push origin main:*)",
+      "Bash(git push --force:*)",
+      "Bash(gh pr merge:*)"
+    ]
+  }
+}

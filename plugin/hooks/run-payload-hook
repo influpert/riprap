@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Run one of riprap's guardrail hooks from the project's payload — or nothing.
+#
+# Everything in this file exists to make one case silent: a repository that has
+# the riprap plugin installed but has never run /riprap:install. Its guardrail
+# scripts are simply not there. Pointing hooks.json straight at the project path
+# would make every single tool call fail with exit 127 and a "no such file"
+# error, in every repo the user happens to open. A plugin that is noisy in
+# projects that do not use it gets uninstalled.
+#
+# So: if the payload is absent, exit 0 and say nothing. riprap is inert until
+# someone asks for it.
+set -euo pipefail
+
+name="${1:-}"
+[ -n "$name" ] || { echo "usage: run-payload-hook <script-name>" >&2; exit 2; }
+shift
+
+root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+hook="$root/bin/hooks/riprap/claude/$name"
+
+# Not installed here, or installed without the executable bit — either way there
+# is nothing to run, and neither is this hook's problem to report. `bin/riprap
+# verify` is where a broken install gets diagnosed, loudly and on demand.
+[ -x "$hook" ] || exit 0
+
+# exec, so the hook's exit code and stderr reach Claude Code unaltered. A
+# guardrail blocks with exit 2 and a message on stderr; anything that swallowed
+# either would turn a block into a silent pass.
+exec "$hook" "$@"

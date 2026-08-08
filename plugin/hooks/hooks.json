@@ -1,0 +1,67 @@
+{
+  "//": [
+    "The single source of truth for what riprap wires. Both riprap's CI and",
+    "bin/riprap verify read this file, so the checker cannot drift from the wiring.",
+    "",
+    "Every command here runs from the plugin, but only session-start does its work",
+    "there. The guardrail hooks are dispatched by run-payload-hook, which execs the",
+    "real script out of the project at bin/hooks/riprap/claude/ — and exits 0 in",
+    "silence if the project never ran /riprap:install, so this plugin is inert in",
+    "repositories that do not use it.",
+    "",
+    "The guardrail scripts live in the project rather than here, and that is",
+    "deliberate. They share pattern libraries with the git hooks, which run for",
+    "every developer on the team — including ones who never installed this plugin.",
+    "A library living in a version-stamped, user-scoped plugin cache would simply",
+    "be missing for half of them. One rule definition, two enforcers, both",
+    "reachable from a plain clone.",
+    "",
+    "lint-example.sh is deliberately absent: it is an inert template, and wiring a",
+    "rule that never fires teaches people to ignore the wiring."
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/session-start",
+            "shell": "bash",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook block-destructive-outside-cwd.sh" },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook block-unreviewed-merge.sh" }
+        ]
+      },
+      {
+        "matcher": "Bash|Read|Grep|Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook lint-secrets.sh" }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook format-on-write.sh" }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook session-end.sh" }
+        ]
+      }
+    ]
+  }
+}

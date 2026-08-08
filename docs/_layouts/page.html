@@ -1,0 +1,18 @@
+---
+layout: default
+---
+<header class="page-head">
+  <div class="container">
+    <p class="section-eyebrow gradient-text">{{ page.eyebrow | default: 'Documentation' }}</p>
+    <h1>{{ page.title }}</h1>
+    {%- if page.lede %}
+    <p class="lede">{{ page.lede }}</p>
+    {%- endif %}
+  </div>
+</header>
+
+<div class="container">
+  <article class="prose">
+    {{ content }}
+  </article>
+</div>

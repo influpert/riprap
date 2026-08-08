@@ -1,0 +1,9 @@
+.DS_Store
+
+# Jekyll build output, if anyone previews the site in place. Belt and braces only: the real
+# control is building elsewhere, because bin/scrub-check walks the filesystem rather than
+# git and would scan an ignored directory. Preview with:
+#   jekyll serve --source docs --destination tmp/site
+_site/
+docs/.jekyll-cache/
+docs/.jekyll-metadata

@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# bin/lint — lint this project. Given paths, lint only those.
+#
+# The pre-commit hook passes staged files and re-stages whatever gets fixed, so
+# an auto-fixing linter is ideal here.
+#
+# TODO: replace the stub below with your command, then delete the marker line.
+#   exec npx eslint --fix "$@"
+#   exec ruff check --fix "$@"
+#   exec golangci-lint run "$@"
+#   exec cargo clippy --fix --allow-staged
+#   exec bundle exec rubocop -a "$@"
+set -euo pipefail
+
+# riprap:stub
+echo "bin/lint is not configured yet — edit bin/lint and delete the marker line." >&2
+exit 127

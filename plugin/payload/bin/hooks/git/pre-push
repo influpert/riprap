@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Git pre-push hook — yours.
+#
+# riprap wrote this file once, on install, and will never touch it again. Edit it
+# freely: add your project's own checks below the riprap block.
+#
+# Note the `</dev/null` on the delegation. git feeds the list of refs being
+# pushed to this hook on stdin, and a subprocess that reads stdin consumes it —
+# leaving anything you add below with an empty stream and no way to know it.
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# riprap:begin — managed by bin/riprap wire. Delete this block to unwire riprap's checks.
+"$REPO_ROOT"/bin/hooks/riprap/git/pre-push "$@" </dev/null || exit $?
+# riprap:end
+
+# --- your checks go here ---------------------------------------------------
+
+exit 0

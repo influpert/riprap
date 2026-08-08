@@ -1,0 +1,742 @@
+/* riprap.dev — design system.
+ *
+ * Hand-written, token-driven, no framework and no build step. Plain CSS with no front
+ * matter is copied byte-for-byte by Jekyll, so what you preview is exactly what ships.
+ *
+ * Two rules hold the whole file together:
+ *   1. Components read tokens and never literal colours, so the dark theme costs no
+ *      component rules — only the token block below is redeclared.
+ *   2. Every non-obvious rule states why, and where there was a failure to avoid, names it.
+ */
+
+/* ---------------------------------------------------------------------------
+ * 1. Tokens
+ * ------------------------------------------------------------------------ */
+:root {
+  --primary: #2563eb;
+  --primary-strong: #1d4ed8;
+  --secondary: #7c3aed;
+  --accent: #06b6d4;
+
+  /* Three surfaces: page, band, raised. In light mode band and raised are both white; in
+   * dark mode they separate into three real steps, which is what stops a dark page reading
+   * as one flat sheet. */
+  --surface: #f8fafc;
+  --surface-alt: #ffffff;
+  --surface-raised: #ffffff;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text: #1e293b;
+  --text-strong: #0f172a;
+  --text-muted: #64748b;
+
+  --tag-bg: #eef2ff;
+  --tag-text: #4338ca;
+  --code-bg: #f1f5f9;
+  --nav-bg: rgba(248, 250, 252, .85);
+
+  --gradient-primary: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, .05);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, .08), 0 2px 4px -2px rgba(15, 23, 42, .05);
+  --shadow-lg: 0 10px 15px -3px rgba(15, 23, 42, .1), 0 4px 6px -4px rgba(15, 23, 42, .05);
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --nav-height: 70px;
+  --transition: .25s ease;
+
+  /* Reference prose is read line by line, not skimmed. 72ch lands near the top of the
+   * comfortable 65–75 character measure; a fixed 760px box works out at about 85. */
+  --measure: 72ch;
+
+  --font-main: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Syntax highlighting needs its own scale rather than reusing the brand tokens: --accent
+   * on --code-bg fails contrast in light mode, and a keyword the same colour as a link
+   * reads as clickable. */
+  --syn-comment: #64748b;
+  --syn-keyword: #7c3aed;
+  --syn-string: #0e7490;
+  --syn-builtin: #1d4ed8;
+  --syn-attr: #b45309;
+}
+
+[data-theme='dark'] {
+  --primary: #60a5fa;
+  --primary-strong: #3b82f6;
+  --secondary: #a78bfa;
+  --accent: #22d3ee;
+
+  --surface: #0f172a;
+  --surface-alt: #131f38;
+  --surface-raised: #1e293b;
+  --border: #334155;
+  --border-strong: #475569;
+
+  --text: #cbd5e1;
+  --text-strong: #f1f5f9;
+  --text-muted: #94a3b8;
+
+  --tag-bg: #1e293b;
+  --tag-text: #a5b4fc;
+  --code-bg: #131f38;
+  --nav-bg: rgba(15, 23, 42, .85);
+
+  --gradient-primary: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+
+  /* Re-tinted to pure black at higher alpha. A slate-tinted shadow is invisible against a
+   * slate surface, which is how dark themes end up with no depth at all. */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, .3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, .4), 0 2px 4px -2px rgba(0, 0, 0, .3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, .5), 0 4px 6px -4px rgba(0, 0, 0, .4);
+
+  --syn-comment: #94a3b8;
+  --syn-keyword: #c4b5fd;
+  --syn-string: #67e8f9;
+  --syn-builtin: #93c5fd;
+  --syn-attr: #fbbf24;
+}
+
+/* ---------------------------------------------------------------------------
+ * 2. Reset and page frame
+ * ------------------------------------------------------------------------ */
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  /* Anchor targets must clear the fixed navbar. riprap.dev/#license is printed into
+   * adopters' terminals by the installer; landing underneath the bar is a visible bug. */
+  scroll-padding-top: calc(var(--nav-height) + 16px);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-main);
+  font-size: 1rem;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Deliberately no `overflow-x: hidden` on body. It would swallow the overflow of a wide
+ * table instead of letting it scroll in its own box, and it breaks position: sticky. Wide
+ * children are constrained where they occur instead. */
+
+img, svg { max-width: 100%; }
+
+h1, h2, h3, h4 {
+  margin: 0;
+  color: var(--text-strong);
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+}
+
+p, ul, ol, pre, table, blockquote, figure { margin: 0; }
+
+a { color: var(--primary); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: var(--primary-strong); }
+
+/* ---------------------------------------------------------------------------
+ * 3. Focus, skip link, gradient text
+ * ------------------------------------------------------------------------ */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.skip-link {
+  position: absolute;
+  left: 16px;
+  top: 12px;
+  z-index: 1100;
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-lg);
+  text-decoration: none;
+  /* Hidden by its own height rather than by a fixed negative offset. A fixed offset has to
+   * out-reach the element AND its shadow: --shadow-lg extends 25px past the box, so an
+   * off-screen skip link still painted a dark smudge across the top of every page. A
+   * percentage transform moves the shadow with it, whatever the text size turns out to be. */
+  transform: translateY(-200%);
+  transition: transform var(--transition);
+}
+.skip-link:focus { transform: translateY(0); }
+
+/* One implementation, with the solid fallback declared inside it. Where background-clip:
+ * text is unsupported or blocked, -webkit-text-fill-color leaves the text invisible — so
+ * the fallback cannot live in the callers, where it gets forgotten. */
+.gradient-text {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: var(--primary);
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. Type scale
+ * ------------------------------------------------------------------------ */
+.section-eyebrow {
+  margin: 0 0 10px;
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.section-eyebrow-dash { display: flex; align-items: center; gap: 12px; }
+.section-eyebrow-dash::before {
+  content: '';
+  width: 32px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--gradient-primary);
+  /* The dash is a sibling of gradient text, so it must not inherit the transparent fill. */
+  -webkit-text-fill-color: initial;
+}
+
+.lede {
+  max-width: 62ch;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+}
+
+/* ---------------------------------------------------------------------------
+ * 5. Containers
+ * ------------------------------------------------------------------------ */
+.container { width: 100%; max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+.prose { max-width: var(--measure); }
+
+/* The landing page runs card grids, directory trees and tables that want the hero's full
+ * width, but its paragraphs still want a reading measure. Constraining the text children
+ * rather than the column keeps both, and keeps the wide blocks aligned with the hero above
+ * them — a narrower column under a full-width hero reads as though the page slipped left. */
+.prose-home { max-width: none; }
+.prose-home > p,
+.prose-home > h2,
+.prose-home > h3,
+.prose-home > ol,
+.prose-home > blockquote,
+.prose-home > ul:not(.incidents):not(.doc-links) { max-width: var(--measure); }
+
+/* ---------------------------------------------------------------------------
+ * 6. Navbar
+ * ------------------------------------------------------------------------ */
+.navbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 1000;
+  height: var(--nav-height);
+  background: var(--nav-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  /* Transparent at rest and coloured once scrolled, so the bar only asserts itself when it
+   * is actually overlapping content. The border is declared here rather than added later so
+   * the transition has something to animate from and the page does not shift by 1px. */
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.navbar.scrolled { border-bottom-color: var(--border); box-shadow: var(--shadow-sm); }
+
+.nav-container { display: flex; align-items: center; gap: 24px; height: 100%; }
+
+.nav-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  text-decoration: none;
+}
+.nav-mark { width: 22px; height: 22px; fill: var(--primary); flex: none; }
+
+.nav-menu {
+  display: flex;
+  gap: 4px;
+  margin: 0 auto 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.nav-link {
+  position: relative;
+  display: block;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: .95rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color var(--transition);
+}
+.nav-link:hover, .nav-link.active { color: var(--text-strong); }
+.nav-link::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  bottom: 2px;
+  width: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--gradient-primary);
+  transition: width var(--transition);
+}
+.nav-link:hover::after, .nav-link.active::after { width: calc(100% - 20px); }
+
+.nav-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.theme-toggle:hover { border-color: var(--border-strong); color: var(--text-strong); }
+.icon { width: 16px; height: 16px; flex: none; }
+.icon-sun, .icon-moon { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.icon-moon { display: none; }
+[data-theme='dark'] .icon-sun { display: none; }
+[data-theme='dark'] .icon-moon { display: block; }
+.icon-source { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  cursor: pointer;
+}
+.hamburger .bar { height: 2px; border-radius: 2px; background: var(--text); transition: var(--transition); }
+.hamburger[aria-expanded='true'] .bar:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.hamburger[aria-expanded='true'] .bar:nth-child(2) { opacity: 0; }
+.hamburger[aria-expanded='true'] .bar:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+
+/* ---------------------------------------------------------------------------
+ * 7. Buttons
+ * ------------------------------------------------------------------------ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: .95rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+}
+.btn-sm { padding: 7px 12px; font-size: .875rem; font-weight: 500; }
+.btn-primary { background: var(--gradient-primary); color: #fff; box-shadow: var(--shadow-sm); }
+.btn-primary:hover { color: #fff; transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.btn-ghost {
+  border-color: var(--border);
+  background: var(--surface-raised);
+  color: var(--text-strong);
+}
+.btn-ghost:hover { border-color: var(--border-strong); color: var(--text-strong); transform: translateY(-2px); }
+
+/* ---------------------------------------------------------------------------
+ * 8. Hero and page head
+ * ------------------------------------------------------------------------ */
+.hero {
+  padding: calc(var(--nav-height) + 72px) 0 72px;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+}
+.hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 48px; align-items: center; }
+/* A grid item defaults to min-width: auto, so a track cannot shrink below its content's
+ * min-content width — the terminal's longest command line was holding the whole hero 15px
+ * wider than a 360px phone, and the page scrolled sideways. The scroll belongs to the
+ * terminal, not the document. */
+.hero-grid > * { min-width: 0; }
+.hero-title {
+  font-size: clamp(2.25rem, 5.5vw, 3.4rem);
+  font-weight: 800;
+  letter-spacing: -.03em;
+}
+.hero-lede {
+  max-width: 52ch;
+  margin-top: 18px;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+.hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+
+.terminal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--code-bg);
+}
+.terminal-bar .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--border-strong); }
+.terminal-title {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: .75rem;
+}
+.terminal-body {
+  padding: 16px 18px;
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: .85rem;
+  line-height: 1.9;
+  overflow-x: auto;
+}
+.terminal-prompt { color: var(--primary); user-select: none; }
+.hero-aside-note { margin-top: 12px; color: var(--text-muted); font-size: .875rem; }
+
+.page-head {
+  padding: calc(var(--nav-height) + 56px) 0 40px;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+}
+.page-head h1 { font-size: clamp(1.9rem, 4.5vw, 2.6rem); letter-spacing: -.02em; }
+.page-head .lede { margin-top: 14px; }
+
+/* ---------------------------------------------------------------------------
+ * 9. Prose register
+ * ------------------------------------------------------------------------ */
+.prose { padding: 48px 0 72px; font-size: 1.05rem; }
+/* These docs are full of strings like bin/hooks/riprap/lib/secret-patterns.local.sh. Without
+ * this they push the page wider than a phone viewport. */
+.prose { overflow-wrap: anywhere; }
+.prose > * + * { margin-top: 20px; }
+
+.prose h2 {
+  margin-top: 48px;
+  font-size: clamp(1.4rem, 1.1rem + 1.1vw, 1.75rem);
+  letter-spacing: -.01em;
+}
+.prose h3 { margin-top: 34px; font-size: 1.15rem; }
+.prose h2 + *, .prose h3 + * { margin-top: 12px; }
+
+.prose ul, .prose ol { padding-left: 22px; }
+.prose li + li { margin-top: 8px; }
+.prose li::marker { color: var(--primary); }
+
+.prose strong { color: var(--text-strong); font-weight: 600; }
+
+.prose blockquote {
+  padding: 4px 0 4px 20px;
+  border-left: 3px solid var(--primary);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.prose hr { margin-top: 44px; border: 0; border-top: 1px solid var(--border); }
+
+/* Callouts are blockquotes with a kramdown attribute list, so the markdown needs no raw
+ * HTML: `{: .callout .callout-warn}` on the line after the quote. */
+.prose .callout {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font-style: normal;
+}
+.prose .callout-warn { border-left-color: var(--secondary); }
+.prose .callout > * + * { margin-top: 10px; }
+
+/* ---------------------------------------------------------------------------
+ * 10. Tables
+ * ------------------------------------------------------------------------ */
+.prose table { width: 100%; border-collapse: collapse; font-size: .94rem; }
+.prose th, .prose td { padding: 10px 12px; border: 1px solid var(--border); vertical-align: top; text-align: left; }
+.prose thead th { background: var(--code-bg); color: var(--text-strong); }
+.prose td code, .prose th code { white-space: nowrap; }
+
+/* kramdown cannot wrap a table, so site.js adds this. Without JS the table may overflow on
+ * a narrow screen, which is the acceptable failure: `table { display: block }` would break
+ * column sizing on every screen instead of only narrow ones. */
+.table-scroll { overflow-x: auto; }
+.prose .table-scroll + * { margin-top: 20px; }
+
+/* The two-tier table is the one place asymmetry is the whole point: one row is riprap's and
+ * one is yours. Matching borders make it read as two equivalent options. */
+.prose .tiers tbody tr:first-child { background: var(--tag-bg); }
+.prose .tiers tbody tr:first-child td:first-child { color: var(--tag-text); font-weight: 600; }
+.prose .tiers tbody tr:last-child td:first-child { color: var(--text-strong); font-weight: 600; }
+
+/* ---------------------------------------------------------------------------
+ * 11. Code
+ * ------------------------------------------------------------------------ */
+/* Two markups reach here: a bare fence emits <pre><code>, a language-tagged fence emits
+ * div.highlighter-rouge > div.highlight > pre.highlight > code. Both appear in these docs,
+ * so the box is the <pre> and the wrapper divs are neutralised — otherwise every tagged
+ * block gets a double frame.
+ *
+ * The `div` qualifier is load-bearing: kramdown puts class="highlight" on the <pre> as well
+ * as on its wrapper, so an unqualified .highlight strips the border and padding from the one
+ * element that is supposed to have them, and every code block renders as bare text. */
+.prose div.highlighter-rouge, .prose div.highlight { margin: 0; padding: 0; border: 0; background: none; }
+.prose div.highlighter-rouge + * { margin-top: 20px; }
+
+.prose pre {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  font-family: var(--font-mono);
+  font-size: .875rem;
+  line-height: 1.6;
+  tab-size: 2;
+  overflow-x: auto;
+}
+/* :not(pre) > code rather than styling code and unsetting it inside pre: one rule instead
+ * of two, and it cannot be defeated by kramdown tagging inline code. */
+.prose :not(pre) > code {
+  padding: .15em .4em;
+  border-radius: 5px;
+  background: var(--code-bg);
+  font-family: var(--font-mono);
+  font-size: .88em;
+}
+.prose pre code { padding: 0; background: none; font-size: inherit; }
+
+/* Directory trees carry their meaning in the column alignment, so they must never wrap. */
+.prose pre.tree, .prose .tree pre { white-space: pre; }
+.tree-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 24px; }
+.tree-pair h3 { margin-top: 0; font-size: 1rem; }
+.tree-pair > div > * + * { margin-top: 12px; }
+
+/* Only the Rouge classes shell, yaml and json actually emit. A full theme is 200 lines of
+ * rules for tokens no page here produces. */
+.prose .highlight .c, .prose .highlight .c1, .prose .highlight .cm { color: var(--syn-comment); font-style: italic; }
+.prose .highlight .k, .prose .highlight .kd, .prose .highlight .kn { color: var(--syn-keyword); }
+.prose .highlight .nb, .prose .highlight .nf, .prose .highlight .nv { color: var(--syn-builtin); }
+.prose .highlight .s, .prose .highlight .s1, .prose .highlight .s2, .prose .highlight .se { color: var(--syn-string); }
+.prose .highlight .na, .prose .highlight .nt { color: var(--syn-attr); }
+.prose .highlight .o, .prose .highlight .p { color: var(--text-muted); }
+
+/* ---------------------------------------------------------------------------
+ * 12. Table of contents
+ * ------------------------------------------------------------------------ */
+.prose .toc {
+  padding: 18px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+.prose .toc-title {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: .8rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.prose .toc ul { margin: 0; padding-left: 18px; list-style: none; }
+.prose .toc > ul { padding-left: 0; }
+.prose .toc li { margin-top: 4px; font-size: .94rem; }
+.prose .toc li + li { margin-top: 4px; }
+.prose .toc a { text-decoration: none; }
+.prose .toc a:hover { text-decoration: underline; }
+
+/* Heading anchors are added by site.js. Hidden until the heading is hovered or the link
+ * itself is focused, so a keyboard user can still reach them. */
+.heading-anchor {
+  margin-left: .4em;
+  color: var(--text-muted);
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+h2:hover > .heading-anchor, h3:hover > .heading-anchor, .heading-anchor:focus { opacity: 1; }
+
+/* ---------------------------------------------------------------------------
+ * 13. List containers and cards
+ * ------------------------------------------------------------------------ */
+.prose .doc-links {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  list-style: none;
+  overflow: hidden;
+}
+.prose .doc-links li { margin: 0; padding: 15px 20px; transition: background-color var(--transition); }
+.prose .doc-links li + li { margin-top: 0; border-top: 1px solid var(--border); }
+.prose .doc-links li:hover { background: var(--tag-bg); }
+
+/* The incident list. Every card is the same three parts — the control, what happened, what
+ * it cost — because the repeated shape is what shows the claim is systematic rather than a
+ * collection of anecdotes. */
+.prose .incidents {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 18px;
+  padding: 0;
+  list-style: none;
+}
+.prose .incidents li {
+  margin: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  font-size: .96rem;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.prose .incidents li:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+
+/* The provenance band. The four figures describe the codebase riprap was distilled from,
+ * which is not what it ships — so the caption underneath is load-bearing, not decoration. */
+.provenance {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+.provenance > * + * { margin-top: 14px; }
+.provenance-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr));
+  gap: 16px;
+  padding: 0;
+  list-style: none;
+}
+.provenance-stats li { margin: 0; }
+.provenance-stats b {
+  display: block;
+  color: var(--text-strong);
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.provenance-stats span { color: var(--text-muted); font-size: .85rem; }
+.provenance-note { color: var(--text-muted); font-size: .9rem; }
+
+/* Honest limits stays the plainest thing on the page. Styling an admission makes it look
+ * like a feature. */
+.prose .limits { padding-left: 22px; }
+.prose .limits li { color: var(--text); }
+
+/* ---------------------------------------------------------------------------
+ * 14. Footer
+ * ------------------------------------------------------------------------ */
+.footer {
+  padding: 48px 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface-alt);
+}
+.footer-content { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.footer-brand { font-size: 1.1rem; font-weight: 800; letter-spacing: -.02em; }
+.footer-note { max-width: 56ch; color: var(--text-muted); font-size: .9rem; }
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: .9rem;
+}
+/* The organisation credit sits below the links and reads quieter than them: it is
+ * attribution, not navigation, and should not compete with Licence or Source for the
+ * eye. Only the name is a link, so the whole line does not look clickable. */
+.footer-powered {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: .85rem;
+}
+
+/* ---------------------------------------------------------------------------
+ * 15. Narrow screens
+ * ------------------------------------------------------------------------ */
+@media (max-width: 900px) {
+  /* Lead with the copy once the columns stack — the terminal is evidence, not the pitch. */
+  .hero-grid { grid-template-columns: 1fr; gap: 32px; }
+  .hero { padding: calc(var(--nav-height) + 48px) 0 56px; }
+}
+
+@media (max-width: 760px) {
+  .nav-menu {
+    position: fixed;
+    inset: var(--nav-height) 0 auto 0;
+    flex-direction: column;
+    gap: 0;
+    margin: 0;
+    padding: 8px 24px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-alt);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-140%);
+    transition: transform var(--transition);
+  }
+  .nav-menu.open { transform: translateY(0); }
+  .nav-link { padding: 12px 0; }
+  .nav-link::after { display: none; }
+  .hamburger { display: flex; }
+  .nav-source span, .nav-source { display: none; }
+  .prose { padding: 32px 0 56px; }
+  .prose h2 { margin-top: 40px; }
+}
+
+@media (max-width: 520px) {
+  .container { padding: 0 18px; }
+  .prose { font-size: 1rem; }
+  .prose table { font-size: .88rem; }
+  .provenance-stats b { font-size: 1.3rem; }
+}
+
+/* ---------------------------------------------------------------------------
+ * 16. Reduced motion
+ * ------------------------------------------------------------------------ */
+/* There are no scroll-reveal animations on this site, deliberately: content that is hidden
+ * until an observer fires is content that can fail to appear. Only transitions need muting.
+ */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

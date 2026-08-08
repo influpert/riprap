@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# install-payload — copy riprap's repo-side half into a project.
+#
+# Called by /riprap:install, and directly by riprap's own CI. It exists as a
+# script rather than as instructions in the command prompt for one reason: CI has
+# no Claude Code, and an installer that only a model can run is an installer that
+# cannot be tested.
+#
+# Copying is driven entirely by MANIFEST. Nothing is copied because it happens to
+# sit in the payload directory; every file is named, tiered, and verified to be
+# text first. That is deliberate — a compiled artifact or an editor backup picked
+# up by a recursive copy would carry absolute paths and identifiers straight into
+# someone else's repo, and no text scrubber can see inside one.
+#
+#   install-payload <project-directory> [--force] [--dry-run]
+#
+# Re-running is the update path. Namespaced files are refreshed wholesale and
+# ones upstream no longer ships are pruned; seed files are never touched once
+# they exist. There is no conflict detection because there is nothing to detect:
+# riprap owns every path it writes.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PAYLOAD="$PLUGIN_ROOT/payload"
+MANIFEST="$PAYLOAD/MANIFEST"
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+TARGET="" FORCE=0 DRY=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --force)   FORCE=1; shift ;;
+    --dry-run) DRY=1; shift ;;
+    -*) die "unknown option: $1" ;;
+    *)  TARGET="$1"; shift ;;
+  esac
+done
+
+[ -n "$TARGET" ] || die "usage: install-payload <project-directory> [--force] [--dry-run]"
+[ -d "$TARGET" ] || die "no such directory: $TARGET"
+TARGET="$(cd "$TARGET" && pwd)"
+[ -f "$MANIFEST" ] || die "no MANIFEST at $MANIFEST — the plugin install is incomplete"
+[ "$TARGET" != "$PLUGIN_ROOT" ] || die "refusing to install riprap into itself"
+
+git -C "$TARGET" rev-parse --git-dir >/dev/null 2>&1 || die "not a git repository: $TARGET"
+
+# A clean tree is what makes `git checkout --` the undo button, which is why
+# there are no .bak files anywhere in here. It also keeps `git diff` a truthful
+# record of what riprap changed — the only record an adopter actually trusts.
+if [ "$DRY" -eq 0 ] && [ -n "$(git -C "$TARGET" status --porcelain)" ]; then
+  [ "$FORCE" -eq 1 ] || die "target has uncommitted changes: $TARGET
+Commit or stash them first — you want git diff to show exactly what riprap changed.
+(--force overrides, and gives up that guarantee.)"
+fi
+
+VERSION="$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+  "$PLUGIN_ROOT/.claude-plugin/plugin.json" | head -1)"
+VERSION="${VERSION:-unknown}"
+
+manifest_entries() { grep -vE '^[[:space:]]*(#|$)' "$MANIFEST"; }
+
+in_namespace() {
+  case "$1" in bin/hooks/riprap/*|bin/riprap) return 0 ;; *) return 1 ;; esac
+}
+
+# NUL bytes, tested directly. `grep -Iq .` calls a whitespace-only file binary,
+# and its usual `2>/dev/null` would turn an unsupported -I into a confident,
+# silent, wrong refusal. Strip NULs and compare: identical means there were none.
+is_text() {
+  [ -s "$1" ] || return 0   # an empty file has no bytes to be binary
+  LC_ALL=C tr -d '\000' < "$1" | cmp -s - "$1"
+}
+
+# --- classify everything before touching anything ---------------------------
+# A failure halfway through a copy loop leaves a half-written namespace that
+# looks installed. Deciding first and acting second means any refusal below costs
+# nothing.
+plan_add="" plan_update="" plan_skip="" problems=""
+while IFS=$'\t' read -r tier path; do
+  [ -n "$path" ] || continue
+  src="$PAYLOAD/$path"
+  dst="$TARGET/$path"
+
+  [ -f "$src" ] || { problems="$problems  MANIFEST lists a missing file: $path"$'\n'; continue; }
+  is_text "$src" || { problems="$problems  refusing to copy a non-text file: $path"$'\n'; continue; }
+
+  if [ "$tier" = "namespaced" ] && ! in_namespace "$path"; then
+    problems="$problems  $path is namespaced but sits outside the namespace"$'\n'
+    continue
+  fi
+
+  # A symlink or directory where a file belongs. cp would follow the symlink and
+  # write through it, possibly outside the repo, where the clean-tree guarantee
+  # buys nothing.
+  if [ -L "$dst" ] || { [ -e "$dst" ] && [ ! -f "$dst" ]; }; then
+    problems="$problems  $path exists and is not a regular file — refusing to write through it"$'\n'
+    continue
+  fi
+
+  if [ "$tier" = "seed" ]; then
+    if [ -e "$dst" ]; then plan_skip="$plan_skip$path"$'\n'; else plan_add="$plan_add$path"$'\n'; fi
+  elif [ -e "$dst" ]; then
+    plan_update="$plan_update$path"$'\n'
+  else
+    plan_add="$plan_add$path"$'\n'
+  fi
+done < <(manifest_entries)
+
+[ -z "$problems" ] || die "Refusing to install:
+$problems"
+
+# Namespaced files that exist here but are no longer shipped. Left in place they
+# keep running: a retired guardrail that still fires is worse than one that is
+# gone, because nobody knows it is still there.
+plan_prune=""
+if [ -d "$TARGET/bin/hooks/riprap" ]; then
+  shipped="$(manifest_entries | cut -f2)"
+  while IFS= read -r existing; do
+    [ -n "$existing" ] || continue
+    # VERSION is written by this script, not shipped by the manifest, so it is
+    # never a prune candidate.
+    [ "$existing" = "bin/hooks/riprap/VERSION" ] && continue
+    printf '%s\n' "$shipped" | grep -qxF "$existing" || plan_prune="$plan_prune$existing"$'\n'
+  done < <(cd "$TARGET" && find bin/hooks/riprap -type f | LC_ALL=C sort)
+fi
+
+count() { [ -z "$1" ] && echo 0 || printf '%s' "$1" | grep -c . ; }
+
+printf 'riprap %s → %s\n\n' "$VERSION" "$TARGET"
+[ "$DRY" -eq 1 ] && printf '(dry run — nothing will be written)\n\n'
+
+emit() {  # $1 = label, $2 = newline-separated list
+  [ -n "$2" ] || return 0
+  # `[ -n "$p" ] && printf` as the last statement of the loop would make the
+  # whole function exit 1 on the trailing empty line, and set -e would take the
+  # script down with it — silently, right before the summary.
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    printf '  %-9s %s\n' "$1" "$p"
+  done <<< "$2"
+  return 0
+}
+
+# add and update are printed differently on purpose. The bug that started all of
+# this was invisible precisely because an overwrite and a fresh file produced the
+# same line of output.
+emit add "$plan_add"
+emit refresh "$plan_update"
+emit prune "$plan_prune"
+emit "keep" "$plan_skip"
+
+if [ "$DRY" -eq 1 ]; then
+  printf '\n%s to add, %s to refresh, %s to prune, %s kept as yours.\n' \
+    "$(count "$plan_add")" "$(count "$plan_update")" "$(count "$plan_prune")" "$(count "$plan_skip")"
+  exit 0
+fi
+
+# --- act --------------------------------------------------------------------
+write_one() {
+  local path="$1" src="$PAYLOAD/$1" dst="$TARGET/$1"
+  mkdir -p "$(dirname "$dst")"
+  cp "$src" "$dst"
+  # Match the source bit exactly, in both directions. An add-only chmod leaves a
+  # hook executable forever after upstream deliberately stopped shipping it as one.
+  if [ -x "$src" ]; then chmod +x "$dst"; else chmod -x "$dst"; fi
+}
+
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  write_one "$p"
+done <<< "$plan_add$plan_update"
+
+while IFS= read -r p; do
+  [ -n "$p" ] || continue
+  rm -f "$TARGET/$p"
+done <<< "$plan_prune"
+
+# Version stamp, so bin/riprap verify can report plugin/payload skew. The two
+# halves update through different channels and will drift.
+printf '%s\n' "$VERSION" > "$TARGET/bin/hooks/riprap/VERSION"
+
+printf '\n%s added, %s refreshed, %s pruned, %s kept.\n' \
+  "$(count "$plan_add")" "$(count "$plan_update")" "$(count "$plan_prune")" "$(count "$plan_skip")"
+
+printf '\nNext:  bin/riprap wire\n'

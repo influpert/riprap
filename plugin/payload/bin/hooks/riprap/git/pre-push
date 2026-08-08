@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# riprap's pre-push checks. Upstream owns this file; `/riprap:install` overwrites
+# it. Your own checks belong in bin/hooks/git/pre-push, which calls this one.
+#
+# One job: don't push a broken build. If bin/test is not configured yet, say so
+# and get out of the way — a template that blocks your first push before you
+# have set anything up is a template you delete.
+set -eu
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+if [ ! -x bin/test ] || grep -q '^# riprap:stub$' bin/test 2>/dev/null; then
+  echo "⏭️  bin/test not configured — skipping pre-push tests."
+  exit 0
+fi
+
+if ! bin/test; then
+  echo "" >&2
+  echo "❌ Tests failed. Push aborted." >&2
+  echo "   Fix them, or push with --no-verify to skip this check." >&2
+  exit 1
+fi
+
+echo "✅ tests passed"
+exit 0

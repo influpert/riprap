@@ -1,0 +1,34 @@
+---
+layout: default
+---
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-copy">
+      <p class="section-eyebrow section-eyebrow-dash gradient-text">{{ page.eyebrow }}</p>
+      <h1 class="hero-title">{{ page.hero_title }}</h1>
+      <p class="hero-lede">{{ page.hero_lede }}</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="{{ '/install/' | relative_url }}">Install riprap</a>
+        <a class="btn btn-ghost" href="{{ '/guardrails/' | relative_url }}">How a rule is made to hold</a>
+      </div>
+    </div>
+
+    <div class="hero-aside">
+      <div class="terminal" aria-label="The three install commands">
+        <div class="terminal-bar" aria-hidden="true">
+          <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+          <span class="terminal-title">Claude Code</span>
+        </div>
+<pre class="terminal-body"><code>{% for c in page.hero_commands %}<span class="terminal-prompt">›</span> {{ c }}
+{% endfor %}</code></pre>
+      </div>
+      <p class="hero-aside-note">{{ page.hero_commands_note }}</p>
+    </div>
+  </div>
+</section>
+
+<div class="container">
+  <article class="prose prose-home">
+    {{ content }}
+  </article>
+</div>

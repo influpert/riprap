@@ -1,0 +1,82 @@
+/* riprap.dev — print.
+ *
+ * These pages get printed: an install runbook read next to a terminal, a licence section
+ * taken to whoever approves it. So print abandons the screen identity entirely rather than
+ * trying to reproduce it in ink.
+ */
+
+body {
+  margin: 0;
+  background: #fff;
+  color: #000;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 11pt;
+  line-height: 1.4;
+}
+
+/* Interactive-only chrome has no meaning on paper, and a table of contents whose links
+ * cannot be clicked is a page of wasted ink. */
+.navbar,
+.footer,
+.skip-link,
+.theme-toggle,
+.hamburger,
+.nav-actions,
+.hero-actions,
+.terminal-bar,
+.prose .toc,
+.heading-anchor {
+  display: none !important;
+}
+
+.container, .prose { max-width: none; width: auto; margin: 0; padding: 0; }
+.hero, .page-head { padding: 0 0 12pt; border: 0; background: none; }
+.prose { padding: 12pt 0 0; font-size: 11pt; }
+
+h1, h2, h3, h4 { font-family: Georgia, 'Times New Roman', serif; color: #000; }
+h1 { font-size: 20pt; }
+h2 { font-size: 14pt; margin-top: 18pt; }
+h3 { font-size: 12pt; margin-top: 14pt; }
+h2, h3, h4 { page-break-after: avoid; }
+
+/* Gradient text is transparent-filled on screen. Without this it prints as nothing at all. */
+.gradient-text, .section-eyebrow, .footer-brand {
+  background: none !important;
+  -webkit-text-fill-color: #000 !important;
+  color: #000 !important;
+}
+
+/* Flatten every raised surface: shadows and tints cost toner and carry no information. */
+.provenance,
+.terminal,
+.prose .callout,
+.prose .doc-links,
+.prose .incidents li,
+.prose pre {
+  border: 1px solid #999 !important;
+  border-radius: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+.prose .incidents, .provenance-stats, .tree-pair { display: block !important; }
+.prose .incidents li, .provenance-stats li { margin-bottom: 8pt; }
+
+.prose pre, .terminal-body { font-family: 'Courier New', monospace; font-size: 8.5pt; overflow: visible; }
+.prose :not(pre) > code { background: none !important; font-family: 'Courier New', monospace; font-size: 9.5pt; }
+
+.prose table { font-size: 9.5pt; }
+.prose th, .prose td { border: 1px solid #999 !important; }
+.prose thead th { background: none !important; }
+.prose .tiers tbody tr:first-child { background: none !important; }
+
+pre, table, .prose .callout, .prose .incidents li { page-break-inside: avoid; }
+
+a { color: #000; text-decoration: underline; }
+
+/* A printed page loses every destination unless it says them out loud. Internal links are
+ * left alone — the reader is holding the site, so "/install/" tells them nothing. */
+.prose a[href^='http']::after {
+  content: ' (' attr(href) ')';
+  font-size: .85em;
+  word-break: break-all;
+}

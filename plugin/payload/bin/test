@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# bin/test — run this project's test suite.
+#
+# Hooks and CI both call this, which is the point: there is exactly one
+# definition of "run the tests", so local and CI cannot drift.
+#
+# TODO: replace the stub below with your command, then delete the marker line.
+#   exec npm test
+#   exec pytest
+#   exec cargo test
+#   exec go test ./...
+#   exec bundle exec rspec
+#   exec ./gradlew test
+#
+# It should be fast enough to run before every push. If your full suite is not,
+# run the fast subset here and leave the slow one to CI.
+set -euo pipefail
+
+# riprap:stub
+echo "bin/test is not configured yet — edit bin/test and delete the marker line." >&2
+exit 127

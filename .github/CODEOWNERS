@@ -1,0 +1,41 @@
+# Paths that need the owner's eyes before merging.
+#
+# This is the platform-side half of the merge gate. bin/hooks/riprap/claude/block-unreviewed-merge.sh
+# refuses to merge these; CODEOWNERS makes the forge request a review the moment a
+# matching PR opens, so the gate holds even if no agent is involved.
+#
+# GOTCHA — CODEOWNERS uses gitignore-style matching, which tests a pattern against a
+# single path segment unless the pattern is directory-anchored. `**/*billing*` matches a
+# FILE with billing in its name, but NOT a file that merely lives inside a directory
+# called billing (src/billing/handler.ts). Every keyword therefore needs both a filename
+# glob and a `/**` directory glob. Getting this wrong makes the gate look configured
+# while covering half of what you think it covers.
+#
+# The team named below must have write access to the repository, or GitHub silently
+# ignores every rule here — the same failure this file's own gotcha warns about.
+
+# The guardrail machinery itself — a change here can disable everything else.
+/bin/hooks/**            @influpert/code-reviewers
+/.claude/settings.json   @influpert/code-reviewers
+/.github/workflows/**    @influpert/code-reviewers
+/.github/CODEOWNERS      @influpert/code-reviewers
+
+# Dependencies: the classic supply-chain vector.
+package.json             @influpert/code-reviewers
+package-lock.json        @influpert/code-reviewers
+requirements.txt         @influpert/code-reviewers
+Gemfile.lock             @influpert/code-reviewers
+go.sum                   @influpert/code-reviewers
+Cargo.lock               @influpert/code-reviewers
+
+# Money, identity, access.
+**/*auth*                @influpert/code-reviewers
+**/*auth*/**             @influpert/code-reviewers
+**/*session*             @influpert/code-reviewers
+**/*session*/**          @influpert/code-reviewers
+**/*token*               @influpert/code-reviewers
+**/*token*/**            @influpert/code-reviewers
+**/*payment*             @influpert/code-reviewers
+**/*payment*/**          @influpert/code-reviewers
+**/*billing*             @influpert/code-reviewers
+**/*billing*/**          @influpert/code-reviewers

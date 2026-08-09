@@ -199,6 +199,12 @@ jobs:
             esac
           }
           bw=$(word_for "$b"); cw=$(word_for "$c")
+          # The router states its own critical-rule count in prose, and that was the one
+          # spelled-out number this check did not bind — while CLAUDE.md claimed all four
+          # sites move together. Binding it makes the claim true rather than aspirational.
+          grep -qx "These $cw are restated in full rather than linked: they cost the most when forgotten." \
+            plugin/instructions/README.md || {
+            echo "❌ the router does not say 'These $cw are restated in full'"; fail=1; }
           grep -qx "## The $bw behavioural rules" docs/rules.md || {
             echo "❌ docs/rules.md's heading does not say '$bw behavioural rules'"; fail=1; }
           grep -qx "## The $cw that cost the most when forgotten" docs/rules.md || {

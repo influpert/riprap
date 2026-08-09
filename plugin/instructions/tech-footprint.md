@@ -103,7 +103,7 @@ first Python file is not.
 
 ## Enforcement
 
-Three layers ship with riprap, over one pattern library so a rule has one definition:
+Four layers ship with riprap, over one pattern library so a rule has one definition:
 
 - **This document**, reachable from the router's critical rules.
 - **A pre-commit check** — the tech-footprint block in `bin/hooks/riprap/git/pre-commit`,

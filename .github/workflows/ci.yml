@@ -145,6 +145,17 @@ jobs:
           rules_table() {  # $1 = file — the behavioural-rules table, header row onward
             sed -n '/^| Rule | What it does |$/,/^$/p' "$1"
           }
+
+          # Assert the extraction found a table at all, BEFORE comparing. Two empty
+          # extractions compare equal, so renaming the header in both files would sail
+          # through the diff below — the exact false-pass this check exists to avoid.
+          for f in README.md docs/index.md; do
+            [ -n "$(rules_table "$f")" ] || {
+              echo "❌ no behavioural-rules table found in $f — was the header row renamed?"
+              echo "   The check greps for a line reading exactly '| Rule | What it does |'."
+              fail=1; }
+          done
+
           if ! diff -q <(rules_table README.md) <(rules_table docs/index.md) > /dev/null; then
             echo "❌ the behavioural-rules table differs between README.md and docs/index.md:"
             diff <(rules_table README.md) <(rules_table docs/index.md) || true
@@ -153,22 +164,27 @@ jobs:
 
           # The router is the source of truth: it is what the model is actually given.
           # Everything else describes it, so everything else counts the same.
-          b=$(grep -cE '^\*\*[0-9]+\. ' plugin/instructions/README.md)
+          #
+          # Every count below carries `|| true`. `grep -c` prints 0 and EXITS 1 when it
+          # matches nothing, which under this step's `set -e` kills the job mid-check with
+          # no output whatsoever — a red build nobody can diagnose. With `|| true` the zero
+          # reaches the comparison and fails with a sentence instead.
+          b=$(grep -cE '^\*\*[0-9]+\. ' plugin/instructions/README.md || true)
           for f in README.md docs/index.md; do
-            t=$(rules_table "$f" | grep -c '^| \*\*')
+            t=$(rules_table "$f" | grep -c '^| \*\*' || true)
             [ "$t" -eq "$b" ] || {
               echo "❌ $f lists $t behavioural rules; the router has $b"; fail=1; }
           done
           r=$(sed -n '/^## The [a-z]* behavioural rules$/,/^## /p' docs/rules.md \
-                | grep -cE '^\*\*[0-9]+\. ')
+                | grep -cE '^\*\*[0-9]+\. ' || true)
           [ "$r" -eq "$b" ] || {
             echo "❌ docs/rules.md lists $r behavioural rules; the router has $b"; fail=1; }
 
           # And the critical rules, counted by the link every one of them carries.
           c=$(sed -n '/^## Critical rules$/,/^## /p' plugin/instructions/README.md \
-                | grep -c '^→ \|→ \[')
+                | grep -c '^→ \|→ \[' || true)
           d=$(sed -n '/^## The [a-z]* that cost the most when forgotten$/,/^## /p' docs/rules.md \
-                | grep -cE '^\*\*[A-Z]')
+                | grep -cE '^\*\*[A-Z]' || true)
           [ "$c" -eq "$d" ] || {
             echo "❌ docs/rules.md restates $d critical rules; the router has $c"; fail=1; }
 

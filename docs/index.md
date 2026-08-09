@@ -36,7 +36,7 @@ good practice. Every rule is here because something broke first, and the inciden
 caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
-<em>from</em>. They are not what it ships. What it ships is 15 guardrail documents, four
+<em>from</em>. They are not what it ships. What it ships is 17 guardrail documents, four
 skills and six hooks — the inventory is on the <a href="reference.md">reference page</a>.</p>
 
 </div>
@@ -110,7 +110,7 @@ Improvements flow back as ordinary pull requests.
 Outside your repository, nothing to maintain.
 
 ```
-instructions/   15 guardrail documents, indexed by task.
+instructions/   17 guardrail documents, indexed by task.
                 A router is injected each session;
                 the rest are read on demand.
 skills/         /riprap:learn      /riprap:spec
@@ -184,12 +184,13 @@ added to your `CLAUDE.md`:
 | **Use subagents** | Offload research and parallel analysis, one task each, to keep the main context clean. |
 | **Capture corrections** | After any correction, write the lesson into `.claude/instructions/` so it outlives the session. |
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |
-| **Prefer the simpler solution** | On non-trivial changes, pause and ask whether there is a cleaner approach. |
+| **Prefer the simpler solution** | When two designs both work, ship the one with less code. Add structure at the second occurrence, not in anticipation of one. |
 | **Fix bugs autonomously** | Given a failing test or a red CI run, diagnose and fix it without a round trip. |
 
-Three more are restated in full because they cost the most when forgotten: never weaken code
-to make a test pass; always stress-test a plan before presenting it; never merge a
-security-sensitive change autonomously.
+Four more are restated in full because they cost the most when forgotten: never weaken code
+to make a test pass; always stress-test a plan before presenting it and again whenever it
+changes materially; never merge a security-sensitive change autonomously; never add a
+technology the repository does not already use without asking.
 
 What that injection actually costs you in context, and what happens when a project rule and
 a riprap rule disagree, is on [what riprap tells the model](rules.md).

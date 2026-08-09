@@ -1,12 +1,94 @@
 # Testing
 
-How to run tests, how to interpret failures, and the four mistakes that cost the most.
+How to write tests, how to run them, how to interpret failures, and the four mistakes that
+cost the most.
 
-Run the suite with `bin/test`. Everything below is about what to do with the result.
+Run the suite with `bin/test`. Everything after section 1 is about what to do with the
+result.
 
 ---
 
-## 1. Fixing test failures: the code is the source of truth
+## 1. Write the test first
+
+**Once a plan is approved, the tests are the first code you write.** Above the planning
+gate in [development-workflow.md](development-workflow.md), the order is: approved plan →
+tests that fail for the right reason → implementation → tests pass.
+
+**Watch each test fail before you make it pass.** A test that has never been red is a test
+whose assertion nobody has checked. Red for the wrong reason — an import error, a typo in
+the fixture — is not the same as red for the reason you meant, and only running it tells
+you which you have.
+
+**Why:** a test written after the implementation is shaped by the implementation. It
+asserts what the code does rather than what the plan said it should do, so it passes on
+the day it is written and can never catch the gap between the two — which is the only gap
+worth catching. What you end up with is a suite that documents the bug.
+
+### Then have the tests critiqued before you implement
+
+**Dispatch sub-agents against the tests, in parallel, before any implementation code
+exists.** The tests are now the specification, and a specification nobody reviewed is a
+plan nobody reviewed.
+
+At least three, from distinct angles:
+
+| Critic | The question it is handed |
+|---|---|
+| Positive coverage | Here is the approved plan and here are the tests. Which stated behaviour has no assertion against it? |
+| Negative coverage | What input breaks this — empty, absent, duplicated, out of order, at the boundary, the wrong type, too large? Which of those is unasserted? |
+| Business logic | Ignore the tests' framing. From the requirement alone, what rule must hold that these assertions do not check? Which assertion encodes an implementation detail rather than the rule? |
+| Test quality | Which of these would still pass against a wrong implementation? Name the mutation that survives. |
+
+The fourth finds the most and gets skipped the most. A test that passes against a
+deliberately broken implementation is not a weak test; it is not a test.
+
+Findings come back classified **BLOCKER / MAJOR / MINOR / NON-ISSUE**, using the table in
+[interaction-preferences.md](interaction-preferences.md) rather than a second scheme — so
+a BLOCKER means the same thing wherever it is raised. Fix every BLOCKER in the tests before
+writing any implementation. Implementing against tests you already know are incomplete
+converts a review finding into a regression, and it does it inside the one artifact
+everybody will later point at as proof the behaviour was checked.
+
+**Why sub-agents rather than rereading them yourself:** you wrote these tests five minutes
+ago, out of the same understanding that produced them, so rereading confirms that
+understanding rather than testing it. This is the argument
+[interaction-preferences.md](interaction-preferences.md) makes about a plan's own author,
+and it transfers unchanged — the assertion you did not think to write is invisible from
+inside the head that did not think to write it.
+
+### The carve-outs
+
+**This gate is the planning gate, not a second threshold.** Below
+[development-workflow.md](development-workflow.md)'s bar — one file, roughly five lines —
+write the test and skip the critics. Five sub-agents against three assertions costs more
+than the change, and a ceremony that is obviously disproportionate is the fastest way to
+teach everybody to skip it on the day it matters.
+
+**Bug fixes are already test-first, and stay stricter.** The reproduction that fails before
+and passes after is the test, written first, by definition. Nothing here relaxes that.
+
+**Exploration is not exempt; it is a different phase.** When you genuinely cannot write the
+assertion because you do not yet know the shape of the answer — an undocumented API, an
+unfamiliar data feed — spike it, throw the spike away, and write the test from the
+requirement. **The tell that you skipped the throwing-away step: you are writing an
+assertion by copying what the code just printed.** That test now certifies current
+behaviour, including whichever parts of it are wrong, and it will pass forever.
+
+**Behaviour with no available harness.** Terminal rendering, a real interactive prompt, a
+third-party sandbox unreachable from here. Name the behaviour left unasserted and say why.
+Silence reads as covered. And note that "hard to test" is usually a design finding rather
+than a fact about the test framework — see [design-principles.md](design-principles.md).
+
+**Changes with nothing to assert.** A rename with no semantic change, a comment, a
+formatting pass. A test written first there asserts only that the code exists.
+
+**Not a carve-out: "this one is too small to need it."** That is the verdict a change
+always returns about itself, and it is wrong at the same rate as the trivial-plan verdict
+the stress-test rule already refuses to honour.
+
+---
+
+## 2. Fixing test failures: the code is the source of truth
 
 When a deliberate code change makes tests fail, **the tests are what changes.** Never
 revert, weaken, or work around the code change to make a red test go green.
@@ -37,7 +119,7 @@ Before you believe a failure at all:
 
 ---
 
-## 2. Passive testing is not testing
+## 3. Passive testing is not testing
 
 **Page loads ≠ functionality works.** Features that look completely fine on a smoke test
 are often entirely broken the moment someone actually uses them. Loading a page proves
@@ -70,7 +152,7 @@ If a task says "verify the feature works", interactive is the bar.
 
 ---
 
-## 3. The stub anti-pattern: never stub a method that does not exist
+## 4. The stub anti-pattern: never stub a method that does not exist
 
 **Never stub a method that the real object does not have.** Doing so silently converts a
 production crash into a green test.
@@ -101,7 +183,7 @@ Rules:
 
 ---
 
-## 4. Never source a side-effecting script against live shared state
+## 5. Never source a side-effecting script against live shared state
 
 > **There is no read-only mode for a script whose job is to mutate state: running it
 > runs the mutation, regardless of why you ran it.**

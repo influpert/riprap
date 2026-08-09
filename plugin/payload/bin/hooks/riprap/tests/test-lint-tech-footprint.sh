@@ -54,6 +54,17 @@ echo "--- The escape hatch arrives as content, not as a file on disk ---"
 check "Write a .py carrying lint-ok:tech-footprint -> allow" 0 \
   "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$TMP/repo/ok.py\",\"content\":\"# lint-ok:tech-footprint\\nprint(1)\"}}"
 
+echo "--- A file outside the repository is not a footprint ---"
+# The rule says so itself: "Ephemeral is not a footprint", the test being whether
+# a teammate's clean clone still works. Agents are also pointed at a scratch
+# directory outside the project, so blocking here would fire constantly on work
+# that can never be committed.
+mkdir -p "$TMP/scratchpad"
+check "Write a .py to a scratch dir outside the repo -> allow" 0 \
+  "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$TMP/scratchpad/analysis.py\",\"content\":\"print(1)\"}}"
+check "Write a .rb to /tmp outside the repo -> allow" 0 \
+  "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"$TMP/elsewhere.rb\",\"content\":\"puts 1\"}}"
+
 echo "--- Surfaces this hook does not guard ---"
 check "Edit is not matched -> allow" 0 \
   "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$TMP/repo/tool.py\",\"new_string\":\"print(2)\"}}"

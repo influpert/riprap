@@ -43,9 +43,27 @@ FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // empty')
 
 # Outside a git repository there is no established stack to depart from, and
 # nothing this rule can meaningfully say.
-git rev-parse --show-toplevel >/dev/null 2>&1 || exit 0
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
 REL=$(hook_relative_path "$FILE_PATH")
+
+# A file written outside the repository is not a footprint, and the rule says so
+# out loud: "Ephemeral is not a footprint" — the test is whether a teammate's
+# clean clone still works. Nothing outside the tree can affect that.
+#
+# This matters more than it sounds. Agents are pointed at a scratch directory for
+# temporary work, which is usually outside the project, and without this check
+# every analysis script written there is blocked by a rule about the repository's
+# committed stack. hook_relative_path returns an out-of-tree absolute path
+# unchanged, so it matches no allow-list entry and looks like a brand new
+# technology.
+case "$REL" in
+  /*) exit 0 ;;                      # absolute means it did not sit under the root
+  ../*) exit 0 ;;                    # or climbed back out of it
+esac
+case "$FILE_PATH" in
+  /*) [ "${FILE_PATH#"$ROOT"/}" != "$FILE_PATH" ] || exit 0 ;;
+esac
 
 # The escape hatch has to be read from the content: the file does not exist on
 # disk yet, so the on-disk check inside tech_footprint_scan_paths cannot see it.
@@ -53,6 +71,11 @@ CONTENT=$(printf '%s' "$INPUT" | jq -r '.tool_input.content // empty')
 if tech_footprint_text_exempt "$CONTENT"; then
   exit 0
 fi
+
+# Decide whether the path carries a signal at all BEFORE walking HEAD. Without
+# this, every Write of a .md or a .csv pays a full `git ls-tree -r` piped through
+# a per-file bash loop, on a hook that runs on every write in every session.
+tech_footprint_signal "$REL" >/dev/null || exit 0
 
 VIOLATIONS=$(tech_footprint_scan_paths "$REL" || true)
 [ -n "$VIOLATIONS" ] || exit 0

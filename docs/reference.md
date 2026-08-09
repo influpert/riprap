@@ -5,11 +5,11 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 15 guardrail documents, four skills, six hook
+  The complete riprap catalogue: 17 guardrail documents, four skills, six hook
   registrations, four stack seams, and everything the installer writes into a repository.
 ---
 
-riprap is two halves. The plugin carries **15 guardrail documents**, **four skills** and
+riprap is two halves. The plugin carries **17 guardrail documents**, **four skills** and
 **six hook registrations**, and puts no file in your repository. `/riprap:install` adds the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
 the git hooks, and the four stack commands the hooks call.
@@ -40,9 +40,11 @@ them and they would rot on every edit of every document.
 
 **Writing code**
 
+- [design-principles.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design-principles.md) — how much structure to build and when: the simplest thing that solves the whole problem, SOLID as a symptom detector, and what to do when the two pull apart.
 - [code-style.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-style.md) — naming, structure, and comments: the parts of style a formatter cannot decide for you.
 - [error-handling.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/error-handling.md) — let errors surface, and keep secrets and personal data out of the logs.
 - [mcp-servers.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/mcp-servers.md) — how to decide whether a capability belongs in an MCP server at all, and what has to be written down when you add one.
+- [tech-footprint.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/tech-footprint.md) — never add a language, runtime or tool the repository does not already use without asking first.
 {: .doc-links}
 
 **Testing**
@@ -69,7 +71,7 @@ them and they would rot on every edit of every document.
 - [guardrail-template.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/guardrail-template.md) — the shape every guardrail document follows. Copy it, fill in the sections, delete the guidance.
 {: .doc-links}
 
-### All fifteen, alphabetically
+### All seventeen, alphabetically
 
 The other view: what to scan when you want to be sure you have seen everything.
 
@@ -77,7 +79,8 @@ The other view: what to scan when you want to be sure you have seen everything.
 |---|---|
 | `ci-hygiene.md` | Re-running CI without corrupting the result or burning the budget |
 | `code-style.md` | Naming, structure, comments — what a formatter cannot decide |
-| `development-workflow.md` | When to plan, how to scope a fix, what "done" has to mean |
+| `design-principles.md` | How much structure to build, and when |
+| `development-workflow.md` | When to plan, how to scope a fix, cleaning up, what "done" has to mean |
 | `error-handling.md` | Letting errors surface; keeping secrets out of logs |
 | `git.md` | Branching, committing, merging, and the costly failure modes |
 | `git-hooks.md` | The two hook families, and telling them apart |
@@ -89,7 +92,8 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `permissions.md` | What allow/deny/ask can and cannot do |
 | `project-standards.md` | Repo-wide conventions. Read first |
 | `secret-hygiene.md` | Credentials never enter context or a tracked file |
-| `testing.md` | Running tests, reading failures, the four costly mistakes |
+| `tech-footprint.md` | Never add a language, runtime or tool without asking |
+| `testing.md` | Writing tests first, reading failures, the four costly mistakes |
 
 ## The four skills
 

@@ -89,15 +89,21 @@ often than through code.
 **While working on any task, note the inconsistencies you come across and surface them
 before you finish the turn.** Do not silently ignore drift; it compounds.
 
-For each, propose one of three dispositions:
+For each, propose one of three dispositions — **propose**, not take:
 
-- **Fix now** — small, adjacent to what you are already doing, low risk
+- **Fix now** — small, adjacent to what you are already doing, low risk. Still the user's
+  call to make in this turn, not yours to make silently.
 - **File a ticket** — real but out of scope
 - **Dismiss** — intentional, or not worth the cost
 
 Applies to: parallel-but-divergent APIs, drift between files that should match, ad-hoc
 patterns that contradict a nearby convention, dead code, mismatched naming, abstractions
-nobody uses. **You surface the observation; the user decides the disposition.**
+nobody uses, bugs, broken or skipped tests, unnecessary complexity, and unused
+dependencies. **You surface the observation; the user decides the disposition.**
+
+This is the *form*. [development-workflow.md](development-workflow.md) has the *moment* —
+end of task — and the boundary that goes with it: never deviate from the task you were
+given in order to fix what you found.
 
 ## Guardrails on every refactor
 
@@ -142,7 +148,8 @@ worse than no hook, because you stop thinking about what it was meant to cover.
   arrays, `${var,,}` case conversion, and `mapfile`.
 - **No embedded languages.** Never `python3 -c '...'`, `node -e '...'`, or a heredoc piped
   into an interpreter from inside a shell script. If a task genuinely needs another
-  language, write the whole script in that language as its own file.
+  language, write the whole script in that language as its own file — and if the repo does
+  not already use that language, [tech-footprint.md](tech-footprint.md) says ask first.
 - **Hook scripts are files**, under `bin/hooks/`, never inline commands in
   `settings.json`. Wire them as `"$CLAUDE_PROJECT_DIR"/bin/hooks/claude/<name>.sh` —
   quoted exactly that way, so a project path containing a space still works.

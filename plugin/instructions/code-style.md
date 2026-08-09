@@ -48,6 +48,9 @@ and hard to change without reading all of it. If you cannot name a function with
 "and", it is doing two things. Break the rule when splitting would be worse: a sequential
 setup block is clearer whole than scattered across four helpers each called once.
 
+How many pieces there should be in the first place, and when an abstraction earns its
+keep, is one level up in [design-principles.md](design-principles.md).
+
 ---
 
 ## Comments: document WHY, not WHAT

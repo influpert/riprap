@@ -135,6 +135,61 @@ jobs:
           # 6. If CNAME leaves the default branch, GitHub clears the custom domain.
           [ -s docs/CNAME ] || { echo "❌ docs/CNAME is missing or empty"; fail=1; }
 
+          # 7. The behavioural rules are stated in four places and nothing bound them
+          #    together: the router, docs/rules.md's numbered list, and a table copied
+          #    verbatim into both README.md and docs/index.md. That is the same shape
+          #    as the document count in check 2, which drifted twice — except worse,
+          #    because a rule that reads differently in two places is not a formatting
+          #    slip, it is two different rules, and the reader has no way to tell which
+          #    one the model was given.
+          rules_table() {  # $1 = file — the behavioural-rules table, header row onward
+            sed -n '/^| Rule | What it does |$/,/^$/p' "$1"
+          }
+          if ! diff -q <(rules_table README.md) <(rules_table docs/index.md) > /dev/null; then
+            echo "❌ the behavioural-rules table differs between README.md and docs/index.md:"
+            diff <(rules_table README.md) <(rules_table docs/index.md) || true
+            fail=1
+          fi
+
+          # The router is the source of truth: it is what the model is actually given.
+          # Everything else describes it, so everything else counts the same.
+          b=$(grep -cE '^\*\*[0-9]+\. ' plugin/instructions/README.md)
+          for f in README.md docs/index.md; do
+            t=$(rules_table "$f" | grep -c '^| \*\*')
+            [ "$t" -eq "$b" ] || {
+              echo "❌ $f lists $t behavioural rules; the router has $b"; fail=1; }
+          done
+          r=$(sed -n '/^## The [a-z]* behavioural rules$/,/^## /p' docs/rules.md \
+                | grep -cE '^\*\*[0-9]+\. ')
+          [ "$r" -eq "$b" ] || {
+            echo "❌ docs/rules.md lists $r behavioural rules; the router has $b"; fail=1; }
+
+          # And the critical rules, counted by the link every one of them carries.
+          c=$(sed -n '/^## Critical rules$/,/^## /p' plugin/instructions/README.md \
+                | grep -c '^→ \|→ \[')
+          d=$(sed -n '/^## The [a-z]* that cost the most when forgotten$/,/^## /p' docs/rules.md \
+                | grep -cE '^\*\*[A-Z]')
+          [ "$c" -eq "$d" ] || {
+            echo "❌ docs/rules.md restates $d critical rules; the router has $c"; fail=1; }
+
+          # Spelled-out counts rot silently — no digit for check 2's regex to catch.
+          # Only the numbers riprap could plausibly reach are mapped; an unmapped
+          # count fails loudly rather than skipping the check.
+          word_for() {
+            case "$1" in
+              3) echo three ;; 4) echo four ;; 5) echo five ;; 6) echo six ;;
+              7) echo seven ;; 8) echo eight ;; 9) echo nine ;; 10) echo ten ;;
+              *) echo "UNMAPPED-$1" ;;
+            esac
+          }
+          bw=$(word_for "$b"); cw=$(word_for "$c")
+          grep -qx "## The $bw behavioural rules" docs/rules.md || {
+            echo "❌ docs/rules.md's heading does not say '$bw behavioural rules'"; fail=1; }
+          grep -qx "## The $cw that cost the most when forgotten" docs/rules.md || {
+            echo "❌ docs/rules.md's heading does not say '$cw that cost the most'"; fail=1; }
+          grep -q "$bw behavioural rules and $cw critical rules" docs/rules.md || {
+            echo "❌ docs/rules.md's front matter does not say '$bw behavioural rules and $cw critical rules'"; fail=1; }
+
           [ "$fail" -eq 0 ] && echo "✅ site, README and repository agree"
           exit "$fail"
 

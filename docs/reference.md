@@ -5,12 +5,12 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 17 guardrail documents, four skills, six hook
+  The complete riprap catalogue: 17 guardrail documents, four skills, seven hook
   registrations, four stack seams, and everything the installer writes into a repository.
 ---
 
 riprap is two halves. The plugin carries **17 guardrail documents**, **four skills** and
-**six hook registrations**, and puts no file in your repository. `/riprap:install` adds the
+**seven hook registrations**, and puts no file in your repository. `/riprap:install` adds the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
 the git hooks, and the four stack commands the hooks call.
 
@@ -34,7 +34,7 @@ them and they would rot on every edit of every document.
 
 - [project-standards.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/project-standards.md) — conventions that apply to everything in this repo. Read this first.
 - [interaction-preferences.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/interaction-preferences.md) — how to work with the person on the other side of the session: when to argue, where a plan goes, and what to ask before starting.
-- [development-workflow.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/development-workflow.md) — when to stop and plan, how to scope a bug fix, and what "done" has to mean.
+- [development-workflow.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/development-workflow.md) — when to stop and plan, how to scope a bug fix, what to clean up, and what "done" has to mean.
 - [handovers.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/handovers.md) — session handovers always go in `tmp/handover/`, never in `docs/` or the repo root.
 {: .doc-links}
 
@@ -49,12 +49,12 @@ them and they would rot on every edit of every document.
 
 **Testing**
 
-- [testing.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/testing.md) — how to run tests, how to interpret failures, and the four mistakes that cost the most.
+- [testing.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/testing.md) — how to write tests first, how to run them, how to interpret failures, and the four mistakes that cost the most.
 {: .doc-links}
 
 **Committing and merging**
 
-- [git.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git.md) — branching, committing, and merging rules, plus the failure modes that cost the most to undo.
+- [git.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git.md) — worktrees, branching, when to commit, and merging rules, plus the failure modes that cost the most to undo.
 - [git-hooks.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git-hooks.md) — two hook families live under `bin/hooks/`. Telling them apart is the whole document.
 - [merge-gates.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/merge-gates.md) — some changes never merge autonomously, however clean the review and however green the CI.
 - [ci-hygiene.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/ci-hygiene.md) — how to re-run CI without corrupting the result or burning the budget.
@@ -110,7 +110,7 @@ Fuller descriptions, and what each one costs you in context, are on
 
 ## What is enforced
 
-Six hooks are registered, three of which can stop a tool call. The table naming each one,
+Seven hooks are registered, four of which can stop a tool call. The table naming each one,
 what triggers it and whether it blocks is on
 [guardrail architecture](guardrails.md#what-is-enforced-out-of-the-box), rather than
 repeated here.
@@ -125,7 +125,7 @@ Only these files, and nothing else in your project is touched.
 | `bin/riprap` | `wire` and `verify` — what a fresh clone and CI run |
 | `bin/hooks/git/{pre-commit,pre-push}` | Your entry points, delegating to riprap's. Written once, never replaced |
 | `bin/hooks/lib/` | Your own pattern libraries. riprap never writes here |
-| `bin/hooks/riprap/claude/` | Six hook scripts: five wired, plus `lint-example.sh`, an inert template |
+| `bin/hooks/riprap/claude/` | Seven hook scripts: six wired, plus `lint-example.sh`, an inert template |
 | `bin/hooks/riprap/git/` | riprap's own `pre-commit` and `pre-push`, called by yours |
 | `bin/hooks/riprap/lib/` | Four pattern libraries, shared by both hook families |
 | `bin/hooks/riprap/tests/` | The regression suites, runnable in your own repo |

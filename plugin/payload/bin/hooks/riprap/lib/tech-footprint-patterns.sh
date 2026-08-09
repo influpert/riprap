@@ -75,7 +75,11 @@ tech_footprint_signal() {  # $1 = repo-relative path
     return 0
   fi
 
-  case "$base" in *.*) ext="${base##*.}" ;; *) return 1 ;; esac
+  # Lower-cased before matching, because the extension list is lower case and
+  # `Program.CS` is the same decision as `program.cs`. Bash 3.2 has no ${var,,}
+  # (project-standards.md), hence tr.
+  case "$base" in *.*) ext="$(printf '%s' "${base##*.}" | tr '[:upper:]' '[:lower:]')" ;;
+                  *) return 1 ;; esac
   if tech_footprint_source_extension "$ext"; then
     printf 'ext:%s\n' "$ext"
     return 0
@@ -95,11 +99,20 @@ tech_footprint_path_allowed() {  # $1 = repo-relative path
 #
 # Returns 1 when there is no HEAD. In an initial commit every technology is new,
 # and blocking that is absurd: there is no established stack to depart from yet.
+#
+# riprap's own paths are skipped here, not just in the scan. Exempting them from
+# being FLAGGED while letting them ESTABLISH is the subtle version of this bug and
+# it defeats the rule outright: riprap installs a dozen .sh files, so the moment
+# the install commit lands in a pure Go, Python or Java repository, shell is
+# "already here" forever and a first shell script can never be blocked again —
+# in exactly the repositories where that decision was worth surfacing. Whatever
+# the allow-list excuses from the rule must also not count as evidence for it.
 tech_footprint_established() {
   local f
   git rev-parse --verify -q HEAD >/dev/null 2>&1 || return 1
   git ls-tree -r --name-only HEAD 2>/dev/null | while IFS= read -r f; do
     [ -n "$f" ] || continue
+    tech_footprint_path_allowed "$f" && continue
     tech_footprint_signal "$f" || true
   done | sort -u
 }

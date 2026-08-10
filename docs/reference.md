@@ -5,11 +5,11 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 18 guardrail documents, four skills, seven hook
+  The complete riprap catalogue: 19 guardrail documents, four skills, seven hook
   registrations, four stack seams, and everything the installer writes into a repository.
 ---
 
-riprap is two halves. The plugin carries **18 guardrail documents**, **four skills** and
+riprap is two halves. The plugin carries **19 guardrail documents**, **four skills** and
 **seven hook registrations**, and puts no file in your repository. `/riprap:install` adds the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
 the git hooks, and the four stack commands the hooks call.
@@ -56,6 +56,7 @@ them and they would rot on every edit of every document.
 **Committing and merging**
 
 - [git.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git.md) — worktrees, branching, when to commit, and merging rules, plus the failure modes that cost the most to undo.
+- [code-review.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-review.md) — review the diff with parallel sub-agents before the pull request opens, publish every finding in the body with a disposition and a reason, and stay with the pull request until it merges.
 - [git-hooks.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git-hooks.md) — two hook families live under `bin/hooks/`. Telling them apart is the whole document.
 - [merge-gates.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/merge-gates.md) — some changes never merge autonomously, however clean the review and however green the CI.
 - [ci-hygiene.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/ci-hygiene.md) — how to re-run CI without corrupting the result or burning the budget.
@@ -72,13 +73,14 @@ them and they would rot on every edit of every document.
 - [guardrail-template.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/guardrail-template.md) — the shape every guardrail document follows. Copy it, fill in the sections, delete the guidance.
 {: .doc-links}
 
-### All 18 guardrail documents, alphabetically
+### All 19 guardrail documents, alphabetically
 
 The other view: what to scan when you want to be sure you have seen everything.
 
 | Document | Covers |
 |---|---|
 | `ci-hygiene.md` | Re-running CI without corrupting the result or burning the budget |
+| `code-review.md` | Reviewing a diff before the pull request, and staying with it after |
 | `code-style.md` | Naming, structure, comments — what a formatter cannot decide |
 | `design.md` | Mocking up a UI change before building it, inside the existing design system |
 | `design-principles.md` | How much structure to build, and when |

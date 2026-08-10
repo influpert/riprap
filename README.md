@@ -97,7 +97,7 @@ Improvements flow back as ordinary pull requests.
 **From the plugin** — outside your repo, nothing to maintain:
 
 ```
-instructions/     18 guardrail documents, indexed by task. A router is injected each
+instructions/     19 guardrail documents, indexed by task. A router is injected each
                   session; the rest are read on demand.
 skills/           /riprap:learn  /riprap:spec  /riprap:council  /riprap:branch-cleaner
 hooks/            the Claude hook registrations, and the session router
@@ -170,10 +170,11 @@ your `CLAUDE.md`:
 | **Prefer the simpler solution** | When two designs both work, ship the one with less code. Add structure at the second occurrence, not in anticipation of one. |
 | **Fix bugs autonomously** | Given a failing test or a red CI run, diagnose and fix it without a round trip. |
 
-Plus four restated in full because they cost the most when forgotten: never weaken code
+Plus five restated in full because they cost the most when forgotten: never weaken code
 to make a test pass; always stress-test a plan before presenting it and again whenever it
 changes materially; never merge a security-sensitive change autonomously; never add a
-technology the repository does not already use without asking.
+technology the repository does not already use without asking; never open a pull request on
+a diff nobody reviewed, and never abandon one you opened.
 
 ---
 

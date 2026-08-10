@@ -88,6 +88,19 @@ jobs:
               echo "❌ docs/reference.md lists $n, which is not shipped"; exit 1; }
           done || fail=1
 
+          # 1b. And the router links every document it ships. docs/reference.md is the
+          #     human catalogue; the router is what the *model* is given, so a document
+          #     missing from it is a document the model is never routed to — shipped,
+          #     catalogued, and unreachable. That is the founding unwired-hook incident
+          #     with prose in place of a hook, and it fails the same way: nothing looks
+          #     broken.
+          for f in plugin/instructions/*.md; do
+            n=$(basename "$f")
+            [ "$n" = "README.md" ] && continue
+            grep -q "($n)" plugin/instructions/README.md || {
+              echo "❌ $n ships but the router never links it"; fail=1; }
+          done
+
           # 2. Counts cannot contradict the filesystem. This drifted twice before the site
           #    existed: 15 versus 16 documents, and an assertion count off by nine.
           #    "guardrail document" is the reserved phrase for what riprap ships, which is
@@ -135,7 +148,7 @@ jobs:
           # 6. If CNAME leaves the default branch, GitHub clears the custom domain.
           [ -s docs/CNAME ] || { echo "❌ docs/CNAME is missing or empty"; fail=1; }
 
-          # 7. The behavioural rules are stated in four places and nothing bound them
+          # 7. The behavioural rules are stated in four documents and nothing bound them
           #    together: the router, docs/rules.md's numbered list, and a table copied
           #    verbatim into both README.md and docs/index.md. That is the same shape
           #    as the document count in check 2, which drifted twice — except worse,
@@ -211,6 +224,44 @@ jobs:
             echo "❌ docs/rules.md's heading does not say '$cw that cost the most'"; fail=1; }
           grep -q "$bw behavioural rules and $cw critical rules" docs/rules.md || {
             echo "❌ docs/rules.md's front matter does not say '$bw behavioural rules and $cw critical rules'"; fail=1; }
+          # The sentence under the table that enumerates the critical rules, at both sites.
+          # `rules_table()` stops at the blank line after the table, so everything below it
+          # was unbound — which left the sentence free to state a different number from the
+          # router, to list a different set of rules from the other site, or to promise six
+          # and enumerate five. All three pass a check that only greps for the numeral.
+          #
+          # Read with newlines flattened, because the paragraph is hard-wrapped and adding a
+          # rule is exactly what reflows it. A check that fails on a rewrap fails hardest at
+          # the moment it is meant to be useful.
+          flattened() { tr '\n' ' ' < "$1" | sed 's/  */ /g'; }
+          critical_clauses() {  # $1 = file — the listed rules, one per line
+            flattened "$1" \
+              | grep -oE 'restated in full because they cost the most when forgotten:[^.]*\.' \
+              | head -1 | sed 's/^[^:]*: //' | tr ';' '\n' | sed 's/^ *//;s/ *$//'
+          }
+          # Assert both extractions found a sentence BEFORE comparing them, for the same
+          # reason the table check asserts it above: two empty extractions compare equal.
+          for f in README.md docs/index.md; do
+            [ -n "$(critical_clauses "$f")" ] || {
+              echo "❌ no critical-rule summary sentence found in $f"
+              echo "   The check looks for '…restated in full because they cost the most"
+              echo "   when forgotten: <rule>; <rule>; …' ending in a full stop."
+              fail=1; }
+          done
+          if ! diff -q <(critical_clauses README.md) <(critical_clauses docs/index.md) > /dev/null; then
+            echo "❌ the critical rules listed under the table differ between README.md and docs/index.md:"
+            diff <(critical_clauses README.md) <(critical_clauses docs/index.md) || true
+            fail=1
+          fi
+          sc=$(critical_clauses README.md | grep -c . || true)
+          [ "$sc" -eq "$c" ] || {
+            echo "❌ the summary sentence enumerates $sc critical rules; the router has $c"; fail=1; }
+          # And the spelled-out number introducing it. Matched case-insensitively because
+          # word_for emits lowercase and docs/index.md opens a sentence with it.
+          flattened README.md | grep -qi "Plus $cw restated in full" || {
+            echo "❌ README.md does not introduce the list with 'Plus $cw restated in full'"; fail=1; }
+          flattened docs/index.md | grep -qi "$cw more are restated in full" || {
+            echo "❌ docs/index.md does not introduce the list with '$cw more are restated in full'"; fail=1; }
 
           # 8. A CODEOWNERS rule that matches no tracked file is a review gate that
           #    looks configured and requests nobody. That is the same shape as the

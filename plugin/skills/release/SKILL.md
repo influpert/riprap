@@ -22,9 +22,9 @@ step 7.
 
 ## What this needs to know
 
-Four facts about the project decide everything below: **the branch releases are cut
-from**, **the shape of a tag**, **which files carry the shipped version**, and **where
-the notes live**.
+Five facts about the project decide everything below: **the branch releases are cut
+from**, **the shape of a tag**, **which files carry the shipped version**, **where the
+notes live**, and **what publishes the artifact**.
 
 Never edit them into this file. Skills ship from the plugin cache and are replaced
 wholesale when the plugin updates, so a value set here is reverted the next time it
@@ -60,6 +60,22 @@ git grep -lF "<current version>"
 For where the notes live, offer what the repository already has: a directory of
 per-version note files, a changelog at the root, or the forge release body alone.
 
+For what publishes the artifact, the manifests already say which registry the project
+belongs to — `package.json`, `Cargo.toml`, `pyproject.toml`, a `.gemspec`, a
+`Dockerfile`. Offer the matching command, and offer these two alongside it, because
+they are common and neither is a command:
+
+- **A workflow publishes on tag push.** Then this skill publishes nothing, and pushing
+  the tag is the whole of step 6.
+- **Nothing is published anywhere.** For something installed straight from the
+  repository — a plugin, an action, a library consumed by tag — the tag and the release
+  page *are* the artifact.
+
+Getting this one wrong is expensive in a way the others are not. Assume a command where
+a workflow already runs one and the two race, each failing on the other's work; assume a
+workflow where there is none and the release is tagged, announced, and never actually
+published. Ask rather than infer, even when a manifest makes the registry obvious.
+
 **3. Write the answers down**, so the next run does not ask. Append to the project's
 `.claude/instructions/riprap-skills.md`, creating it if absent:
 
@@ -70,6 +86,7 @@ per-version note files, a changelog at the root, or the forge release body alone
 - Tag shape: `v` + semantic, e.g. `v1.4.2`
 - Version files: `package.json`
 - Notes: `.github/releases/<tag>.md`
+- Publishes: a workflow, on tag push — run nothing by hand
 ```
 
 If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that
@@ -181,9 +198,22 @@ git push origin "$TAG"
 
 ### 6. Publish
 
-Publish the release from the tag, with the body from step 3. If a workflow does this
-on tag push, do not also publish by hand — one of the two will fail on the other's
-work, and the failure surfaces as a release that already exists.
+Do exactly what the stored **Publishes** answer says, and nothing else:
+
+- **A workflow, on tag push** — you already published, in step 5. Do not run a command
+  as well, and do not create the release object by hand: one of the two will fail on
+  the other's work, and it surfaces as a release that already exists, which reads like
+  a bug in the tooling rather than a duplicated step.
+- **A command** — run it, and show its output. A publish that is reported rather than
+  shown is the step most worth seeing, because it is the one that cannot be undone.
+- **Nothing** — create the release object from the tag with the body from step 3, and
+  say plainly that no artifact goes anywhere else.
+
+Whichever it is, the release object needs the body from step 3 on it, whether a workflow
+attaches it or you do.
+
+Publishing is the point of no return. Everything before it can be redone quietly; from
+here the only correction is another release.
 
 ### 7. Verify before declaring done
 
@@ -208,6 +238,18 @@ If `gh` is missing or its credential is refused, ask the same question through t
 GitHub MCP tools — listing the repository's releases, or reading the one for this tag —
 and treat that answer as equally authoritative. Only when neither route answers is the
 result unknown.
+
+**Then ask the registry, if the stored **Publishes** answer names one.** The forge
+saying a release exists is not the registry saying the artifact arrived, and the gap
+between those two is where a release looks finished and installs the old version:
+
+```bash
+npm view <package> version      # or: cargo/gem/pip/crates equivalent
+```
+
+Where a workflow does the publishing, this is the check that catches it having failed
+after the tag went up — which is the failure the workflow is *most* likely to have,
+because by then nobody is watching it.
 
 Three failures are worth naming apart, because they look the same from a distance:
 

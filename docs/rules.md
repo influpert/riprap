@@ -168,8 +168,9 @@ without per-action confirmation — the actions are cheap to approve and expensi
 which is exactly the shape that warrants a prompt.
 
 **`/riprap:release`** cuts a release and then proves it happened. It works out the base
-branch, tag shape and version files for itself, confirms them with you once, and stores
-the answers in your own instructions rather than asking you to configure anything. It
+branch, tag shape, version files and what publishes the artifact, confirms them with you
+once, and stores the answers in your own instructions rather than asking you to configure
+anything. It
 refuses to proceed on a failing check, drafts notes from what actually merged rather than
 from a commit log that squash-merging has made meaningless, and puts the tag on the commit
 that merged. Its last step verifies the release exists, because the failure it is written

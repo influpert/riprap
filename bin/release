@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# release — set the shipped version in both files, commit it, and tag it.
+#
+# The version lives in two places and the tag is a third. All three have to agree:
+# .github/workflows/release.yml refuses to publish a tag whose tree claims a
+# different version, because a v0.5.0 release built from a tree still saying 0.4.0
+# installs as 0.4.0 in every adopting repository, and the release page is the only
+# place that discrepancy is visible. Doing it by hand means three edits in three
+# formats, and the one that gets missed is silent until someone installs it.
+#
+#   bin/release 0.5.0
+#
+# Run it again with the same version after the bump lands on the default branch.
+# The files already say 0.5.0 by then, so the second run only tags — which is what
+# you want, because the commit you tag has to be the one that actually merged.
+# Tagging before the PR merges points the tag at a commit a squash-merge discards.
+#
+# It never pushes. A tag push publishes a release that cannot be un-published, and
+# that should be a thing you type, not a thing a script did on your behalf.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+PLUGIN_JSON="plugin/.claude-plugin/plugin.json"
+MARKET_JSON=".claude-plugin/marketplace.json"
+
+usage() {
+  cat >&2 <<'USAGE'
+bin/release <x.y.z>
+
+  bin/release 0.5.0    set both version files to 0.5.0, commit, tag v0.5.0
+
+Write .github/releases/v<x.y.z>.md first — the release workflow publishes that
+file as the body and refuses without it.
+USAGE
+  exit 2
+}
+
+[ $# -eq 1 ] || usage
+VERSION="$1"
+TAG="v$VERSION"
+
+# Three components, digits only, and no leading v — the argument is the version,
+# the tag is what gets a v. Taking both spellings means two names for one release
+# and a guess about which one the notes file is called. The tag drives the
+# published version, so a typo here is a release nobody can install.
+if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "❌ not a version: $1 (expected x.y.z, no leading v)" >&2
+  exit 1
+fi
+
+# Exactly one "version" key per file, or the substitution below is editing
+# something it was not aimed at. Checked rather than assumed, because a sed that
+# rewrites the wrong key produces valid JSON and a wrong release.
+version_in() {
+  local file="$1" count
+  count="$(grep -c '"version"' "$file" || true)"
+  if [ "$count" -ne 1 ]; then
+    echo "❌ $file has $count \"version\" keys, expected 1. Fix by hand." >&2
+    exit 1
+  fi
+  sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$file"
+}
+
+set_version() {
+  local file="$1" want="$2"
+  # -i.bak then remove: BSD sed requires an argument to -i, GNU sed accepts one.
+  sed -i.bak -E "s/(\"version\"[[:space:]]*:[[:space:]]*\")[^\"]*(\")/\1$want\2/" "$file"
+  rm -f "$file.bak"
+  local got
+  got="$(version_in "$file")"
+  if [ "$got" != "$want" ]; then
+    echo "❌ $file still says $got after the edit. Nothing committed." >&2
+    exit 1
+  fi
+}
+
+for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
+  [ -f "$f" ] || { echo "❌ missing $f" >&2; exit 1; }
+done
+
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  echo "❌ $TAG already exists. A published version does not get re-cut." >&2
+  exit 1
+fi
+
+# Refused here rather than in CI. The workflow makes the same check, but by then
+# the tag is pushed and public, and the fix is a second tag or a deleted one.
+NOTES=".github/releases/$TAG.md"
+if [ ! -s "$NOTES" ]; then
+  echo "❌ no release notes at $NOTES" >&2
+  echo "   The release workflow publishes that file as the body and refuses without it." >&2
+  exit 1
+fi
+
+# Tracked changes only, which is the set that matters: the commit below stages the
+# two version files by path, so an untracked file cannot be swept into it. What a
+# dirty tree does threaten is the thing being tagged — an uncommitted edit is not
+# in the commit the tag points at, so the tree you tested is not the tree you ship.
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "❌ uncommitted changes to tracked files. Commit or stash first." >&2
+  echo "   They would not be in the commit this tags, so the tag would not be what you tested." >&2
+  exit 1
+fi
+
+plugin_was="$(version_in "$PLUGIN_JSON")"
+market_was="$(version_in "$MARKET_JSON")"
+
+if [ "$plugin_was" = "$VERSION" ] && [ "$market_was" = "$VERSION" ]; then
+  # The post-merge run. Both files already carry this version, so there is nothing
+  # to commit and HEAD is the commit that should wear the tag.
+  echo "Both files already say $VERSION — tagging HEAD."
+else
+  set_version "$PLUGIN_JSON" "$VERSION"
+  set_version "$MARKET_JSON" "$VERSION"
+  git add -- "$PLUGIN_JSON" "$MARKET_JSON"
+  git commit -q -m "Ship $VERSION" \
+    -m "plugin.json and marketplace.json both move, because the release workflow
+refuses a tag whose tree claims a different version than the tag does."
+  echo "✅ $plugin_was → $VERSION in both files, committed"
+fi
+
+git tag -a "$TAG" -m "$TAG" HEAD
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+echo "✅ tagged $TAG at $(git rev-parse --short HEAD) on $BRANCH"
+
+cat <<NEXT
+
+Nothing has been pushed. If you are on the merged commit already:
+
+  git push origin $TAG
+
+publishes the release. Otherwise the bump needs to merge first, and the tag has
+to move to the commit that actually merged:
+
+  git push -u origin $BRANCH
+  git tag -d $TAG
+  bin/release $VERSION
+  git push origin $TAG
+NEXT

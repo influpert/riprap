@@ -98,6 +98,25 @@ like a passing commit. riprap's own test fixtures contain token-shaped strings, 
 their `lint-ok:secrets` markers the secret hook blocks its own installation. That is the
 kind of bug only a round trip finds.
 
+## Cutting a release
+
+```bash
+$EDITOR .github/releases/v0.5.0.md   # the published body; the workflow refuses without it
+bin/release 0.5.0                    # both version files, a commit, and the tag
+```
+
+**The tag has to end up on the commit that merged, and that is two steps, not one.** The
+version files live under `/plugin/**` and `/.claude-plugin/**`, both of which CODEOWNERS
+gates, so the bump goes through a pull request like anything else. A tag cut before that
+merges points at a commit a squash-merge discards, and pushing it publishes a release built
+from a commit that is not on the default branch. So: run `bin/release` to make the bump,
+merge it, then `git tag -d v0.5.0 && bin/release 0.5.0` on the merged commit — the second run
+sees both files already at that version and only tags.
+
+Pushing the tag is what publishes. `.github/workflows/release.yml` re-checks the tagged
+tree's version against the tag and refuses to publish a disagreement, because a v0.5.0
+release built from a tree saying 0.4.0 installs as 0.4.0 in every adopting repository.
+
 ## Style
 
 Match what is already here. Every rule states *why*, ideally with the cost of getting it

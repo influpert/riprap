@@ -16,8 +16,8 @@ should not sit in the file that skill is licensed to rewrite and told to keep sh
 - Tag shape: `v` + semantic, e.g. `v0.4.0`
 - Version files: `plugin/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
 - Notes: `.github/releases/<tag>.md` — written and merged **before** the bump
-- Bump and tag: `bin/release <version>`, run twice — never by hand
-- Publishes: a workflow, on tag push — run nothing by hand
+- Bump and tag: `bin/release <version>`, run twice — never by hand; it does not push, so `git push origin <tag>` is yours to type
+- Publishes: a workflow, on tag push — run nothing by hand; confirm with `bin/release --verify <version>`, or with no argument to sweep every `v*` tag on `origin` for ones with no release behind them
 
 **`bin/release` is not a convenience wrapper, and hand-editing the two version files
 instead of running it is not the same act.** It refuses a version that does not move

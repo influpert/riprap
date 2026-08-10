@@ -100,9 +100,9 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
 12. **UI Mockup Workflow**:
 
-    Create a scratch folder for the feature, then draft a self-contained UI mockup that reflects the user journey from Phase 2 and the scope from Phase 3. Include realistic sample data and keep the mockup easy to review.
+    Draft a UI mockup that reflects the user journey from Phase 2 and the scope from Phase 3. Include fabricated-but-realistic sample data, cover the empty/loading/error states rather than only the happy path, and keep the mockup easy to review.
 
-    a. Create an HTML or other lightweight mockup artifact in the scratch area.
+    a. Build it on the surface the design rule names — Claude Design by default, or the design tool the user or the project already uses. See `"${CLAUDE_PLUGIN_ROOT}"/instructions/design.md`. If that integration is unavailable in this session, create a scratch folder for the feature, put a self-contained HTML mockup there instead, and say which surface you used and why.
 
     b. Show the mockup to the stakeholder for review and approval.
 
@@ -119,7 +119,7 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
     d. If "Request changes", iterate (max 3 rounds) until the design direction is agreed.
 
-    e. Keep the approved design artifact in the scratch area so it can be referenced during implementation planning.
+    e. Record where the approved design artifact lives — its link on the design surface, or its path in the scratch area — so implementation planning can reference it without re-deriving it.
 
 13. **Create the feature document**:
 

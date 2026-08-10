@@ -36,7 +36,7 @@ good practice. Every rule is here because something broke first, and the inciden
 caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
-<em>from</em>. They are not what it ships. What it ships is 15 guardrail documents, four
+<em>from</em>. They are not what it ships. What it ships is 16 guardrail documents, four
 skills and six hooks — the inventory is on the <a href="reference.md">reference page</a>.</p>
 
 </div>
@@ -110,7 +110,7 @@ Improvements flow back as ordinary pull requests.
 Outside your repository, nothing to maintain.
 
 ```
-instructions/   15 guardrail documents, indexed by task.
+instructions/   16 guardrail documents, indexed by task.
                 A router is injected each session;
                 the rest are read on demand.
 skills/         /riprap:learn      /riprap:spec

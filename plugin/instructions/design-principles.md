@@ -67,6 +67,12 @@ change" is a judgement about a future nobody has seen, and a judgement about the
 exactly how five interfaces get written for one implementation. Wait for the symptom. It
 arrives loudly, and it arrives with the evidence attached.
 
+**A symptom in code you were not asked to change is a report, not a task.** These are
+detectors, and they will fire constantly on code you are merely reading. Surface what you
+find and let the user pick the disposition — see
+[development-workflow.md](development-workflow.md). Refactoring on sight is how a two-file
+change becomes an unreviewable one.
+
 Single responsibility is the one with a concrete test already written down: if you cannot
 name a function without using "and", it is doing two things. See
 [code-style.md](code-style.md) on function size — length is the symptom, not the problem.

@@ -35,8 +35,9 @@ in it. Add structure at the second occurrence, not in anticipation of one. Skip 
 obvious fixes — it is a check against hacks, not an invitation to over-engineer.
 → [design-principles.md](design-principles.md)
 
-**6. Fix bugs autonomously.** Given a bug report, a failing test, or a red CI run: diagnose
-and fix it. Don't round-trip for permission to start.
+**6. Fix bugs autonomously.** When a bug report, a failing test, or a red CI run *is the
+task*: diagnose and fix it, don't round-trip for permission. A failure you merely *noticed*
+is a report, not a new task. → [development-workflow.md](development-workflow.md)
 
 ---
 
@@ -64,7 +65,9 @@ auth, payments, and dependency manifests need a human on the merge, however gree
 **Never add a technology this repository does not already use without asking.** A script in
 a new language, a new runtime, a new build tool: the diff shows forty working lines and the
 cost lands on every future clone, every CI image, and every upgrade. Ask before the first
-file — there is no cheap moment after it. → [tech-footprint.md](tech-footprint.md)
+file — there is no cheap moment after it. **Unattended, with nobody to ask, the answer is
+no** — this is the one gate that does not proceed-and-record.
+→ [tech-footprint.md](tech-footprint.md)
 
 ---
 
@@ -94,7 +97,7 @@ beat one 215-line file when either would answer the question.
 
 **Starting work**
 
-- First session in a repo? → [project-standards.md](project-standards.md) (~180)
+- First session in a repo? → [project-standards.md](project-standards.md) (~175)
 - Proposing a plan, a design, or an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
   on the way? → [development-workflow.md](development-workflow.md) (~110)
@@ -106,7 +109,7 @@ beat one 215-line file when either would answer the question.
 - Naming things, sizing functions, writing comments? → [code-style.md](code-style.md) (~110)
 - Catching, raising, suppressing, or logging an error? → [error-handling.md](error-handling.md) (~80)
 - Fixing a bug and wondering how far the pattern spreads? → [development-workflow.md](development-workflow.md) (~110)
-- Reaching for a new language, framework, database, or build tool? → [tech-footprint.md](tech-footprint.md) (~125)
+- Reaching for a new language, framework, database, or build tool? → [tech-footprint.md](tech-footprint.md) (~130)
 - Reaching for an external tool or integration? → [mcp-servers.md](mcp-servers.md) (~90)
 
 **Testing**
@@ -117,8 +120,8 @@ beat one 215-line file when either would answer the question.
 **Committing and merging**
 
 - Branching, worktrees, when to commit, opening a pull request? → [git.md](git.md) (~200)
-- A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~105)
-- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~95)
+- A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~125)
+- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~115)
 - CI is red, or needs re-running? → [ci-hygiene.md](ci-hygiene.md) (~60)
 
 **Security**
@@ -129,7 +132,7 @@ beat one 215-line file when either would answer the question.
 **Extending the guardrails**
 
 - Turning a fixed inconsistency into a rule that holds? → [guardrail-template.md](guardrail-template.md) (~85)
-- Adding a doc, a hook, or a stack command? → [project-standards.md](project-standards.md) (~180)
+- Adding a doc, a hook, or a stack command? → [project-standards.md](project-standards.md) (~175)
 
 **Check this map before opening anything.** Guessing from filenames costs more than
 reading one list: `git.md` and `git-hooks.md` sound interchangeable and cover different

@@ -5,12 +5,12 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 17 guardrail documents, four skills, seven hook
+  The complete riprap catalogue: 17 guardrail documents, four skills, six hook
   registrations, four stack seams, and everything the installer writes into a repository.
 ---
 
 riprap is two halves. The plugin carries **17 guardrail documents**, **four skills** and
-**seven hook registrations**, and puts no file in your repository. `/riprap:install` adds the
+**six hook registrations**, and puts no file in your repository. `/riprap:install` adds the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
 the git hooks, and the four stack commands the hooks call.
 
@@ -110,7 +110,7 @@ Fuller descriptions, and what each one costs you in context, are on
 
 ## What is enforced
 
-Seven hooks are registered, four of which can stop a tool call. The table naming each one,
+Six hooks are registered, three of which can stop a tool call. The table naming each one,
 what triggers it and whether it blocks is on
 [guardrail architecture](guardrails.md#what-is-enforced-out-of-the-box), rather than
 repeated here.
@@ -125,9 +125,9 @@ Only these files, and nothing else in your project is touched.
 | `bin/riprap` | `wire` and `verify` — what a fresh clone and CI run |
 | `bin/hooks/git/{pre-commit,pre-push}` | Your entry points, delegating to riprap's. Written once, never replaced |
 | `bin/hooks/lib/` | Your own pattern libraries. riprap never writes here |
-| `bin/hooks/riprap/claude/` | Seven hook scripts: six wired, plus `lint-example.sh`, an inert template |
+| `bin/hooks/riprap/claude/` | Six hook scripts: five wired, plus `lint-example.sh`, an inert template |
 | `bin/hooks/riprap/git/` | riprap's own `pre-commit` and `pre-push`, called by yours |
-| `bin/hooks/riprap/lib/` | Five pattern libraries, shared by both hook families |
+| `bin/hooks/riprap/lib/` | Four pattern libraries, shared by both hook families |
 | `bin/hooks/riprap/tests/` | The regression suites, runnable in your own repo |
 | `bin/hooks/riprap/LICENSE` | riprap's licence, carried with the files it covers |
 | `bin/hooks/riprap/VERSION` | What `bin/riprap verify` compares against the plugin |

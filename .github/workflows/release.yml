@@ -1,0 +1,119 @@
+name: Release
+
+# Publishing a release by hand is two steps that must agree: push a tag, then paste a body
+# into the forge. Nothing binds them, so the failure is silent in both directions — a tag
+# with no release behind it looks unpublished, and a release whose tag points at a tree that
+# says a different version ships one thing under another thing's name.
+#
+# This job is the binding. The tag is the trigger, the body is a file in the repository, and
+# the version the artifact claims is checked against the tag before anything is published.
+
+on:
+  push:
+    tags: ['v*']
+
+  # Publishing a tag that already exists — a release that was tagged before this workflow
+  # landed, or one whose body needed a correction after the tag was cut. Re-tagging to fix
+  # prose would move a published version's meaning, which is worse than the typo.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish (e.g. v0.4.0)
+        required: true
+
+permissions:
+  contents: write # creating a release is a write; nothing else here needs one
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # Checked out at the default branch, not at the tag, and deliberately.
+      #
+      # The release body is prose that is routinely finished, and corrected, after the tag
+      # is cut — and a tag cut before this workflow existed cannot contain it at all. Read
+      # from the branch, the notes stay editable without moving a published tag. The tree
+      # being *released* is still read from the tag itself, via `git show` below, because
+      # that is the artifact and it must not be editable after the fact.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0 # brings the tags with it; `git show <tag>:path` needs them
+
+      # The tag reaches the shell through the environment, never through `${{ }}` inside the
+      # script. An expression is pasted in as text before bash sees it, so a crafted ref name
+      # is executed rather than compared — and this is the one job in the repository holding a
+      # token that can publish.
+      - name: Resolve the tag
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          TAG="${TAG_INPUT:-$REF_NAME}"
+          git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || {
+            echo "::error::No such tag: $TAG"
+            exit 1
+          }
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Releasing $TAG ($(git rev-parse --short "$TAG^{commit}"))"
+
+      # The two version files are already checked against each other on every push. What
+      # nothing checked is either of them against the tag — and that is the pair that has to
+      # agree for `/plugin install` to deliver what the release page advertises. A v0.4.0
+      # release built from a tree still saying 0.3.0 installs as 0.3.0 in every adopting
+      # repository, and the release page is the only place the discrepancy is visible.
+      - name: The tag and the version the artifact ships agree
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          plugin=$(git show "$TAG:plugin/.claude-plugin/plugin.json" | jq -r '.version')
+          market=$(git show "$TAG:.claude-plugin/marketplace.json" | jq -r '.metadata.version')
+          for got in "$plugin:plugin.json" "$market:marketplace.json"; do
+            if [ "${got%%:*}" != "$want" ]; then
+              echo "::error::${got#*:} says ${got%%:*}, tag says $want"
+              exit 1
+            fi
+          done
+          echo "Both version files say $want"
+
+      # Fail rather than fall back to an empty or auto-generated body. A release published
+      # with no notes cannot be un-published without deleting it, and the commit subjects a
+      # generator would use are written for the people who already know why — which is the
+      # opposite of a release page's audience.
+      - name: The release notes exist
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          NOTES=".github/releases/$TAG.md"
+          test -s "$NOTES" || {
+            echo "::error::Missing release notes: $NOTES"
+            echo "Write the body there on $DEFAULT_BRANCH, then re-run this workflow with tag $TAG."
+            exit 1
+          }
+          echo "NOTES=$NOTES" >> "$GITHUB_ENV"
+
+      # Refused rather than updated. An edited release silently rewrites what a version
+      # meant for everyone who already read it, and this job cannot tell a correction from
+      # a second run that should not have happened.
+      - name: Not already published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::A release for $TAG already exists. Edit it by hand if it needs correcting."
+            exit 1
+          fi
+
+      # `gh` ships on the runner. A third-party action here would put the credential that
+      # can publish releases inside someone else's code, which is the supply-chain exposure
+      # merge-gates.md refuses to make an exception for anywhere else.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" --title "$TAG" --notes-file "$NOTES" --verify-tag
+          echo "Published $TAG"

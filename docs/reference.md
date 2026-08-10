@@ -133,6 +133,7 @@ Only these files, and nothing else in your project is touched.
 | `bin/hooks/riprap/tests/` | The regression suites, runnable in your own repo |
 | `bin/hooks/riprap/LICENSE` | riprap's licence, carried with the files it covers |
 | `bin/hooks/riprap/VERSION` | What `bin/riprap verify` compares against the plugin |
+| `tmp/.gitignore` | Keeps session artifacts — handovers, scratch mockups — out of commits. Written once, never replaced |
 
 Everything under `bin/hooks/riprap/` and `bin/riprap` is riprap's: refreshed wholesale on
 every install, and files riprap stops shipping are pruned rather than left running. The rest

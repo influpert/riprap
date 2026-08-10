@@ -71,12 +71,14 @@ bin/
     git/                    pre-commit, pre-push — yours, delegating to riprap's
     riprap/                 riprap's own, refreshed on every install
       LICENSE               riprap's licence, carried with the files it covers
+tmp/
+  .gitignore                keeps session artifacts out of your commits
 ```
 
 | Tier | What | On re-install |
 |---|---|---|
 | namespaced | `bin/hooks/riprap/**`, `bin/riprap` | Replaced wholesale; files riprap stops shipping are removed |
-| seed | `bin/hooks/git/*`, `bin/{test,lint,format,setup}` | Written once if absent, never replaced |
+| seed | `bin/hooks/git/*`, `bin/{test,lint,format,setup}`, `tmp/.gitignore` | Written once if absent, never replaced |
 {: .tiers}
 
 The complete file-by-file inventory is on the [reference page](reference.md).

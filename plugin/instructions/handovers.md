@@ -3,11 +3,13 @@
 **In code repositories, always create session handover / handoff documents in
 `tmp/handover/`** — never in `docs/` or the repo root.
 
-- **`tmp/` has to be untracked, and riprap does not make it so.** Check before writing
-  there: `git check-ignore -v tmp/handover/probe.md` names the rule covering it, and prints
-  nothing at all when there is none. If there is none, add a `tmp/.gitignore` holding `*`
-  and `!.gitignore` — the arrangement riprap's own repository uses — and do it before the
-  first handover rather than after one lands in a commit.
+- **`tmp/` has to be untracked.** `/riprap:install` seeds a `tmp/.gitignore` that makes it
+  so, and never touches it again — a project that ignores `tmp/` its own way keeps that. In
+  a repository that has only the plugin, nothing has been written at all, so check before
+  the first handover: `git check-ignore -v tmp/handover/probe.md` names the covering rule,
+  and prints nothing when there is none. If there is none, a `tmp/.gitignore` holding `*`
+  and `!.gitignore` is the whole fix, and it is worth doing before a handover lands in a
+  commit rather than after.
 - Handovers are session artifacts, not project documentation. They stay local: never in a
   commit, never in a pull request.
 - Name them `handover-<YYYY-MM-DD>-<topic>.md`.

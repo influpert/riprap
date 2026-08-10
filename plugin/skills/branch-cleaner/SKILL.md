@@ -9,8 +9,14 @@ Prune merged and stale Git branches, and report on pull requests that have gone
 quiet, so the branch list stays readable.
 
 This skill reports before it acts. It produces the full plan first, and it never
-deletes, merges, or closes anything without an explicit confirmation for that
-specific action. There is no mode that skips confirmation.
+deletes, merges, or closes anything without an explicit confirmation. There is no mode
+that skips confirmation, and no mode that confirms anything the user has not already
+seen listed by name.
+
+What a flag can change is how the confirmations are grouped: one per category by
+default, or a single one covering the whole plan under `--yes`. Two things are outside
+what any flag can group — an unmerged branch and a remote deletion — because one risks
+work that exists nowhere else and the other changes every clone.
 
 ## What this needs to know
 
@@ -105,7 +111,9 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
 
    If it fails, stop and ask which branch work merges into. Do not guess, and do
    not fall back to another name — a wrong base makes "merged" meaningless and
-   every subsequent answer unsafe.
+   every subsequent answer unsafe. **Write the new answer back** to
+   `.claude/instructions/riprap-skills.md`, replacing the stale one; an answer that is
+   re-asked every run because nobody updated the record is not a stored answer.
 
 2. **Work in an isolated worktree (optional)**
 
@@ -113,14 +121,25 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    or skip this step entirely.
 
    ```bash
-   git worktree add ../branch-cleanup "$BASE_BRANCH"
+   git worktree add --detach ../branch-cleanup "$BASE_BRANCH"
    ```
+
+   `--detach` is not optional. Without it git refuses — "'main' is already used by
+   worktree at …" — whenever the base branch is checked out anywhere else, which is
+   the ordinary case for someone running a cleanup. Detaching also keeps the base
+   branch out of a second worktree, which would make `git branch -d` refuse it later
+   for the wrong reason.
 
    Remove it when finished:
 
    ```bash
    git worktree remove ../branch-cleanup
    ```
+
+   **Re-derive `CURRENT_BRANCH` after moving into the worktree**, or drop the
+   worktree step. `git symbolic-ref HEAD` answers for whichever tree you are standing
+   in, so the branch the user actually had checked out silently falls out of the
+   keep-list — the one entry nobody thought to protect explicitly.
 
    Skipping is safe. `git branch -d` refuses to delete the branch that is
    currently checked out, and the keep-list above already excludes it. The only
@@ -168,8 +187,14 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    Compare the unix timestamp against the thresholds below rather than parsing
    the relative string.
 
-   **Category 3 — abandoned pull requests.** Requires the GitHub CLI; skip if it
-   is unavailable (see step 9):
+   **Category 3 — abandoned pull requests.** Requires the GitHub CLI. Check that it
+   is present *and* authenticated before the first call, not at step 9 — step 9 runs
+   after the deletions, so a check that lives only there is made too late to keep this
+   category out of the report:
+
+   ```bash
+   command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1 || echo "no gh — skipping category 3"
+   ```
 
    ```bash
    gh pr list --state all --limit 100 --json number,headRefName,state,updatedAt
@@ -186,12 +211,33 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    The upstream is gone. The local copy is usually a leftover.
 
    **Category 5 — unpushed work.** Not a cleanup candidate; this is the guard
-   rail. Any branch here is excluded from automatic suggestions entirely:
+   rail. Any branch here is excluded from automatic suggestions entirely.
+
+   Two distinct populations, and only the first has an upstream to be ahead of:
 
    ```bash
+   # 5a. Tracking a live upstream, with commits not yet on it.
    git for-each-ref refs/heads/ --format='%(refname:short) %(upstream:track)' \
      | grep -v 'gone' | grep 'ahead'
+
+   # 5b. No upstream at all, holding commits that exist on no remote. `%(upstream:track)`
+   #     is EMPTY for a branch that was never pushed — not "ahead" — so a filter looking
+   #     for "ahead" misses precisely the branch whose work exists in exactly one place.
+   #     Such a branch is also unmerged and often old, so it lands in the stale and
+   #     "never had a PR" categories and is offered for deletion under a report that
+   #     says unpushed work is excluded.
+   for b in $(git for-each-ref refs/heads/ --format='%(refname:short)'); do
+     [ -n "$(git for-each-ref "refs/heads/$b" --format='%(upstream)')" ] && continue
+     # No `--` before "$b": that would make it a pathspec instead of a revision,
+     # and the count silently comes back 0 for every branch.
+     n=$(git rev-list --count "$b" --not --remotes 2>/dev/null || echo 0)
+     [ "${n:-0}" -gt 0 ] && echo "$b ($n commit(s) on no remote)"
+   done
    ```
+
+   Add every branch either query returns to `KEEP` before classifying anything else.
+   `git branch -d` would refuse them anyway, but the report is what the user reads,
+   and a branch listed as safe to delete is one they will reach for `-D` to remove.
 
 6. **Generate the cleanup report**
 
@@ -201,7 +247,7 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    ```markdown
    # Branch Cleanup Report
 
-   ## Safe to delete (merged into main) — 9 branches
+   ## Safe to delete (merged into $BASE_BRANCH) — 9 branches
 
    ### Recently merged (< 7 days)
    - feature/example-one (merged 2 days ago) → PR #12
@@ -263,12 +309,17 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    interrupted, the record is the thing that lets the work be recovered.
 
    ```bash
-   mkdir -p .git/deleted-branches
+   # --git-common-dir, not a literal .git. In a linked worktree — the one step 2
+   # recommends — .git is a *file* pointing elsewhere, so `mkdir -p .git/…` fails
+   # with "Not a directory". The archive is the step whose whole point is to run
+   # before the deletion, so it is the worst one to have fail first.
+   ARCHIVE="$(git rev-parse --git-common-dir)/deleted-branches"
+   mkdir -p "$ARCHIVE"
    printf '%s\t%s\t%s\n' \
      "$(date -u '+%F %T')" \
      "$branch_name" \
      "$(git rev-parse "$branch_name")" \
-     >> .git/deleted-branches/archive.txt
+     >> "$ARCHIVE/archive.txt"
    ```
 
    Then delete:
@@ -363,15 +414,17 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
 
 12. **Report the impact**
 
-    ```bash
-    git count-objects -vH
-    ```
-
-    Run it before and after, and report the difference:
+    Report what changed, which is branches and pull requests:
 
     - Branches deleted: 14
     - Pull requests reviewed: 5
-    - Repository size: 84 MB → 79 MB
+
+    **Do not report a repository size reduction.** Deleting branches does not shrink
+    anything — the objects stay until they are pruned, as the Repacking section below
+    explains — so a before-and-after `git count-objects -vH` shows essentially the same
+    number, and a summary claiming megabytes reclaimed is reporting work that did not
+    happen. If the user asks about size, say what is actually true: the space is
+    released by pruning, separately, and at the cost of the recovery window.
 
 13. **Generate the summary**
 
@@ -400,8 +453,10 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
 
     ## Impact
 
-    - Repository size: 84 MB → 79 MB
-    - Archive written to .git/deleted-branches/archive.txt
+    - Branch list: 26 → 12
+    - Archive written to <git-common-dir>/deleted-branches/archive.txt
+
+    (No repository size line. Deleting branches does not reclaim space — see step 12.)
 
     ## Next cleanup
 
@@ -436,7 +491,11 @@ Produces the reports and stops. Deletes nothing, prompts for nothing.
 ```
 
 Shows the complete plan and takes one confirmation covering all of it, instead
-of one per category. Still one explicit yes from the user.
+of one per category. Still one explicit yes, still after the full list.
+
+It does not extend to unmerged branches or remote deletions. Those are confirmed by
+name whatever the flags say — grouping a prompt is a convenience, and neither of those
+is a decision the user should make without seeing exactly what it applies to.
 
 ### Narrow the scope
 
@@ -523,15 +582,22 @@ Not this skill's call. Report the state; a human merges.
 
 ## Recovery
 
-A deleted branch is recoverable for as long as its commits stay in the reflog,
-which by default is 90 days.
+**The archive is the recovery path. The reflog is not, and the 90-day figure people
+quote does not apply here.** Deleting a branch deletes that branch's own reflog with
+it, so `git reflog` only helps if the branch happened to be checked out in this clone
+— and even then the tip becomes an *unreachable* object, governed by
+`gc.reflogExpireUnreachable` (30 days) and `gc.pruneExpire` (2 weeks), not the 90-day
+`gc.reflogExpire` that covers reachable history. Assume weeks, not months, and assume
+nothing at all if `git gc --prune=now` has run.
+
+That is the whole reason the SHA is written down before the deletion rather than after.
 
 ```bash
-# Find the tip commit of the deleted branch
-git reflog
+# Read the tip straight out of the archive — the reliable route
+grep branch_name "$(git rev-parse --git-common-dir)/deleted-branches/archive.txt"
 
-# Or read it straight out of the archive
-grep branch_name .git/deleted-branches/archive.txt
+# The reflog may also still hold it, if the branch was checked out here
+git reflog
 
 # Recreate the branch at that commit
 git branch branch_name <commit-sha>

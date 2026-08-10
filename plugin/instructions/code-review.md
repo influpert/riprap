@@ -220,9 +220,13 @@ The genuine carve-outs:
 - **A branch reopened after review feedback** gets its *changed part* reviewed, not the whole
   diff again. The findings table gains rows; it is not rewritten.
 - **A pure revert of a single commit** needs one reviewer, confirming the revert is clean and
-  nothing landed on top of it since.
+  nothing landed on top of it since. The content was reviewed when it went in, and the only
+  new question a revert raises is whether it is *pure* — which is the one thing that reviewer
+  is there to answer.
 - **Generated output** — a rebuilt manifest, a lockfile, a version bump — is reviewed as
-  "was the generator run correctly", not line by line.
+  "was the generator run correctly", not line by line. Reviewing generated lines reviews the
+  wrong artifact: the defect, if there is one, is in the generator or in the inputs, and a
+  reviewer reading its output will confirm the output faithfully reflects them either way.
 
 **There is no unattended carve-out, and the plan stress-test does not really have one
 either.** What that rule exempts is *waiting for approval* — an unattended agent still

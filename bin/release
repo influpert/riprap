@@ -52,7 +52,10 @@ USAGE
 # rewrites the wrong key produces valid JSON and a wrong release.
 version_in() {
   local file="$1" count
-  count="$(grep -c '"version"' "$file" || true)"
+  # Occurrences, not matching lines. grep -c counts lines, so a minified file with two
+  # version keys on one line reads as one — and then version_in's greedy match returns
+  # the last while set_version's sed rewrites the first.
+  count="$(grep -o '"version"' "$file" | wc -l | tr -d ' ')"
   if [ "$count" -ne 1 ]; then
     echo "❌ $file has $count \"version\" keys, expected 1. Fix by hand." >&2
     exit 1
@@ -96,13 +99,21 @@ remote_versions() {
     sed -n 's|.*refs/tags/v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V
 }
 
+# Ask origin first. refs/remotes/origin/HEAD is not set by `git remote add`, and not by
+# a CI checkout either, so the local symref is absent far more often than it looks —
+# and guessing "main" in a repository whose default is "master" does not fail loudly.
+# It makes every later fetch of that branch fail, which used to mean the ancestor check
+# was skipped with a warning on every single release, permanently.
 default_branch() {
   local ref
+  ref="$(git ls-remote --symref origin HEAD 2>/dev/null |
+    sed -n 's|^ref:[[:space:]]*refs/heads/\([^[:space:]]*\).*|\1|p' | head -1)"
+  [ -n "$ref" ] && { printf '%s' "$ref"; return; }
   if ref="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"; then
     printf '%s' "${ref#origin/}"
-  else
-    printf 'main'
+    return
   fi
+  printf 'main'
 }
 
 have_gh() { command -v gh >/dev/null 2>&1; }
@@ -127,12 +138,20 @@ normalize() { sed 's/\r$//; s/[[:space:]]*$//'; }
 # token expired is a false finding that reads identically to a true one — it sends
 # someone to re-publish a release that is already live.
 gh_release_body() {
-  local tag="$1" out rc
-  out="$(gh api "repos/{owner}/{repo}/releases/tags/$tag" --jq '.body' 2>&1)" && rc=0 || rc=$?
+  local tag="$1" out err rc
+  # stderr to a file rather than merged into stdout. Merging is the easy way to classify
+  # the failure, but it also means anything gh writes to stderr on a *successful* call —
+  # a scope notice, a proxy or TLS warning, GH_DEBUG output — lands inside the body and
+  # shows up as a body that does not match its notes.
+  err="$(mktemp)"
+  out="$(gh api "repos/{owner}/{repo}/releases/tags/$tag" --jq '.body' 2>"$err")" && rc=0 || rc=$?
   if [ "$rc" -eq 0 ]; then
+    rm -f "$err"
     printf '%s' "$out"
     return 0
   fi
+  out="$(cat "$err")"
+  rm -f "$err"
   case "$out" in
     *404* | *"Not Found"*) return 1 ;;
     *)
@@ -165,22 +184,41 @@ verify_one() {
 
   # The tree the tag points at, not the working tree. That tree is the artifact, and
   # it is what every adopting repository installs.
-  git fetch -q origin "refs/tags/$tag:refs/tags/$tag" 2>/dev/null || true
+  #
+  # The leading + is load-bearing. Without it git refuses to move a local tag that has
+  # diverged from the remote — "would clobber existing tag" — which is exactly the case
+  # this check exists to catch, so the check would fail precisely when it mattered and
+  # then read the stale local tag anyway. The refusal prints one line above a `git show`
+  # whose output looks perfectly fine, which makes it a confident wrong answer rather
+  # than a visible error. And a fetch that fails for any other reason is reported, not
+  # skipped past: the local tag is not evidence about what was published.
   local f got
-  for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
-    if got="$(git show "$tag:$f" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"; then
-      [ "$got" = "$version" ] || { echo "  ❌ $tag: $f says $got"; found=1; }
-    else
-      echo "  ❌ $tag: could not read $f from the tagged tree"; found=1
-    fi
-  done
+  if git fetch -q origin "+refs/tags/$tag:refs/tags/$tag" 2>/dev/null; then
+    for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
+      if got="$(git show "$tag:$f" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" &&
+        [ -n "$got" ]; then
+        [ "$got" = "$version" ] || { echo "  ❌ $tag: $f says $got"; found=1; }
+      else
+        echo "  ❌ $tag: could not read $f from the tagged tree"
+        found=1
+      fi
+    done
+  else
+    echo "  ⚠️  $tag: could not fetch the tagged tree — the versions in it are unchecked"
+    found=1
+  fi
 
+  # Reported, never failed. The publish workflow reads the body from the default branch
+  # rather than from the tag, precisely so prose can be corrected after a tag is cut —
+  # and CLAUDE.md says a superseded release is better marked superseded than removed.
+  # Both mean the file legitimately moves on after publication, so treating a difference
+  # as a finding would make every corrected release permanently red, and a check that is
+  # red for a good reason teaches people to stop reading it.
   notes="$NOTES_DIR/$tag.md"
   if [ -s "$notes" ]; then
     body="$(printf '%s' "$published" | normalize)"
     if [ "$body" != "$(normalize <"$notes")" ]; then
-      echo "  ❌ $tag: the published body differs from $notes"
-      found=1
+      echo "  ℹ️  $tag: $notes has changed since it was published (edits are allowed)"
     fi
   else
     echo "  ⚠️  $tag: no $notes to compare the published body against"
@@ -252,29 +290,31 @@ do_verify() {
 # on the merge commit is the only evidence a release ever gets, which is why it is
 # checked here rather than left to the publish workflow to notice.
 ci_status() {
-  local sha="$1" json total bad
+  local sha="$1" runs total bad
   have_gh || { echo "⚠️  gh not on PATH — CI status not checked."; return 2; }
-  json="$(gh api "repos/{owner}/{repo}/commits/$sha/check-runs" 2>/dev/null)" || {
+  command -v jq >/dev/null 2>&1 || { echo "⚠️  jq not on PATH — CI status not checked."; return 2; }
+
+  # --paginate, because the endpoint pages at 30 and a red check on page two would
+  # otherwise read as "30 checks green". Flattened to one line per run at the API
+  # boundary so the counting below cannot drift from what was actually fetched — a
+  # total taken from the response's total_count against a page's worth of runs is the
+  # same bug wearing a bigger number.
+  runs="$(gh api --paginate "repos/{owner}/{repo}/commits/$sha/check-runs?per_page=100" \
+    --jq '.check_runs[] | [(.conclusion // .status // "pending"), .name] | @tsv' 2>/dev/null)" || {
     echo "⚠️  could not reach GitHub — CI status not checked."
     return 2
   }
-  total="$(printf '%s' "$json" | jq '.check_runs | length')"
+
+  total="$(printf '%s' "$runs" | grep -c . || true)"
   [ "$total" -gt 0 ] || { echo "⚠️  no check runs recorded for $sha."; return 2; }
 
-  bad="$(printf '%s' "$json" |
-    jq -r '[.check_runs[]
-            | select((.conclusion // "pending")
-                     | IN("success","neutral","skipped") | not)]
-           | length')"
+  bad="$(printf '%s' "$runs" | grep -vcE '^(success|neutral|skipped)	' || true)"
   if [ "$bad" -eq 0 ]; then
     echo "✅ $total CI check(s) green on $sha"
     return 0
   fi
   echo "⚠️  $bad of $total CI check(s) not green on $sha:"
-  printf '%s' "$json" |
-    jq -r '.check_runs[]
-           | select((.conclusion // "pending") | IN("success","neutral","skipped") | not)
-           | "     \(.conclusion // .status)\t\(.name)"'
+  printf '%s' "$runs" | grep -vE '^(success|neutral|skipped)	' | sed 's/^/     /'
   return 1
 }
 
@@ -367,9 +407,16 @@ if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
   # Tagging it here would produce a tag pointing at a commit the squash-merge
   # discards, whose only remaining use is to be deleted again before the real one
   # can be cut. A step whose entire purpose is to be undone is a step to not take.
-  for was in "$plugin_was" "$market_was"; do
-    if ! is_greater "$VERSION" "$was"; then
-      echo "❌ $VERSION is not ahead of $was, the version in the files now." >&2
+  # Backwards is refused; already-there is not. The two files can disagree — a failed
+  # substitution leaves the first rewritten and the second not, and so does a partial
+  # revert — and requiring both to be strictly behind made that state unrecoverable:
+  # the file already at the target is not "ahead of" itself, so the bump could never
+  # complete and the message named one version twice without saying which file was
+  # stuck. Naming the file matters more here than anywhere else in this script.
+  for pair in "$PLUGIN_JSON:$plugin_was" "$MARKET_JSON:$market_was"; do
+    was="${pair#*:}"
+    if [ "$was" != "$VERSION" ] && is_greater "$was" "$VERSION"; then
+      echo "❌ ${pair%%:*} says $was, which is ahead of $VERSION. Nothing committed." >&2
       exit 1
     fi
   done
@@ -404,16 +451,36 @@ fi
 git fetch -q origin "$DEFAULT" 2>/dev/null ||
   echo "⚠️  could not fetch origin/$DEFAULT — checking against the ref you already have." >&2
 
-if git rev-parse -q --verify "refs/remotes/origin/$DEFAULT" >/dev/null; then
-  if ! git merge-base --is-ancestor HEAD "origin/$DEFAULT"; then
-    echo "❌ HEAD is not on origin/$DEFAULT. Nothing tagged." >&2
-    echo "   Publishing this would build the release from a commit that is not on the" >&2
-    echo "   default branch, and a squash-merge will discard it. Merge the bump, then" >&2
-    echo "   run this again on the merged commit." >&2
-    exit 1
-  fi
-else
-  echo "⚠️  no origin/$DEFAULT to check HEAD against — cannot confirm this commit merged." >&2
+# Fail closed. Everything above this point degrades to a warning when origin is
+# unreachable — the tag list falls back to the local cache, the fetch is skipped — and
+# on their own each of those is a reasonable degradation. Composed, they used to end in
+# a green ✅ tagging an arbitrary unmerged branch after four warnings nobody reads,
+# which is the opposite of what this script claims to guarantee. An unevaluated check is
+# not a passed check, and this is the last one standing between a typo and a published
+# release built from a commit that is not on the default branch.
+if ! git rev-parse -q --verify "refs/remotes/origin/$DEFAULT" >/dev/null; then
+  echo "❌ no origin/$DEFAULT to check HEAD against. Nothing tagged." >&2
+  echo "   Without it there is no way to tell whether this commit is the one that" >&2
+  echo "   merged, and that is the whole question this run exists to answer." >&2
+  echo "   Fetch the default branch and try again: git fetch origin $DEFAULT" >&2
+  exit 1
+fi
+
+if ! git merge-base --is-ancestor HEAD "origin/$DEFAULT"; then
+  echo "❌ HEAD is not on origin/$DEFAULT. Nothing tagged." >&2
+  echo "   Publishing this would build the release from a commit that is not on the" >&2
+  echo "   default branch, and a squash-merge will discard it. Merge the bump, then" >&2
+  echo "   run this again on the merged commit." >&2
+  exit 1
+fi
+
+# On the default branch but behind its tip: legitimate — the bump commit is what should
+# wear the tag — but not silent. Anything merged after it is in the release's history
+# and not in its notes, and that is worth seeing before the tag is pushed.
+BEHIND="$(git rev-list --count "HEAD..origin/$DEFAULT" 2>/dev/null || echo 0)"
+if [ "$BEHIND" -gt 0 ]; then
+  echo "⚠️  origin/$DEFAULT has $BEHIND commit(s) after this one; they ship in $TAG" >&2
+  echo "   without appearing in its notes. Tag the tip instead if that is wrong." >&2
 fi
 
 # Advisory, per the note on ci_status: reported, and confirmable, never a hard stop.
@@ -428,9 +495,12 @@ set -e
 # would train the answer out of anyone who releases without gh installed — which is
 # the same habit that lets a genuinely red check through.
 if [ "$CI_RC" -eq 1 ]; then
-  if [ -t 0 ]; then
-    printf 'Tag anyway? [y/N] '
-    read -r reply
+  # Prompt on stderr, and require stderr to be a terminal too. Written to stdout it
+  # disappears into the pipe under `bin/release 0.5.0 | tee release.log`, and the script
+  # looks hung with no visible question.
+  if [ -t 0 ] && [ -t 2 ]; then
+    printf 'Tag anyway? [y/N] ' >&2
+    read -r reply || reply=n
     case "$reply" in [yY]*) ;; *) echo "Nothing tagged."; exit 1 ;; esac
   else
     echo "⚠️  not a terminal, so nothing to confirm with — tagging anyway." >&2

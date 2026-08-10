@@ -99,7 +99,8 @@ Improvements flow back as ordinary pull requests.
 ```
 instructions/     19 guardrail documents, indexed by task. A router is injected each
                   session; the rest are read on demand.
-skills/           /riprap:learn  /riprap:spec  /riprap:council  /riprap:branch-cleaner
+skills/           /riprap:learn  /riprap:spec  /riprap:council
+                  /riprap:branch-cleaner  /riprap:release
 hooks/            the Claude hook registrations, and the session router
 ```
 

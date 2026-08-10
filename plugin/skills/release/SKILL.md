@@ -97,8 +97,24 @@ exists, a branch that was renamed. Say so and ask again rather than guessing. A 
 stored answer is exactly as dangerous as a stale setting in a file, and this is the one
 thing storing answers could otherwise make worse.
 
+Where the two sources disagree, `.claude/instructions/riprap-skills.md` wins and
+`CLAUDE.md` gets corrected to point at it. One record, one place to change it.
+
 Report the answers back before going further, the way this plugin's other skills report
-their whole plan first.
+their whole plan first. Then bind them for the run — real values, not placeholders — and
+re-state them in every later shell command, because each command runs in a fresh shell
+and nothing set in one survives into the next:
+
+```bash
+BASE_BRANCH=main         # ← the stored release branch
+TAG=v1.4.3               # ← the tag being cut, once step 2 has settled the version
+
+[ -n "$BASE_BRANCH" ] || { echo "❌ base branch not set"  >&2; exit 1; }
+[ -n "$TAG" ]         || { echo "❌ tag not set"          >&2; exit 1; }
+```
+
+An unset `$TAG` is not a harmless no-op here: `git tag -a "" -m "" <sha>` and
+`git push origin ""` are what the later steps become.
 
 ## How to ask the forge
 
@@ -160,8 +176,10 @@ entries whose content is already shipped. `git diff --stat` between the two is t
 honest scope check; the log is not.
 
 Use what merged instead: pull requests merged since the previous release's timestamp,
-or the commits reachable from the previous tag if the project does not use pull
-requests.
+or, where the project does not use them, `git log <previous-tag>..$BASE_BRANCH` — the
+commits the base branch has *gained* since the last release. Note the direction: the
+commits reachable *from* the previous tag are the ones already shipped, which is the
+previous release's notes rewritten.
 
 Group into **Features**, **Fixes**, **Internal**, and anything the project already
 uses. Write each line for someone deciding whether to upgrade:
@@ -170,13 +188,17 @@ uses. Write each line for someone deciding whether to upgrade:
 - "Updated code" — says nothing
 - "Fixed a nil check in the payout serialiser" — true, and no help to a reader
 
-Put the notes where *What this needs to know* established they belong, and get them in place
-**before** tagging. A release whose body is written afterwards is a release that spent
-some period published and empty.
+Put the notes where *What this needs to know* established they belong. If that is a file
+in the repository, it has to be committed **before** tagging — a tag cut first points at
+a tree without its own notes, and where a workflow publishes from the tag there is
+nothing for it to publish. If the notes live only in the release body, write them now and
+hold them for step 6: they cannot be placed earlier, because the release object does not
+exist yet. Either way the text is finished before the tag moves, so no release is ever
+published empty.
 
 ### 4. Bump the version, and merge it
 
-Set every version file found in detection, in one commit. If those paths are review-
+Set every version file named in *What this needs to know*, in one commit. If those paths are review-
 gated — they usually are, and should be — the bump goes through a pull request like
 any other change. Wait for it to merge. Do not tag yet.
 
@@ -204,6 +226,13 @@ Do exactly what the stored **Publishes** answer says, and nothing else:
   as well, and do not create the release object by hand: one of the two will fail on
   the other's work, and it surfaces as a release that already exists, which reads like
   a bug in the tooling rather than a duplicated step.
+
+  **Wait for that run to finish before step 7.** It takes tens of seconds at best, so a
+  verification run immediately after the push finds no release and reports the publish
+  as having never happened — which is both wrong and, by step 7's own taxonomy, an
+  instruction to publish again. Watch the run to a conclusion, then verify. If it failed,
+  that is the finding: report it and fix the workflow. Re-running the publish by hand is
+  what step 6 just told you not to do.
 - **A command** — run it, and show its output. A publish that is reported rather than
   shown is the step most worth seeing, because it is the one that cannot be undone.
 - **Nothing** — create the release object from the tag with the body from step 3, and
@@ -223,11 +252,16 @@ Two of the three answers come from the forge, so use the route established in *H
 ask the forge*:
 
 ```bash
-# The tag resolves on the remote, not just locally — plain git, no credential needed
-git ls-remote --refs --tags origin | grep -F "refs/tags/$TAG"
+# The tag resolves on the remote, not just locally. --exit-code and an exact refspec,
+# not a substring grep: `grep -F v1.2` matches refs/tags/v1.2.3, so the loosest form
+# of this check passes on a release that was never cut.
+git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG"
 
-# The tagged tree claims the version the tag claims
-git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+# The tagged tree claims the version the tag claims. The leading + is load-bearing:
+# without it git refuses to move a local tag that has diverged from the remote, which
+# is exactly the case being checked — so the fetch fails, `git show` quietly reads the
+# stale local tag, and the answer looks right. Treat a failed fetch as unchecked.
+git fetch origin "+refs/tags/$TAG:refs/tags/$TAG" || echo "UNCHECKED: could not fetch $TAG"
 git show "$TAG:<version-file>"
 
 # The release exists, and its body is the one that was written
@@ -253,7 +287,10 @@ because by then nobody is watching it.
 
 Three failures are worth naming apart, because they look the same from a distance:
 
-- **No release behind the tag** — the publish step never ran, or refused. Re-run it.
+- **No release behind the tag** — the publish never ran, or refused. Where a command
+  publishes, re-run it. Where a workflow does, find that run and read why it failed;
+  publishing by hand instead leaves the workflow's next attempt colliding with your
+  release object.
 - **The version in the tagged tree disagrees with the tag** — the tag went on the
   wrong commit. It cannot be fixed by moving the tag; see below.
 - **The query itself failed** — an expired credential answers exactly like a missing

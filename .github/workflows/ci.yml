@@ -73,6 +73,18 @@ jobs:
         run: |
           fail=0
 
+          # Spelled-out counts rot silently — no digit for the count regexes to catch.
+          # Only the numbers riprap could plausibly reach are mapped; an unmapped count
+          # fails loudly rather than skipping the check. Defined up here because both
+          # the skill count and the rule counts need it.
+          word_for() {
+            case "$1" in
+              3) echo three ;; 4) echo four ;; 5) echo five ;; 6) echo six ;;
+              7) echo seven ;; 8) echo eight ;; 9) echo nine ;; 10) echo ten ;;
+              *) echo "UNMAPPED-$1" ;;
+            esac
+          }
+
           # 1. The catalogue cannot rot, in either direction. A sixteenth document that
           #    the site never mentions is invisible: nothing looks broken.
           for f in plugin/instructions/*.md; do
@@ -111,8 +123,41 @@ jobs:
                   | grep -vE "[^0-9]$n guardrail document" || true)
           [ -z "$bad" ] || { echo "❌ document count is not $n:"; echo "$bad"; fail=1; }
 
+          #    The skill count is the same shape, with one difference that cost a release
+          #    note: the phrase is hard-wrapped mid-sentence in two places — "19 guardrail
+          #    documents, four\nskills" — and a line-oriented grep cannot see across the
+          #    break. index.md ended up saying four in one paragraph and five in two
+          #    others, on the same page, with every check green. So the file is flattened
+          #    before matching. The count is read from the filesystem rather than hard-
+          #    coded, so adding a skill fails here naming the files, not on a bare number.
           s=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
-          [ "$s" -eq 5 ] || { echo "❌ $s skills ship, but the site says five"; fail=1; }
+          sw=$(word_for "$s")
+          #    Two phrases name a number of skills without claiming what riprap ships,
+          #    and both are excluded by the words next to them rather than by file, so
+          #    the check still covers the rest of those documents:
+          #      "…, 20 skills, and 16 agent roles" — the provenance figures, which
+          #        describe the private codebase riprap was distilled from. Exactly the
+          #        trap "instruction document" sets for the document count above.
+          #      "two skills with near identical descriptions" — about a name collision
+          #        in an adopter's repository, not about riprap's own count.
+          for f in README.md docs/_config.yml .claude-plugin/marketplace.json \
+                   plugin/commands/install.md $(find docs -name '*.md'); do
+            bad=$(tr '\n' ' ' <"$f" | tr -s ' ' \
+                    | grep -oiE "[^.]{0,40}\b(one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+) +skills?\b[^.]{0,40}" \
+                    | grep -viE "\b($sw|$s) +skills?\b" \
+                    | grep -viE 'agent roles|near.identical' || true)
+            [ -z "$bad" ] || { echo "❌ $f: skill count is not $sw:"; echo "$bad"; fail=1; }
+          done
+
+          #    And the enumerations beside the counts. A count that moves while the list
+          #    next to it does not is the same rot in a shape no count check can see:
+          #    five promised, four named. Every document that names any skill names all.
+          for f in README.md docs/index.md docs/install.md docs/reference.md docs/rules.md; do
+            for d in plugin/skills/*/; do
+              k=$(basename "$d")
+              grep -q "/riprap:$k" "$f" || { echo "❌ $f never names /riprap:$k"; fail=1; }
+            done
+          done
 
           # 3. One install command form. Both work, but two documented forms is how the
           #    README and the site started disagreeing in the first place.
@@ -201,16 +246,6 @@ jobs:
           [ "$c" -eq "$d" ] || {
             echo "❌ docs/rules.md restates $d critical rules; the router has $c"; fail=1; }
 
-          # Spelled-out counts rot silently — no digit for check 2's regex to catch.
-          # Only the numbers riprap could plausibly reach are mapped; an unmapped
-          # count fails loudly rather than skipping the check.
-          word_for() {
-            case "$1" in
-              3) echo three ;; 4) echo four ;; 5) echo five ;; 6) echo six ;;
-              7) echo seven ;; 8) echo eight ;; 9) echo nine ;; 10) echo ten ;;
-              *) echo "UNMAPPED-$1" ;;
-            esac
-          }
           bw=$(word_for "$b"); cw=$(word_for "$c")
           # The router states its own critical-rule count in prose, and that was the one
           # spelled-out number this check did not bind — while CLAUDE.md claimed all four

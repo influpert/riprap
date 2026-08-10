@@ -23,7 +23,7 @@ moves — and a branch cleaner that has quietly lost its protected list deletes
 something it was told to keep. An answer stored in the project survives, and is the
 only kind that does.
 
-**1. Read the stored answers first.** Look for a `## branch-cleaner` section in the
+**1. Read the stored answers first.** Look for a `## riprap:branch-cleaner` section in the
 project's `.claude/instructions/riprap-skills.md`, and in `CLAUDE.md`. If it is
 there, say what you found and go straight to the steps. Do not ask again — a skill
 that re-interrogates the user every run trains them to answer without reading.
@@ -47,11 +47,16 @@ deleted. Offer the detected default first, marked as recommended.
 project's `.claude/instructions/riprap-skills.md`, creating it if absent:
 
 ```markdown
-## branch-cleaner
+## riprap:branch-cleaner
 
 - Base branch: `main`
-- Never delete: `main`, `release/*`
+- Never delete: `main`, `release-2024`
 ```
+
+**Write literal branch names, never patterns.** The filters below match whole lines
+exactly, so a stored `release/*` protects nothing and every branch it was meant to
+cover is offered for deletion. If a project protects a whole family of branches, store
+the names it has today and re-ask when the list changes.
 
 If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that
 does. The instructions file is the record; `CLAUDE.md` is what makes it findable.
@@ -65,15 +70,29 @@ Then bind the answers for the rest of the run. Build one keep-list and reuse it 
 every filter below. Exact line matching (`-vxF`) is deliberate: branch names may
 contain `.`, `+`, or other characters that a regex would interpret.
 
+Substitute the stored answers into the two assignments below — real branch names, not
+placeholders — and **re-state this block at the top of every later shell command that
+uses `$KEEP` or `$BASE_BRANCH`.** Each command runs in a fresh shell, so nothing set
+here survives into the next one, and the guard is what makes that survivable:
+
 ```bash
-BASE_BRANCH=<the stored base branch>
-PROTECTED_BRANCHES=(<the stored never-delete list>)
+BASE_BRANCH=main                  # ← the stored base branch
+PROTECTED_BRANCHES=(main)         # ← the stored never-delete list, literal names
 
 # BASE_BRANCH and the currently checked-out branch are always protected too,
 # whether or not they were named.
 CURRENT_BRANCH=$(git symbolic-ref --quiet --short HEAD || echo "")
 KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
 [ -n "$CURRENT_BRANCH" ] && KEEP+=("$CURRENT_BRANCH")
+
+# Refuse rather than proceed on an empty keep-list. `grep -vxF -f` fed an empty
+# pattern list excludes nothing and exits 0, so an unset KEEP does not look like an
+# error — it looks like every branch in the repository is safe to delete, base branch
+# included, and that list is what gets read aloud under "Safe to delete".
+[ "${#KEEP[@]}" -gt 0 ] && [ -n "$BASE_BRANCH" ] || {
+  echo "❌ keep-list or base branch not set — refusing to classify anything" >&2
+  exit 1
+}
 ```
 
 ## Steps

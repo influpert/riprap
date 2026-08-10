@@ -30,6 +30,7 @@ namespaced	bin/hooks/riprap/claude/block-unreviewed-merge.sh
 namespaced	bin/hooks/riprap/claude/format-on-write.sh
 namespaced	bin/hooks/riprap/claude/lint-example.sh
 namespaced	bin/hooks/riprap/claude/lint-secrets.sh
+namespaced	bin/hooks/riprap/claude/lint-tech-footprint.sh
 namespaced	bin/hooks/riprap/claude/session-end.sh
 namespaced	bin/hooks/riprap/git/pre-commit
 namespaced	bin/hooks/riprap/git/pre-push
@@ -37,10 +38,13 @@ namespaced	bin/hooks/riprap/lib/example-patterns.sh
 namespaced	bin/hooks/riprap/lib/hook-common.sh
 namespaced	bin/hooks/riprap/lib/merge-gate-patterns.sh
 namespaced	bin/hooks/riprap/lib/secret-patterns.sh
+namespaced	bin/hooks/riprap/lib/tech-footprint-patterns.sh
 namespaced	bin/hooks/riprap/tests/test-block-destructive-outside-cwd.sh
 namespaced	bin/hooks/riprap/tests/test-block-unreviewed-merge.sh
 namespaced	bin/hooks/riprap/tests/test-lint-secrets.sh
+namespaced	bin/hooks/riprap/tests/test-lint-tech-footprint.sh
 namespaced	bin/hooks/riprap/tests/test-support.sh
+namespaced	bin/hooks/riprap/tests/test-tech-footprint-git.sh
 seed	bin/lint
 namespaced	bin/riprap
 seed	bin/setup

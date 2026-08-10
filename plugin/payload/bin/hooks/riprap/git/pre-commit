@@ -87,6 +87,8 @@ fi
 . "$SCRIPT_DIR/../lib/hook-common.sh"
 # shellcheck source=../lib/secret-patterns.sh
 . "$SCRIPT_DIR/../lib/secret-patterns.sh"
+# shellcheck source=../lib/tech-footprint-patterns.sh
+. "$SCRIPT_DIR/../lib/tech-footprint-patterns.sh"
 
 FAILED=0
 
@@ -116,6 +118,57 @@ if [ -n "$ADDED" ]; then
   fi
 fi
 [ "$FAILED" -eq 0 ] && echo "✅ secret hygiene passed"
+
+# -- tech footprint: a file whose technology nothing in HEAD already uses --
+#
+# Its own path list, with R included. The lint pass above uses ACM because a
+# rename needs no linting, but a rename is one of the ways a technology arrives:
+# `git mv main.go main.py` introduces Python and shows up only under R.
+TF_STAGED=()
+while IFS= read -r -d '' f; do
+  TF_STAGED+=("$f")
+done < <(git diff --cached --name-only --diff-filter=ACMR -z || true)
+
+# tech_footprint_established fails when there is no baseline to compare against —
+# no HEAD, or a HEAD carrying no signal. Both mean the rule has nothing to say.
+#
+# Every branch below reports. "The check ran and found nothing" and "the check did
+# not run" are otherwise indistinguishable in the log, and that indistinguishability
+# is precisely what let an earlier version of this hook fail open through review.
+if [ ${#TF_STAGED[@]} -eq 0 ]; then
+  echo "✅ tech footprint: nothing staged to check"
+elif ! TF_ESTABLISHED=$(tech_footprint_established); then
+  echo "✅ tech footprint: no established stack in HEAD yet, nothing to depart from"
+else
+  TF_CANDIDATES=()
+  for f in "${TF_STAGED[@]}"; do
+    # The escape hatch reads the staged blob: the worktree may carry a marker
+    # that is not in what is being committed, or vice versa.
+    tech_footprint_staged_exempt "$f" && continue
+    TF_CANDIDATES+=("$f")
+  done
+  TF_HITS=""
+  if [ ${#TF_CANDIDATES[@]} -gt 0 ]; then
+    TF_HITS=$(tech_footprint_scan_paths "$TF_ESTABLISHED" "${TF_CANDIDATES[@]}" || true)
+  fi
+  if [ -n "$TF_HITS" ]; then
+    {
+      echo "❌ These files add a technology this repository does not use:"
+      echo ""
+      echo "$TF_HITS"
+      echo ""
+      echo "   Already here: $(tech_footprint_summary "$TF_ESTABLISHED")"
+      echo ""
+      echo "   A new language or toolchain is a permanent obligation on everyone who"
+      echo "   clones this repo, and it does not show up in the diff. Ask first."
+      echo "   If it was already agreed, add 'lint-ok:tech-footprint' to the file."
+      echo "   See .claude/instructions/tech-footprint.md."
+    } >&2
+    FAILED=1
+  else
+    echo "✅ tech footprint unchanged"
+  fi
+fi
 
 # -- riprap's rules go here; yours go in bin/hooks/git/pre-commit --
 # . "$SCRIPT_DIR/../lib/example-patterns.sh"

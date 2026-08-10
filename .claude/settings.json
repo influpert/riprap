@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "influpert": {
+      "source": { "source": "directory", "path": "." }
+    }
+  },
+  "enabledPlugins": {
+    "riprap@influpert": true
+  }
+}

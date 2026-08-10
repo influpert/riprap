@@ -44,15 +44,31 @@ agreement at all.
 ## Before you open the pull request
 
 ```sh
-bin/build-manifest --check                       # manifest matches the tree
-bin/scrub-check plugin/ docs/ README.md TRADEMARK.md CLA.md CONTRIBUTING.md .github/
-for t in plugin/payload/bin/hooks/riprap/tests/test-*.sh; do bash "$t"; done
-shellcheck -S warning $(find bin plugin/hooks plugin/scripts plugin/payload/bin \
-  -type f \( -name '*.sh' -o -perm -u+x \) ! -path '*/.git/*' | sort -u)
+bin/setup    # reports any tool you are missing; installs nothing
+bin/lint     # shellcheck over every script, and bin/scrub-check over everything published
+bin/test     # the hook tests, the generated manifest, and the licence copies
 ```
+
+`bin/lint` and `bin/test` are the same seams riprap ships to every project, and they are what
+CI runs — so there is one definition of "lint this" and one of "test this", and local and CI
+cannot drift. This file used to spell the underlying commands out instead, which is how it and
+CI came to disagree about which paths get scrubbed.
 
 Changes to hooks deserve more than that: install into a scratch repo and confirm a fresh install
 still commits cleanly.
+
+## Working on riprap with riprap loaded
+
+riprap develops the plugin it runs. `.claude/settings.json` registers this repository as its
+own marketplace and enables the plugin from the working tree, so the skills and hooks you get
+are the ones on your branch — edit one and `/reload-plugins` picks it up.
+
+**Accept the workspace trust prompt once.** Until you do, Claude Code skips a project-declared
+marketplace *silently*, and the symptom is indistinguishable from a broken config: no skills,
+no error. `claude plugin marketplace list` should show the marketplace; if it does not, that
+is why. [CLAUDE.md](CLAUDE.md) covers what is different about working here — in particular,
+two statements in the session router are written for adopting projects and are false in this
+repository.
 
 ## Style
 

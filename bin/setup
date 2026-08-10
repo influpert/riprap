@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# bin/setup — get a fresh clone of riprap ready to work in. Safe to re-run.
+#
+# riprap has no dependencies to install: it is shell and markdown, and the tools
+# it needs belong to the machine rather than the checkout. So this reports what
+# is missing rather than installing anything, which is the honest version of a
+# bootstrap for a repository like this one.
+#
+# Note what it deliberately does NOT do. The payload's seed bin/setup calls
+# `bin/riprap wire` to install the git hooks; riprap has not run /riprap:install
+# against itself and has no bin/riprap, so calling it here would fail every fresh
+# clone with an error about a file that is not supposed to exist yet.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+missing=0
+need() {  # $1 = command, $2 = what it is for
+  if command -v "$1" >/dev/null 2>&1; then
+    printf '  ✅ %-12s %s\n' "$1" "$2"
+  else
+    printf '  ❌ %-12s %s\n' "$1" "$2"
+    missing=1
+  fi
+}
+
+echo "Tools riprap's own checks need:"
+need shellcheck "bin/lint — every script in the tree"
+need jq         "manifest and plugin metadata checks"
+need git        "everything"
+
+echo
+echo "Optional:"
+if command -v shfmt >/dev/null 2>&1; then
+  printf '  ✅ %-12s %s\n' "shfmt" "bin/format — without it, formatting is a no-op"
+else
+  printf '  ·  %-12s %s\n' "shfmt" "bin/format — without it, formatting is a no-op"
+fi
+if command -v gh >/dev/null 2>&1; then
+  printf '  ✅ %-12s %s\n' "gh" "bin/release reads CI status before tagging"
+else
+  printf '  ·  %-12s %s\n' "gh" "bin/release reads CI status before tagging"
+fi
+
+echo
+if [ "$missing" -eq 1 ]; then
+  echo "❌ Install what is marked above, then re-run bin/setup." >&2
+  exit 1
+fi
+
+echo "The plugin loads from this working tree, via .claude/settings.json. It needs the"
+echo "workspace trust prompt accepted once — until then the marketplace is skipped in"
+echo "silence and none of riprap's own skills are available here. Check with:"
+echo "  claude plugin marketplace list"
+echo
+echo "✅ bin/setup: ready"

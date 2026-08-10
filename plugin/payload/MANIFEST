@@ -43,6 +43,7 @@ namespaced	bin/hooks/riprap/tests/test-block-destructive-outside-cwd.sh
 namespaced	bin/hooks/riprap/tests/test-block-unreviewed-merge.sh
 namespaced	bin/hooks/riprap/tests/test-lint-secrets.sh
 namespaced	bin/hooks/riprap/tests/test-lint-tech-footprint.sh
+namespaced	bin/hooks/riprap/tests/test-riprap-verify.sh
 namespaced	bin/hooks/riprap/tests/test-support.sh
 namespaced	bin/hooks/riprap/tests/test-tech-footprint-git.sh
 seed	bin/lint

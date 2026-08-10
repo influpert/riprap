@@ -143,6 +143,13 @@ allowed_line() {  # $1 = the matched line
     # would skip every scan on the file, and CLA.md is exactly the kind of
     # document that grows an address and a date.
     *TRADEMARK.md:*[Ii]nflupert\ LLC*|*CLA.md:*[Ii]nflupert\ LLC*) return 0 ;;
+    # The marketplace key in riprap's own settings file, which is how this repo
+    # loads the plugin it develops. The key has to be the marketplace's name, and
+    # the name is the organisation — there is no form of this line that carries
+    # the `/riprap` path or the `riprap@` prefix the two entries above are
+    # anchored to. Anchored to that one file AND to the quoted key: a bare
+    # organisation name anywhere else in the same file still fails.
+    *.claude/settings.json:*\"influpert\":*) return 0 ;;
     # The plugin manifest's author field. This is the attribution the licence
     # requires, rendered by the harness where a user can see who wrote the thing
     # they installed — publishing it is the point, not an accident. Anchored to

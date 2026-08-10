@@ -36,6 +36,14 @@
 # around the broken rule is what blinded the first version of that check to the
 # very bug it was written for.
 /plugin/**               @influpert/code-reviewers
+# riprap's own plugin wiring and the guidance that governs its skills. The rule
+# riprap ships to adopters names .claude/settings.json as a merge gate — it decides
+# which plugin code loads for every contributor — and shipping riprap with its own
+# copy ungated would be the fork-against-itself the rules exist to prevent. CLAUDE.md
+# is here because a skill is licensed to edit it, and it now carries the corrections
+# that stop a skill writing into plugin/ and shipping to every adopter.
+/.claude/**              @influpert/code-reviewers
+/CLAUDE.md               @influpert/code-reviewers
 /.claude-plugin/**       @influpert/code-reviewers
 /bin/**                  @influpert/code-reviewers
 /.github/workflows/**    @influpert/code-reviewers

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# bin/format — format exactly one file, given as $1. Must be idempotent.
+#
+# Called by the format-on-write hook after every edit, so it has to be quick and
+# silent on success. riprap is shell and markdown; only the shell half has a
+# formatter worth running.
+#
+# The `command -v` guard is the load-bearing part. A missing formatter must be a
+# no-op and never an error — otherwise every edit to an unrelated file starts
+# failing, and the first fix anyone reaches for is turning the hook off.
+set -euo pipefail
+
+FILE="${1:?usage: bin/format <file>}"
+[ -f "$FILE" ] || exit 0
+
+case "$FILE" in
+  *.sh)
+    command -v shfmt >/dev/null 2>&1 && exec shfmt -w "$FILE"
+    ;;
+esac
+
+exit 0

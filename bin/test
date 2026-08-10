@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# bin/test — run riprap's own test suite.
+#
+# riprap ships this seam to every adopting project and its own session router
+# names it, so the repository that develops it has to have one that works. Until
+# it did, every riprap session opened with a Quick reference promising four
+# commands this repo did not have — which teaches a reader that the router is
+# approximately true, and a guardrail nobody quite believes is not a guardrail.
+#
+# What belongs here is what must hold for the tree to be correct: the shipped
+# hook tests, the generated manifest, and the licence notice that travels with
+# every copy. Lint lives in bin/lint, not here.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "--- Hook regression tests ---"
+for t in plugin/payload/bin/hooks/riprap/tests/test-*.sh; do
+  # test-support.sh is sourced by the others, never run on its own.
+  [ "$(basename "$t")" = "test-support.sh" ] && continue
+  echo "==> $t"
+  bash "$t"
+done
+
+echo
+echo "--- Manifest matches the payload, and stays namespaced ---"
+bin/build-manifest --check
+
+echo
+echo "--- Every licence copy is identical, notice included ---"
+# The licence obliges anyone redistributing riprap to pass on the Required
+# Notice line, not just the terms. A payload copy that drifts to the bare
+# licence body drops the attribution at the highest-volume boundary there is:
+# every adopter's repository.
+cmp LICENSE plugin/LICENSE
+cmp LICENSE plugin/payload/bin/hooks/riprap/LICENSE
+grep -q '^Required Notice:' LICENSE
+# The payload copy is installed by a recursive copy that preserves modes. A
+# licence with the executable bit set is a licence something might try to run.
+test ! -x plugin/payload/bin/hooks/riprap/LICENSE
+echo "✅ three identical licence copies, notice present"
+
+echo
+echo "✅ bin/test passed"

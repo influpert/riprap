@@ -98,7 +98,8 @@ beat one 215-line file when either would answer the question.
 **Starting work**
 
 - First session in a repo? → [project-standards.md](project-standards.md) (~175)
-- Proposing a plan, a design, or an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
+- Proposing a plan, an approach, or an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
+- Planning anything a user will see? Mock it up first, in the project's design system → [design.md](design.md) (~250)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
   on the way? → [development-workflow.md](development-workflow.md) (~110)
 - Picking up from a previous session, or ending one? → [handovers.md](handovers.md) (~10)
@@ -135,5 +136,6 @@ beat one 215-line file when either would answer the question.
 - Adding a doc, a hook, or a stack command? → [project-standards.md](project-standards.md) (~175)
 
 **Check this map before opening anything.** Guessing from filenames costs more than
-reading one list: `git.md` and `git-hooks.md` sound interchangeable and cover different
-problems, and the file you want for "CI is red" is not named after CI in most repos.
+reading one list: `git.md` and `git-hooks.md` cover different problems, `design.md` is what
+a user sees while `design-principles.md` is how much structure to build, and the file you
+want for "CI is red" is not named after CI in most repos.

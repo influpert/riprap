@@ -98,32 +98,36 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
     Call `EnterPlanMode` → write the summary + go/no-go question to the plan file → `ExitPlanMode` for stakeholder review.
 
-12. **UI Mockup Workflow**:
+12. **UI Design Workflow**:
 
-    Create a scratch folder for the feature, then draft a self-contained UI mockup that reflects the user journey from Phase 2 and the scope from Phase 3. Include realistic sample data and keep the mockup easy to review.
+    a. **Gate first — does this feature have a user-facing surface at all?** A nightly batch job, an internal API, a schema migration does not. If it does not, say so in one line, record that in the feature document, and go to step 13 without building anything. Ask the stakeholder here whether they want a design at all; an explicit "no" ends it, and is recorded rather than re-argued later.
 
-    a. Create an HTML or other lightweight mockup artifact in the scratch area.
+    b. **Confirm the surface before drawing anything** — Claude Design by default, or the design tool the user or the project already uses. If the integration is unavailable in this session, note that now: the fallback is a self-contained HTML mockup in an untracked scratch folder, which is a fallback to state, not a reason to skip.
 
-    b. Show the mockup to the stakeholder for review and approval.
+    c. **Find the design system**, per the search order in riprap's `instructions/design.md` (the session router names its absolute path): the user's own design system, then the project's instructions and theme config, then the visual identity and components already visible in shipped features. If the project uses a frontend library, design in that library's own components and scale. If none of the three answers, propose the palette, type scale and spacing — and get them agreed rather than assumed.
 
-    c. Ask for approval via `AskUserQuestion`:
+    d. **Build the full design.** A feature is being defined here, so the target is every step of the user journey from Phase 2, every state of each screen (design.md's state list: empty, loading, partial, error, permission-denied, disabled, overflow), the dead ends, the entry points, and the narrowest supported width. Use fabricated-but-realistic sample data. A complete design scales with the feature and its blast radius — one dialog and its states completely designs a one-dialog feature.
+
+    e. Show the design to the stakeholder, saying which design system it was assembled from and which surface it lives on.
+
+    f. Ask for approval via `AskUserQuestion`:
     ```
     options:
-      - label: "Approve mockup"
+      - label: "Approve design"
         description: "This captures the feature well — proceed to documentation"
       - label: "Request changes"
         description: "I'd like modifications — describe what to change"
-      - label: "Skip mockup"
-        description: "No mockup needed — proceed to documentation"
+      - label: "Stop here"
+        description: "Good enough to proceed — document what exists and move on"
     ```
 
-    d. If "Request changes", iterate (max 3 rounds) until the design direction is agreed.
+    g. If "Request changes", iterate (max 3 rounds) until the design direction is agreed.
 
-    e. Keep the approved design artifact in the scratch area so it can be referenced during implementation planning.
+    h. Record where the design lives — its link on the design surface, or its path in the scratch area — and, if step (a) skipped the design, record that decision and its reason instead. An undocumented skip is indistinguishable from the rule being forgotten.
 
 13. **Create the feature document**:
 
-    Write the feature document to the scratch area using the structure below. Capture the problem statement, user journey, scope, success metrics, acceptance criteria, risks, and any approved mockup references so it can be handed off to implementation or design stakeholders.
+    Write the feature document to the scratch area using the structure below. Capture the problem statement, user journey, scope, success metrics, acceptance criteria, risks, and where the design lives (or why none was needed) so it can be handed off to implementation or design stakeholders.
 
     Feature document structure:
 
@@ -174,8 +178,8 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
     |----------|-------------|-----------------|---------|
     | [name]   | Yes/No      | [notes]         | [notes] |
 
-    ## UI Mockups
-    [Screenshots attached — mockup references]
+    ## Design
+    [Link to the design on its surface, or its path in the scratch area — or the recorded reason no design was needed]
 
     ## Risks & Concerns
     - [concern from challenge checkpoints, with stakeholder's response]
@@ -216,7 +220,7 @@ When another agent or stakeholder reports that all tasks under a feature have be
 
 1. **Startup**: Begin the acceptance-testing workflow for the feature and confirm the current scope.
 
-2. **Refresh context**: Review the latest feature notes, acceptance criteria, and any approved design artifacts from the scratch area.
+2. **Refresh context**: Review the latest feature notes, acceptance criteria, and the approved design — on its surface, or from the scratch area.
 
 3. **Verify completion**: Confirm every task under the feature is marked as resolved before proceeding.
 
@@ -250,7 +254,7 @@ Before proceeding past Phase 3, evaluate every feature request against these cri
 - **MVP first** — Phase 1 tasks should be the smallest slice that delivers value.
 - **Acceptance criteria required** — every task must have clear, testable acceptance criteria.
 - **Link everything** — tasks reference the feature page, feature page lists its tasks.
-- **Mockup iteration limit** — max 3 rounds of revision to prevent scope creep in the interview.
+- **Design iteration limit** — max 3 rounds of revision to prevent scope creep in the interview.
 - **Invoked manually** — this workflow is started by a stakeholder, not spawned automatically by another agent.
 - **Respect existing patterns** — explore the codebase before proposing new patterns. Reuse what exists.
 - **Phased questions** — present questions in thematic batches (Vision, Users, Scope, Integration, Constraints), not all at once.

@@ -5,11 +5,11 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 17 guardrail documents, four skills, six hook
+  The complete riprap catalogue: 18 guardrail documents, four skills, six hook
   registrations, four stack seams, and everything the installer writes into a repository.
 ---
 
-riprap is two halves. The plugin carries **17 guardrail documents**, **four skills** and
+riprap is two halves. The plugin carries **18 guardrail documents**, **four skills** and
 **six hook registrations**, and puts no file in your repository. `/riprap:install` adds the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
 the git hooks, and the four stack commands the hooks call.
@@ -34,6 +34,7 @@ them and they would rot on every edit of every document.
 
 - [project-standards.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/project-standards.md) — conventions that apply to everything in this repo. Read this first.
 - [interaction-preferences.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/interaction-preferences.md) — how to work with the person on the other side of the session: when to argue, where a plan goes, and what to ask before starting.
+- [design.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design.md) — a change with material UI or UX impact gets a mockup before it gets an implementation, drawn inside the project's design system and in its frontend library's own primitives. Copy edits and invisible refactors are explicitly exempt; a new feature gets a full design, not one screen.
 - [development-workflow.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/development-workflow.md) — when to stop and plan, how to scope a bug fix, what to clean up, and what "done" has to mean.
 - [handovers.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/handovers.md) — session handovers always go in `tmp/handover/`, never in `docs/` or the repo root.
 {: .doc-links}
@@ -71,7 +72,7 @@ them and they would rot on every edit of every document.
 - [guardrail-template.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/guardrail-template.md) — the shape every guardrail document follows. Copy it, fill in the sections, delete the guidance.
 {: .doc-links}
 
-### All seventeen, alphabetically
+### All 18 guardrail documents, alphabetically
 
 The other view: what to scan when you want to be sure you have seen everything.
 
@@ -79,6 +80,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 |---|---|
 | `ci-hygiene.md` | Re-running CI without corrupting the result or burning the budget |
 | `code-style.md` | Naming, structure, comments — what a formatter cannot decide |
+| `design.md` | Mocking up a UI change before building it, inside the existing design system |
 | `design-principles.md` | How much structure to build, and when |
 | `development-workflow.md` | When to plan, how to scope a fix, cleaning up, what "done" has to mean |
 | `error-handling.md` | Letting errors surface; keeping secrets out of logs |

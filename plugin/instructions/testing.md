@@ -30,7 +30,7 @@ worth catching. What you end up with is a suite that documents the bug.
 exists.** The tests are now the specification, and a specification nobody reviewed is a
 plan nobody reviewed.
 
-At least three, from distinct angles:
+All four of these, one sub-agent each. Not three of the four — see below.
 
 | Critic | The question it is handed |
 |---|---|
@@ -39,13 +39,17 @@ At least three, from distinct angles:
 | Business logic | Ignore the tests' framing. From the requirement alone, what rule must hold that these assertions do not check? Which assertion encodes an implementation detail rather than the rule? |
 | Test quality | Which of these would still pass against a wrong implementation? Name the mutation that survives. |
 
-The fourth finds the most and gets skipped the most. A test that passes against a
-deliberately broken implementation is not a weak test; it is not a test.
+**The fourth is not optional, and it is the one that gets dropped.** A test that passes
+against a deliberately broken implementation is not a weak test; it is not a test. The
+other three ask whether the suite covers enough; only this one asks whether any of it works
+at all, which is why a count with slack in it always sheds this row first. Four means four.
 
 Findings come back classified **BLOCKER / MAJOR / MINOR / NON-ISSUE**, using the table in
 [interaction-preferences.md](interaction-preferences.md) rather than a second scheme — so
-a BLOCKER means the same thing wherever it is raised. Fix every BLOCKER in the tests before
-writing any implementation. Implementing against tests you already know are incomplete
+a BLOCKER means the same thing wherever it is raised. Fix every BLOCKER **and every MAJOR**
+in the tests before writing any implementation — that table's dispositions are written for a
+plan awaiting approval, and this plan is already approved, so "fold the change in and say
+you did" has nowhere to land. Here both mean: change the tests now. Implementing against tests you already know are incomplete
 converts a review finding into a regression, and it does it inside the one artifact
 everybody will later point at as proof the behaviour was checked.
 
@@ -60,7 +64,7 @@ inside the head that did not think to write it.
 
 **This gate is the planning gate, not a second threshold.** Below
 [development-workflow.md](development-workflow.md)'s bar — one file, roughly five lines —
-write the test and skip the critics. Five sub-agents against three assertions costs more
+write the test and skip the critics. Four sub-agents against three assertions costs more
 than the change, and a ceremony that is obviously disproportionate is the fastest way to
 teach everybody to skip it on the day it matters.
 

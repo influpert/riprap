@@ -71,6 +71,12 @@ session's work, or recovering from a bad rebase — and scope it: `git diff -- <
 Even when the instruction is "just commit and push", or "commit this straight to trunk". Translate
 it: branch, commit, push, open a PR. Then say that is what you did.
 
+**This is not in tension with "never push without being asked" below.** Asking to push *is* the
+instruction here — "just commit and push" is a request to publish, and this section only redirects
+*where* it lands. What the rule below forbids is publishing on your own initiative, when nobody
+asked for anything to leave the machine. Told to push: branch and open a PR. Told nothing: commit
+locally and stop.
+
 **Why:** a PR is the only artifact that shows a reviewer the change as a unit. Direct pushes to trunk
 skip the hooks that run on pull requests, skip required checks, and leave no place to attach the
 review conversation. Recovering from a bad direct push means either a revert commit in trunk's
@@ -168,6 +174,18 @@ Do not accumulate a session's work into one commit, and do not wait to be asked.
 tests pass, the change is meaningful on its own, and describing it does not need an "and". If it
 needs an "and", it was two commits, and the boundary between them was visible while you were
 doing the work.
+
+```bash
+git add -- <the paths you touched>       # by name
+git commit -m "Add retry to the export job"
+```
+
+**Stage by path. Never `git add -A` or `git commit -a`.** The working tree may hold work that is
+not yours — a half-finished edit the user left open, a file another tool wrote — and a commit that
+swallows it is the one case where "amendable and resettable" stops being true, because the person
+who lost the work is not the person holding the reflog. This matters most in the user's own
+checkout; in a dedicated worktree the tree contains only your work, which is one more reason the
+section above makes a worktree the default.
 
 **Why:** an uncommitted working tree is the only state from which work is actually lost, and it
 is the state that blocks every tool that refuses to run dirty — riprap's own installer among

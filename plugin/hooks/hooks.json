@@ -46,12 +46,6 @@
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook lint-secrets.sh" }
         ]
-      },
-      {
-        "matcher": "Write",
-        "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook lint-tech-footprint.sh" }
-        ]
       }
     ],
     "PostToolUse": [

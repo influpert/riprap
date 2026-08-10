@@ -101,26 +101,29 @@ first Python file is not.
   tool documented as the way to do something stops being optional at its second reference.
   Ask.
 
-## Enforcement
+## Enforcement: none yet, deliberately
 
-Four layers ship with riprap, over one pattern library so a rule has one definition:
+**This rule currently has one layer — this document.** No hook enforces it.
+[project-standards.md](project-standards.md) asks for four layers and
+[guardrail-template.md](guardrail-template.md) says an absent layer must say so and say
+why, so: the hooks were written, reviewed, and withdrawn before shipping.
 
-- **This document**, reachable from the router's critical rules.
-- **A pre-commit check** — the tech-footprint block in `bin/hooks/riprap/git/pre-commit`,
-  which rejects a commit introducing a first-of-its-kind file. It runs for everybody who
-  clones the repository, including teammates who never installed the plugin.
-- **A PreToolUse hook** — `bin/hooks/riprap/claude/lint-tech-footprint.sh`, which blocks
-  the write itself, at the moment this rule actually names.
-- **The shared library** — `bin/hooks/riprap/lib/tech-footprint-patterns.sh`, holding the
-  signals and the allow-list, sourced by both enforcers.
+**Why they were withdrawn.** Three rounds of review found the same shape of defect each
+time, and twice the fix for one round introduced the next round's. A version that resolved
+paths by string comparison silently disabled itself in any repository reached through a
+symlink — every write allowed, no output, on a platform where the temporary directory is
+symlinked by default. Another exempted riprap's own scripts from being *flagged* while
+letting them *establish* shell, so installing riprap permanently disarmed the rule in the
+pure-Go and pure-Python repositories it was written for. A third blocked the very file an
+adopter must write to configure it.
 
-The signal list will not be right for every repository. Trim or extend it in
-`bin/hooks/lib/tech-footprint-patterns.local.sh`, which riprap sources if present and
-never overwrites — see [project-standards.md](project-standards.md). The fourth layer of
-that document's four, a project-owned copy of the library, is not needed here for the same
-reason: this rule is riprap's, and the local file is the extension point.
+None of those were caught by the tests, because there was no test that ran the git-side
+enforcer at all — the one thing that would have caught two of the three.
 
-**The escape hatch is per file**, because the violation is the file's existence rather
-than a line in it: `lint-ok:tech-footprint` anywhere in the file skips it. Every rule needs
-one. A guardrail with no way out gets disabled wholesale the first time it is wrong, and
-then it protects nothing at all.
+**A guardrail that fails open is worse than no guardrail**, and this is the document that
+says so about other people's rules. Shipping one that looks enforced and is not would be
+the founding mistake in `CLAUDE.md` repeated by the tool built to prevent it. The rule
+holds on its own; a reader who follows it gets the outcome. What is missing is the machine
+that catches the reader who does not.
+
+Until the enforcers return, the honest statement is the one at the top: **ask.**

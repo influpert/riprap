@@ -126,6 +126,14 @@ Material means the approach changed, a subsystem entered or left scope, a new de
 migration appeared, or the verification story changed. Reordered steps and reworded
 sentences do not.
 
+**This applies to a plan that has already been presented, and it caps at one further
+round.** Without both bounds it does not terminate: a critic's finding is itself review
+feedback, and acting on a BLOCKER almost always changes the approach or the verification
+story, so round one's output would mandate round two for ever. Revising a draft nobody has
+seen yet is just writing it. If a second round still returns a BLOCKER, the plan is not
+converging and the answer is to present it with the disagreement visible, not to spawn a
+third.
+
 **Why:** the critics that cleared version one reviewed version one. A revision inherits the
 *approval* of the original without inheriting its *review*, and that is exactly how an
 unreviewed approach ships under a reviewed plan's banner — the reader sees an approved plan
@@ -133,8 +141,14 @@ and has no way to tell which parts of it were ever looked at. Worse, a revision 
 under time pressure with the original's momentum behind it, which is the worst available
 condition for self-review.
 
-The unattended carve-out stated above applies here unchanged. And `/riprap:council` already
-runs this whole roster end to end, which is the cheapest way to comply.
+The unattended carve-out stated above applies here unchanged.
+
+`/riprap:council` runs a critic roster of this shape and is a reasonable starting point, but
+it is not a substitute for the rule: its roster can come to four, none of its critics is the
+devil's advocate — its Alternative Proponent is asked for *other ways to achieve the same
+objective*, which presupposes the objective — and it classifies findings its own way rather
+than as BLOCKER/MAJOR/MINOR/NON-ISSUE. Use it, then check the count, add the advocate, and
+classify as above.
 
 ---
 

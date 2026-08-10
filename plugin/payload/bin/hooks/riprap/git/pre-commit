@@ -87,8 +87,6 @@ fi
 . "$SCRIPT_DIR/../lib/hook-common.sh"
 # shellcheck source=../lib/secret-patterns.sh
 . "$SCRIPT_DIR/../lib/secret-patterns.sh"
-# shellcheck source=../lib/tech-footprint-patterns.sh
-. "$SCRIPT_DIR/../lib/tech-footprint-patterns.sh"
 
 FAILED=0
 
@@ -118,31 +116,6 @@ if [ -n "$ADDED" ]; then
   fi
 fi
 [ "$FAILED" -eq 0 ] && echo "✅ secret hygiene passed"
-
-# -- tech footprint: a file whose technology nothing in HEAD already uses --
-# Whole-repository rule rather than added-lines-only: the question is about the
-# path, not its contents, and the comparison is against HEAD rather than the index
-# because the index already contains the file being added.
-TF_HITS=""
-if [ ${#STAGED[@]} -gt 0 ]; then
-  TF_HITS=$(tech_footprint_scan_paths ${STAGED[@]+"${STAGED[@]}"} || true)
-fi
-if [ -n "$TF_HITS" ]; then
-  {
-    echo "❌ These files add a technology this repository does not use:"
-    echo ""
-    echo "$TF_HITS"
-    echo ""
-    echo "   Already here: $(tech_footprint_summary || true)"
-    echo ""
-    echo "   A new language or toolchain is a permanent obligation on everyone who"
-    echo "   clones this repo, and it does not show up in the diff. Ask first."
-    echo "   If it was already agreed, add 'lint-ok:tech-footprint' to the file."
-  } >&2
-  FAILED=1
-else
-  echo "✅ tech footprint unchanged"
-fi
 
 # -- riprap's rules go here; yours go in bin/hooks/git/pre-commit --
 # . "$SCRIPT_DIR/../lib/example-patterns.sh"

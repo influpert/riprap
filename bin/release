@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# release — set the shipped version in both files, commit it, and tag it.
+# release — set the shipped version in both files, commit it, and tag the commit that merged.
 #
 # The version lives in two places and the tag is a third. All three have to agree:
 # .github/workflows/release.yml refuses to publish a tag whose tree claims a
@@ -8,15 +8,21 @@
 # place that discrepancy is visible. Doing it by hand means three edits in three
 # formats, and the one that gets missed is silent until someone installs it.
 #
-#   bin/release 0.5.0
+#   bin/release 0.5.0          bump both files and commit — no tag yet
+#   bin/release 0.5.0          again, on the merged commit: tag it
+#   bin/release --verify       every v* tag on origin has a release behind it
+#   bin/release --verify 0.5.0 that one release is published, and correct
 #
-# Run it again with the same version after the bump lands on the default branch.
-# The files already say 0.5.0 by then, so the second run only tags — which is what
-# you want, because the commit you tag has to be the one that actually merged.
-# Tagging before the PR merges points the tag at a commit a squash-merge discards.
+# Two runs, and the split is the point. The version files sit under CODEOWNERS-gated
+# directories, so the bump merges as a pull request; a tag cut before that merges
+# points at a commit the squash-merge discards. The first run therefore makes no tag
+# at all — there is nothing to delete — and the second refuses unless HEAD is
+# contained in the default branch.
 #
 # It never pushes. A tag push publishes a release that cannot be un-published, and
 # that should be a thing you type, not a thing a script did on your behalf.
+#
+# Exit 0 = fine, 1 = refused or findings, 2 = usage error.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -24,12 +30,14 @@ cd "$ROOT"
 
 PLUGIN_JSON="plugin/.claude-plugin/plugin.json"
 MARKET_JSON=".claude-plugin/marketplace.json"
+NOTES_DIR=".github/releases"
 
 usage() {
   cat >&2 <<'USAGE'
-bin/release <x.y.z>
-
-  bin/release 0.5.0    set both version files to 0.5.0, commit, tag v0.5.0
+bin/release <x.y.z>          bump both version files and commit; run again on the
+                             merged commit to tag it
+bin/release --verify         report every v* tag on origin with no release behind it
+bin/release --verify <x.y.z> check one release: tag, release, versions, body
 
 Write .github/releases/v<x.y.z>.md first — the release workflow publishes that
 file as the body and refuses without it.
@@ -37,18 +45,7 @@ USAGE
   exit 2
 }
 
-[ $# -eq 1 ] || usage
-VERSION="$1"
-TAG="v$VERSION"
-
-# Three components, digits only, and no leading v — the argument is the version,
-# the tag is what gets a v. Taking both spellings means two names for one release
-# and a guess about which one the notes file is called. The tag drives the
-# published version, so a typo here is a release nobody can install.
-if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-  echo "❌ not a version: $1 (expected x.y.z, no leading v)" >&2
-  exit 1
-fi
+# ── shared helpers ───────────────────────────────────────────────────────────
 
 # Exactly one "version" key per file, or the substitution below is editing
 # something it was not aimed at. Checked rather than assumed, because a sed that
@@ -76,18 +73,266 @@ set_version() {
   fi
 }
 
+is_version() { printf '%s' "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; }
+
+# Strictly greater, version-ordered. `sort -V` alone cannot answer this — it puts
+# equal inputs in an arbitrary order — so equality is ruled out first.
+is_greater() {
+  [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]
+}
+
+# Tags are read from origin, never from the local ref cache. A local tag that has
+# diverged from the remote is not corrected by a plain `git fetch --tags`, which
+# declines to move an existing ref without --force — so the local cache is the one
+# source that can be confidently stale, and it is the source every check here would
+# otherwise trust. Returns 1 when origin could not be reached; the caller decides
+# whether that is fatal.
+#
+# [0-9][0-9]* rather than [0-9]+: \+ is a GNU sed extension and this runs on BSD too.
+remote_versions() {
+  local out
+  out="$(git ls-remote --refs --tags origin 2>/dev/null)" || return 1
+  printf '%s\n' "$out" |
+    sed -n 's|.*refs/tags/v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V
+}
+
+default_branch() {
+  local ref
+  if ref="$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)"; then
+    printf '%s' "${ref#origin/}"
+  else
+    printf 'main'
+  fi
+}
+
+have_gh() { command -v gh >/dev/null 2>&1; }
+
+# Trailing whitespace and CRLF differ between what was committed and what the forge
+# stores and hands back. Comparing raw text reports a body mismatch for a release
+# that is in fact byte-correct in every way a reader would notice.
+normalize() { sed 's/\r$//; s/[[:space:]]*$//'; }
+
+# ── --verify ─────────────────────────────────────────────────────────────────
+
+# Verify one published release. Prints findings, returns 1 if any.
+#
+# This is the "verify before declaring done" step. Pushing a tag is not the same as
+# a release existing: the publish workflow can refuse (missing notes, a version
+# disagreement, an already-published tag) long after the person who pushed has
+# stopped watching, and CI does not run on tags at all, so nothing else ever looks.
+# Prints the release body. 0 = published, 1 = genuinely absent, 2 = could not tell.
+#
+# The three have to stay apart. An unauthenticated or rate-limited call fails exactly
+# like a missing release, and reporting "no release behind this tag" because the
+# token expired is a false finding that reads identically to a true one — it sends
+# someone to re-publish a release that is already live.
+gh_release_body() {
+  local tag="$1" out rc
+  out="$(gh api "repos/{owner}/{repo}/releases/tags/$tag" --jq '.body' 2>&1)" && rc=0 || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    printf '%s' "$out"
+    return 0
+  fi
+  case "$out" in
+    *404* | *"Not Found"*) return 1 ;;
+    *)
+      printf '%s\n' "$out" | sed 's/^/     /' >&2
+      return 2
+      ;;
+  esac
+}
+
+verify_one() {
+  local version="$1" tag="v$1" found=0 body published notes rc
+
+  if ! printf '%s\n' "$REMOTE_VERSIONS" | grep -qxF "$version"; then
+    echo "  ❌ $tag is not a tag on origin"
+    return 1
+  fi
+
+  published="$(gh_release_body "$tag")" && rc=0 || rc=$?
+  case "$rc" in
+    1)
+      echo "  ❌ $tag is tagged, but no release exists behind it"
+      echo "     Publish it: gh workflow run release.yml -f tag=$tag"
+      return 1
+      ;;
+    2)
+      echo "  ⚠️  $tag: could not ask GitHub whether a release exists — not checked"
+      return 1
+      ;;
+  esac
+
+  # The tree the tag points at, not the working tree. That tree is the artifact, and
+  # it is what every adopting repository installs.
+  git fetch -q origin "refs/tags/$tag:refs/tags/$tag" 2>/dev/null || true
+  local f got
+  for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
+    if got="$(git show "$tag:$f" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"; then
+      [ "$got" = "$version" ] || { echo "  ❌ $tag: $f says $got"; found=1; }
+    else
+      echo "  ❌ $tag: could not read $f from the tagged tree"; found=1
+    fi
+  done
+
+  notes="$NOTES_DIR/$tag.md"
+  if [ -s "$notes" ]; then
+    body="$(printf '%s' "$published" | normalize)"
+    if [ "$body" != "$(normalize <"$notes")" ]; then
+      echo "  ❌ $tag: the published body differs from $notes"
+      found=1
+    fi
+  else
+    echo "  ⚠️  $tag: no $notes to compare the published body against"
+  fi
+
+  [ "$found" -eq 0 ] && echo "  ✅ $tag"
+  return "$found"
+}
+
+do_verify() {
+  local want="${1:-}"
+
+  have_gh || {
+    echo "❌ --verify needs the gh CLI, and it is not on PATH." >&2
+    exit 1
+  }
+
+  # A tag list that failed to fetch is not an empty tag list. Continuing on a
+  # truncated source manufactures "no release behind this tag" findings for tags it
+  # simply never saw, which is worse than not running: it is a false report that
+  # reads exactly like a true one.
+  REMOTE_VERSIONS="$(remote_versions)" || {
+    echo "❌ could not read tags from origin. Nothing checked." >&2
+    exit 1
+  }
+
+  # Same reasoning one level up: prove the credential works before drawing any
+  # conclusion from what GitHub does not return. Without this, an expired token
+  # turns the whole sweep into a list of releases that all look missing.
+  gh api "repos/{owner}/{repo}" --jq '.full_name' >/dev/null 2>&1 || {
+    echo "❌ gh cannot reach this repository — check 'gh auth status'. Nothing checked." >&2
+    exit 1
+  }
+
+  local rc=0
+  if [ -n "$want" ]; then
+    is_version "$want" || { echo "❌ not a version: $want" >&2; exit 2; }
+    echo "Checking v$want"
+    verify_one "$want" || rc=1
+  else
+    [ -n "$REMOTE_VERSIONS" ] || { echo "No v* tags on origin."; return 0; }
+    echo "Checking every v* tag on origin"
+    # Per-tag failures are reported and the sweep continues. A reconciler that stops
+    # at the first finding hides every finding after it, and the second one is the
+    # one nobody knew about.
+    local v
+    while IFS= read -r v; do
+      [ -n "$v" ] || continue
+      verify_one "$v" || rc=1
+    done <<<"$REMOTE_VERSIONS"
+  fi
+
+  [ "$rc" -eq 0 ] && echo "✅ nothing to fix"
+  return "$rc"
+}
+
+# ── CI status, advisory ──────────────────────────────────────────────────────
+
+# 0 green, 1 not green, 2 could not tell. Never fatal on its own: gh is optional
+# here, and a release should not become impossible because GitHub is unreachable.
+#
+# Worth knowing while reading the output: riprap's CI does not run on tags. The run
+# on the merge commit is the only evidence a release ever gets, which is why it is
+# checked here rather than left to the publish workflow to notice.
+ci_status() {
+  local sha="$1" json total bad
+  have_gh || { echo "⚠️  gh not on PATH — CI status not checked."; return 2; }
+  json="$(gh api "repos/{owner}/{repo}/commits/$sha/check-runs" 2>/dev/null)" || {
+    echo "⚠️  could not reach GitHub — CI status not checked."
+    return 2
+  }
+  total="$(printf '%s' "$json" | jq '.check_runs | length')"
+  [ "$total" -gt 0 ] || { echo "⚠️  no check runs recorded for $sha."; return 2; }
+
+  bad="$(printf '%s' "$json" |
+    jq -r '[.check_runs[]
+            | select((.conclusion // "pending")
+                     | IN("success","neutral","skipped") | not)]
+           | length')"
+  if [ "$bad" -eq 0 ]; then
+    echo "✅ $total CI check(s) green on $sha"
+    return 0
+  fi
+  echo "⚠️  $bad of $total CI check(s) not green on $sha:"
+  printf '%s' "$json" |
+    jq -r '.check_runs[]
+           | select((.conclusion // "pending") | IN("success","neutral","skipped") | not)
+           | "     \(.conclusion // .status)\t\(.name)"'
+  return 1
+}
+
+# ── main ─────────────────────────────────────────────────────────────────────
+
+[ $# -ge 1 ] || usage
+
+if [ "$1" = "--verify" ]; then
+  [ $# -le 2 ] || usage
+  do_verify "${2:-}"
+  exit $?
+fi
+
+[ $# -eq 1 ] || usage
+case "$1" in -h | --help) usage ;; esac
+
+VERSION="$1"
+TAG="v$VERSION"
+
+# Three components, digits only, and no leading v — the argument is the version,
+# the tag is what gets a v. Taking both spellings means two names for one release
+# and a guess about which one the notes file is called. The tag drives the
+# published version, so a typo here is a release nobody can install.
+if ! is_version "$VERSION"; then
+  echo "❌ not a version: $1 (expected x.y.z, no leading v)" >&2
+  exit 1
+fi
+
 for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
   [ -f "$f" ] || { echo "❌ missing $f" >&2; exit 1; }
 done
 
-if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-  echo "❌ $TAG already exists. A published version does not get re-cut." >&2
+# Tags from origin, degrading visibly rather than silently. Falling back to the
+# local cache without saying so would let a tag someone else pushed an hour ago pass
+# the "already exists" check unnoticed, and the first sign of that is two releases
+# claiming one version.
+if REMOTE_VERSIONS="$(remote_versions)"; then
+  TAG_SOURCE="origin"
+else
+  echo "⚠️  could not read tags from origin — falling back to the local tag cache," >&2
+  echo "   which does not see a tag pushed since your last fetch." >&2
+  REMOTE_VERSIONS="$(git tag --list 'v*' | sed -n 's|^v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V)"
+  TAG_SOURCE="local cache"
+fi
+
+if printf '%s\n' "$REMOTE_VERSIONS" | grep -qxF "$VERSION"; then
+  echo "❌ $TAG already exists on $TAG_SOURCE. A published version does not get re-cut." >&2
+  exit 1
+fi
+
+# Forwards only, and against the highest tag rather than the last one cut. The
+# existing-tag check above catches re-cutting a version; it does not catch going
+# backwards to one that was never tagged. A version that moves down installs as an
+# older plugin in every adopting repository, and unlike a wrong tag there is nothing
+# on the release page that looks wrong.
+HIGHEST="$(printf '%s\n' "$REMOTE_VERSIONS" | tail -1)"
+if [ -n "$HIGHEST" ] && ! is_greater "$VERSION" "$HIGHEST"; then
+  echo "❌ $VERSION is not ahead of $HIGHEST, the highest tag on $TAG_SOURCE." >&2
   exit 1
 fi
 
 # Refused here rather than in CI. The workflow makes the same check, but by then
 # the tag is pushed and public, and the fix is a second tag or a deleted one.
-NOTES=".github/releases/$TAG.md"
+NOTES="$NOTES_DIR/$TAG.md"
 if [ ! -s "$NOTES" ]; then
   echo "❌ no release notes at $NOTES" >&2
   echo "   The release workflow publishes that file as the body and refuses without it." >&2
@@ -106,36 +351,102 @@ fi
 
 plugin_was="$(version_in "$PLUGIN_JSON")"
 market_was="$(version_in "$MARKET_JSON")"
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+DEFAULT="$(default_branch)"
 
-if [ "$plugin_was" = "$VERSION" ] && [ "$market_was" = "$VERSION" ]; then
-  # The post-merge run. Both files already carry this version, so there is nothing
-  # to commit and HEAD is the commit that should wear the tag.
-  echo "Both files already say $VERSION — tagging HEAD."
-else
+if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
+  # ── First run: bump and commit. Deliberately no tag. ──
+  #
+  # The version files are CODEOWNERS-gated, so this commit becomes a pull request.
+  # Tagging it here would produce a tag pointing at a commit the squash-merge
+  # discards, whose only remaining use is to be deleted again before the real one
+  # can be cut. A step whose entire purpose is to be undone is a step to not take.
+  for was in "$plugin_was" "$market_was"; do
+    if ! is_greater "$VERSION" "$was"; then
+      echo "❌ $VERSION is not ahead of $was, the version in the files now." >&2
+      exit 1
+    fi
+  done
+
   set_version "$PLUGIN_JSON" "$VERSION"
   set_version "$MARKET_JSON" "$VERSION"
   git add -- "$PLUGIN_JSON" "$MARKET_JSON"
   git commit -q -m "Ship $VERSION" \
     -m "plugin.json and marketplace.json both move, because the release workflow
 refuses a tag whose tree claims a different version than the tag does."
-  echo "✅ $plugin_was → $VERSION in both files, committed"
+  echo "✅ $plugin_was → $VERSION in both files, committed on $BRANCH"
+
+  cat <<NEXT
+
+No tag yet, and that is deliberate: the tag has to end up on the commit that
+merged, not on this one. Get the bump merged, then run this again on the merged
+commit and it will only tag.
+
+  git push -u origin $BRANCH
+  # open the pull request, let CI go green, merge it
+  git checkout $DEFAULT && git pull
+  bin/release $VERSION
+NEXT
+  exit 0
+fi
+
+# ── Second run: both files already say $VERSION, so tag. ──
+
+# Refresh the default branch before asking whether HEAD is on it. A stale
+# origin/$DEFAULT answers the question about where the branch was, not where it is,
+# and this check exists precisely because the commit moved.
+git fetch -q origin "$DEFAULT" 2>/dev/null ||
+  echo "⚠️  could not fetch origin/$DEFAULT — checking against the ref you already have." >&2
+
+if git rev-parse -q --verify "refs/remotes/origin/$DEFAULT" >/dev/null; then
+  if ! git merge-base --is-ancestor HEAD "origin/$DEFAULT"; then
+    echo "❌ HEAD is not on origin/$DEFAULT. Nothing tagged." >&2
+    echo "   Publishing this would build the release from a commit that is not on the" >&2
+    echo "   default branch, and a squash-merge will discard it. Merge the bump, then" >&2
+    echo "   run this again on the merged commit." >&2
+    exit 1
+  fi
+else
+  echo "⚠️  no origin/$DEFAULT to check HEAD against — cannot confirm this commit merged." >&2
+fi
+
+# Advisory, per the note on ci_status: reported, and confirmable, never a hard stop.
+# What it must not become is a check you learn to skip — a red check waved through
+# is how a release ships with the manifest out of date or a scrub finding in it.
+set +e
+ci_status "$(git rev-parse HEAD)"
+CI_RC=$?
+set -e
+# Only a check that came back red asks for confirmation. A status that could not be
+# read at all has already said so on its own line, and prompting about it every time
+# would train the answer out of anyone who releases without gh installed — which is
+# the same habit that lets a genuinely red check through.
+if [ "$CI_RC" -eq 1 ]; then
+  if [ -t 0 ]; then
+    printf 'Tag anyway? [y/N] '
+    read -r reply
+    case "$reply" in [yY]*) ;; *) echo "Nothing tagged."; exit 1 ;; esac
+  else
+    echo "⚠️  not a terminal, so nothing to confirm with — tagging anyway." >&2
+  fi
 fi
 
 git tag -a "$TAG" -m "$TAG" HEAD
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 echo "✅ tagged $TAG at $(git rev-parse --short HEAD) on $BRANCH"
 
 cat <<NEXT
 
-Nothing has been pushed. If you are on the merged commit already:
+Nothing has been pushed. This publishes it:
 
   git push origin $TAG
 
-publishes the release. Otherwise the bump needs to merge first, and the tag has
-to move to the commit that actually merged:
+Then confirm it actually published — the workflow can still refuse, and a tag with
+no release behind it reads as unreleased:
 
-  git push -u origin $BRANCH
-  git tag -d $TAG
-  bin/release $VERSION
-  git push origin $TAG
+  bin/release --verify $VERSION
+
+If the release turns out to be wrong, supersede it with a patch. A published tag is
+never moved or deleted: it is what the version already meant to everyone who read
+it, and the notes for a superseded release are worth more marked superseded than
+gone.
 NEXT

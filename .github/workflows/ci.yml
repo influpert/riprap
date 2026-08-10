@@ -112,7 +112,7 @@ jobs:
           [ -z "$bad" ] || { echo "❌ document count is not $n:"; echo "$bad"; fail=1; }
 
           s=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
-          [ "$s" -eq 4 ] || { echo "❌ $s skills ship, but the site says four"; fail=1; }
+          [ "$s" -eq 5 ] || { echo "❌ $s skills ship, but the site says five"; fail=1; }
 
           # 3. One install command form. Both work, but two documented forms is how the
           #    README and the site started disagreeing in the first place.

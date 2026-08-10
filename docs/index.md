@@ -15,7 +15,7 @@ hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
 description: >-
   Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
-  documents loaded every session, four skills, and hooks that block rather than advise.
+  documents loaded every session, five skills, and hooks that block rather than advise.
 ---
 
 <div class="provenance" markdown="1">
@@ -66,7 +66,7 @@ riprap is a Claude Code plugin. There is nothing to clone.
 /riprap:install
 ```
 
-The first two commands give you the guardrail documents, the four skills, and the Claude
+The first two commands give you the guardrail documents, the five skills, and the Claude
 hooks — none of which put a file in your repository, and none of which touch your
 `CLAUDE.md` or `.claude/settings.json`. `/riprap:install` adds the half that has to live
 there: the guardrail scripts, their pattern libraries, the git hooks, and the four stack

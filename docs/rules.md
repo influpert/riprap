@@ -147,7 +147,7 @@ ignores `tmp/` does not need riprap's opinion about it.
   path that resolves differently than expected is the most common cause of an agent editing
   the wrong copy of a file.
 
-## The four skills
+## The five skills
 
 **`/riprap:learn`** reviews the session and writes what was learned into the *project's*
 `CLAUDE.md` or `.claude/instructions/`. Never into riprap's own documents, which are
@@ -166,6 +166,14 @@ rule 2 and the stress-test rule applied to planning itself.
 requests. It reports the entire plan first and never deletes, merges, or closes anything
 without per-action confirmation — the actions are cheap to approve and expensive to undo,
 which is exactly the shape that warrants a prompt.
+
+**`/riprap:release`** cuts a release and then proves it happened. It derives the base
+branch, tag shape and version files from the repository rather than asking you to
+configure them, refuses to proceed on a failing check, drafts notes from what actually
+merged rather than from a commit log that squash-merging has made meaningless, and puts
+the tag on the commit that merged. Its last step verifies the release exists, because the
+failure it is written against is a model watching a pipeline go green and reporting a
+release complete that was never published.
 
 ---
 

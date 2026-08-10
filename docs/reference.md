@@ -5,11 +5,11 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 19 guardrail documents, four skills, seven hook
+  The complete riprap catalogue: 19 guardrail documents, five skills, seven hook
   registrations, four stack seams, and everything the installer writes into a repository.
 ---
 
-riprap is two halves. The plugin carries **19 guardrail documents**, **four skills** and
+riprap is two halves. The plugin carries **19 guardrail documents**, **five skills** and
 **seven hook registrations**, and puts no file in your repository. `/riprap:install` adds the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
 the git hooks, and the four stack commands the hooks call.
@@ -99,7 +99,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `tech-footprint.md` | Never add a language, runtime or tool without asking |
 | `testing.md` | Writing tests first, reading failures, the four costly mistakes |
 
-## The four skills
+## The five skills
 
 Namespaced by the harness, so a repository with its own `/learn` keeps it.
 
@@ -107,6 +107,7 @@ Namespaced by the harness, so a repository with its own `/learn` keeps it.
 - **`/riprap:spec`** — interactive feature definition: stakeholder interviews, mockups, phased work items, acceptance tests. Planning only; it writes no implementation.
 - **`/riprap:council`** — a planning council: parallel research agents, a draft, then parallel critics against it before anything is presented.
 - **`/riprap:branch-cleaner`** — prunes merged and stale branches and triages quiet pull requests. Reports the whole plan first and never deletes, merges or closes without per-action confirmation.
+- **`/riprap:release`** — cuts a release: green checks, a confirmed version, notes drafted from what actually merged, the tag on the merged commit, and a final check that the release exists. A green pipeline is not a finished release.
 {: .doc-links}
 
 Fuller descriptions, and what each one costs you in context, are on

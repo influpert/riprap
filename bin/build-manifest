@@ -25,6 +25,9 @@ is_seed() {
   case "$1" in
     bin/test|bin/lint|bin/format|bin/setup) return 0 ;;
     bin/hooks/git/pre-commit|bin/hooks/git/pre-push) return 0 ;;
+    # A project that already ignores tmp/ its own way keeps that. Refreshing this
+    # one would overwrite whatever else they had put in it.
+    tmp/.gitignore) return 0 ;;
     *) return 1 ;;
   esac
 }

@@ -426,6 +426,36 @@ jobs:
           [ "$fail" -eq 0 ] && echo "✅ skills namespaced"
           exit "$fail"
 
+      # The naming check above proves CLAUDE.md mentions every skill. It cannot prove
+      # CLAUDE.md has stopped writing their procedures out beside them, and nothing can
+      # — no check reads prose for meaning. What a check can see is the shape the fork
+      # takes when it grows back: raw git plumbing in a contributor doc, for an act that
+      # bin/release or a skill already owns. CLAUDE.md carried exactly that until the
+      # release section was pruned back to the facts only riprap knows.
+      - name: CLAUDE.md does not re-inline what a skill or bin/release owns
+        run: |
+          fail=0
+          # `git tag `      — bin/release tags, and refuses unless HEAD is on the default
+          #                   branch. A tag typed by hand skips that and cannot be undone.
+          # `gh release create` — the release workflow publishes on tag push. A second
+          #                   publisher collides with it and reads as a tooling bug.
+          # `git branch -D` — branch-cleaner's job, and it confirms before deleting.
+          for pat in 'git tag ' 'gh release create' 'git branch -D'; do
+            if grep -qF -- "$pat" CLAUDE.md; then
+              echo "❌ CLAUDE.md contains '$pat' — that act belongs to bin/release or a skill."
+              grep -nF -- "$pat" CLAUDE.md
+              fail=1
+            fi
+          done
+          # `git push origin v` is deliberately NOT in that list, and this note is here so
+          # nobody adds it as an oversight. bin/release refuses to push on purpose — a tag
+          # push publishes something that cannot be un-published, so it should be a thing a
+          # person types. release.yml only runs after the push, and the release skill's own
+          # tagging block is disabled for projects with a release script. It is the single
+          # step nothing else will ever perform, so CLAUDE.md is the right place to show it.
+          [ "$fail" -eq 0 ] && echo "✅ CLAUDE.md routes rather than re-inlines"
+          exit "$fail"
+
       # riprap stores its own answers to its own skills, which is what stops them
       # re-interviewing this repository every run. Both skills that read those
       # answers say the same thing about them: re-ask when one stops resolving,

@@ -45,3 +45,4 @@ seed	bin/lint
 namespaced	bin/riprap
 seed	bin/setup
 seed	bin/test
+seed	tmp/.gitignore

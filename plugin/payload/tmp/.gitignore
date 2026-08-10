@@ -1,0 +1,9 @@
+# tmp/ is for session artifacts — handovers, scratch mockups, throwaway output.
+# They stay local: never in a commit, never in a pull request.
+#
+# Ignore everything in here...
+*
+
+# ...except this file, so the arrangement survives a fresh clone. Without it the
+# next person to clone has an unignored tmp/ and no sign that it ever was.
+!.gitignore

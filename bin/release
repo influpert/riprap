@@ -193,8 +193,13 @@ verify_one() {
 do_verify() {
   local want="${1:-}"
 
+  # This is a shell script, so gh is the only route it has. A Claude Code session has a
+  # second one and should use it rather than skip the check: /riprap:release makes the
+  # same assertions through the GitHub MCP tools, which carry their own credential and
+  # so tend to work in exactly the sessions where gh does not.
   have_gh || {
     echo "❌ --verify needs the gh CLI, and it is not on PATH." >&2
+    echo "   In a Claude Code session, /riprap:release checks the same things via MCP." >&2
     exit 1
   }
 
@@ -212,6 +217,7 @@ do_verify() {
   # turns the whole sweep into a list of releases that all look missing.
   gh api "repos/{owner}/{repo}" --jq '.full_name' >/dev/null 2>&1 || {
     echo "❌ gh cannot reach this repository — check 'gh auth status'. Nothing checked." >&2
+    echo "   In a Claude Code session, /riprap:release checks the same things via MCP." >&2
     exit 1
   }
 

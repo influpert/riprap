@@ -54,6 +54,26 @@ If any of it is wrong, record the correction in **the project's own** `CLAUDE.md
 are replaced wholesale on update, so an edit here is reverted the next time the plugin
 moves, and a release skill that quietly loses its base branch tags the wrong thing.
 
+## How to ask the forge
+
+Several steps need answers only the forge has: whether checks passed, whether a release
+exists, what its body says. There are usually two ways to get them, and they fail
+independently:
+
+1. **The `gh` CLI**, when it is installed *and* authenticated. Both halves matter — an
+   installed `gh` holding a lapsed token fails every call, and it fails the same way a
+   missing release does. Establish it once, up front, with a cheap authenticated call
+   such as `gh api "repos/{owner}/{repo}" --jq .full_name`, rather than discovering it
+   mid-release.
+2. **GitHub MCP tools**, when the session has them. They carry their own credential, so
+   they routinely work in sessions where `gh` is unauthenticated — and the reverse.
+
+Prefer whichever is working; try the other before concluding anything. Report **"could
+not check"** only when neither route can answer, and never let that stand in for a
+finding: a lapsed credential answers exactly like a missing release, and treating the
+two as one either waves through a release that never published or sends someone to
+re-publish one that is already live. An honest unknown beats both.
+
 ## Steps
 
 ### 1. Preflight
@@ -63,11 +83,12 @@ Refuse to continue on any of these, and say which one:
 - Uncommitted changes to tracked files. They are not in the commit that gets tagged,
   so the tree that was tested is not the tree that ships.
 - `HEAD` behind `origin/$BASE_BRANCH`. Fetch and check rather than assume.
-- **Checks not green on the commit.** Read them; do not infer them from the last run
-  you happen to remember. No green checks, no release — and no administrative bypass
-  of a failing check, ever. The whole value of a gate is that it was never waved
-  through, and a release is the last place to learn that the manifest was stale or a
-  secret was in the tree.
+- **Checks not green on the commit.** Read them through whichever route from *How to
+  ask the forge* is working; do not infer them from the last run you happen to
+  remember. No green checks, no release — and no administrative bypass of a failing
+  check, ever. The whole value of a gate is that it was never waved through, and a
+  release is the last place to learn that the manifest was stale or a secret was in
+  the tree.
 
 State each result. "Preflight passed" with nothing behind it is how a skipped check
 becomes invisible.
@@ -139,16 +160,25 @@ work, and the failure surfaces as a release that already exists.
 
 Run this as its own step, after everything else, and report what it found:
 
-```bash
-# The release exists, and is the one just cut
-gh release view "$TAG" --json tagName,publishedAt
+Two of the three answers come from the forge, so use the route established in *How to
+ask the forge*:
 
-# The tag resolves on the remote, not just locally
+```bash
+# The tag resolves on the remote, not just locally — plain git, no credential needed
 git ls-remote --refs --tags origin | grep -F "refs/tags/$TAG"
 
 # The tagged tree claims the version the tag claims
+git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
 git show "$TAG:<version-file>"
+
+# The release exists, and its body is the one that was written
+gh release view "$TAG" --json tagName,publishedAt,body
 ```
+
+If `gh` is missing or its credential is refused, ask the same question through the
+GitHub MCP tools — listing the repository's releases, or reading the one for this tag —
+and treat that answer as equally authoritative. Only when neither route answers is the
+result unknown.
 
 Three failures are worth naming apart, because they look the same from a distance:
 
@@ -156,8 +186,8 @@ Three failures are worth naming apart, because they look the same from a distanc
 - **The version in the tagged tree disagrees with the tag** — the tag went on the
   wrong commit. It cannot be fixed by moving the tag; see below.
 - **The query itself failed** — an expired credential answers exactly like a missing
-  release. Say "could not check", never "not published", and check again with a
-  working credential. A false all-clear and a false alarm are both worse than an
+  release. Try the other route first. If that one fails too, say "could not check",
+  never "not published". A false all-clear and a false alarm are both worse than an
   honest unknown.
 
 Only after these pass is the release complete.

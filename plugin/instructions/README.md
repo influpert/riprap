@@ -70,7 +70,7 @@ no** — this is the one gate that does not proceed-and-record.
 → [tech-footprint.md](tech-footprint.md)
 
 **Never open a pull request on a diff nobody reviewed, and never abandon one you opened.**
-Before opening: parallel review sub-agents over the diff, one angle each; every BLOCKER and
+Before opening: parallel review subagents over the diff, one angle each; every BLOCKER and
 MAJOR fixed first; every finding published in the body with a disposition — implemented,
 deferred or ignored — and the reason. A finding dropped in silence is indistinguishable from
 one nobody made, and the reviewer repeats the search you already did. After opening: stay in
@@ -130,9 +130,9 @@ beat one 215-line file when either would answer the question.
 **Committing and merging**
 
 - Branching, worktrees, when to commit, opening a pull request? → [git.md](git.md) (~220)
-- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~185)
+- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~250)
 - A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~125)
-- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~140)
+- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~155)
 - CI is red, or needs re-running? → [ci-hygiene.md](ci-hygiene.md) (~60)
 
 **Security**

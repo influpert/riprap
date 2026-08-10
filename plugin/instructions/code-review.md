@@ -1,4 +1,4 @@
-# Reviewing a diff before it becomes a pull request
+# Code review: before the pull request opens, and until it closes
 
 **Before you open a pull request, dispatch parallel review sub-agents over the diff — one
 angle each — fix everything they classify BLOCKER or MAJOR, and publish every finding in the
@@ -36,8 +36,15 @@ something a reader can audit in ten seconds.
 
 ### 1. Review in parallel, one angle per agent
 
-Give each sub-agent a single angle and the diff against trunk. Three at minimum; scale with
-blast radius — a one-file fix does not need seven, a migration does.
+Give each sub-agent a single angle and the diff against trunk. **Three at minimum, one of
+which is always the last row of the table below**, and scale up from there with blast radius
+— a one-file fix does not need seven, a migration does.
+
+**Why three, when the plan stress-test demands five:** a plan is reviewed against futures that
+have not happened, so its angles are the only thing standing in for the world, and five is a
+floor on imagination. A diff is text that exists and can be read, so the reviewers are
+checking rather than predicting. What does not scale down is the floor itself — below three
+the angles stop being distinct and you have one reviewer with a longer prompt.
 
 ```bash
 git diff "$TRUNK"...HEAD --stat        # what to divide up, without reading the diff yourself
@@ -57,22 +64,26 @@ expensive).
 | Codebase fit & reuse | Does something here already do this? Is this a new pattern where an existing one fits? |
 | Docs & operability | What does the next reader need that is not in the diff — a runbook line, a comment, a changed default? |
 | Scope | What is in this diff that the task did not ask for? Unrelated changes are how a review stops being possible. |
+| **Should this exist** | Is the whole change wrong — better reverted, better not made, better replaced by three lines somewhere else? |
+
+**The last row is mandatory and does not count towards the three.** Every other angle asks
+how to do this well and so presupposes doing it; that one is the only reviewer that can come
+back with *"don't"*, which makes it the only one that can catch a diff that is excellent at
+something not worth shipping. It is the devil's advocate from the plan stress-test, arriving
+one stage later, and for the same reason it is not left on the menu: an angle that valuable
+gets picked exactly when it is least needed.
 
 ### 2. Classify what comes back
 
-The same four classes the plan stress-test uses, so a finding means the same thing wherever
-it was raised:
-
-| Class | Meaning |
-|---|---|
-| **BLOCKER** | Wrong or unsafe as written |
-| **MAJOR** | Real problem; the change survives with a fix |
-| **MINOR** | Worth doing, not worth blocking on |
-| **NON-ISSUE** | Examined and dismissed |
+**BLOCKER, MAJOR, MINOR, NON-ISSUE — using the table in
+[interaction-preferences.md](interaction-preferences.md) rather than a second scheme**, so a
+BLOCKER means the same thing whether it was raised against a plan or against a diff. There is
+one definition, and it is not here.
 
 ### 3. Fix, then record every finding with a disposition
 
-Three dispositions, and each one owes a reason:
+The class says how bad it is. The disposition says what you did about it, and each one owes a
+reason:
 
 | Disposition | Means | The reason must say |
 |---|---|---|
@@ -80,39 +91,65 @@ Three dispositions, and each one owes a reason:
 | **Deferred** | Real, not fixed here | Why it is outside this branch's scope, **and where it now lives**. A deferral with no tracking link is a drop with better manners. |
 | **Ignored** | Examined and rejected | What makes it not a problem here — the condition that cannot occur, the caller that does not exist, the guarantee upstream |
 
-What each class may be dispositioned as:
+The two axes are not free to combine. Most pairs are nonsense — a NON-ISSUE that was Deferred
+claims in one column that it was dismissed and in the other that it is real and still owed —
+so the legal cells are named rather than left to be worked out:
 
-- **BLOCKER — Implemented, or the pull request does not open.** There is no third option.
-- **MAJOR — Implemented**, unless it is genuinely outside this branch's scope, in which case
-  Deferred with a tracking link. Never Ignored: if it turned out not to be a problem, it was
-  never MAJOR, and the honest move is to reclassify it and say what changed your mind.
-- **MINOR and NON-ISSUE** — any of the three, one line each.
+| Class | May be dispositioned |
+|---|---|
+| **BLOCKER** | Implemented. The one exception is a BLOCKER that survives the second round below, which is Deferred, on a draft. |
+| **MAJOR** | Implemented — or Deferred with a tracking link when it is genuinely outside this branch's scope. Never Ignored: if it turned out not to be a problem it was never MAJOR, and the honest move is to reclassify it and say what changed your mind. |
+| **MINOR** | Any of the three. **Prefer Deferred for anything the task did not ask for** — a review is not a licence to grow the diff, and fixes to code near the change are exactly how a small pull request stops being separable ([development-workflow.md](development-workflow.md)). |
+| **NON-ISSUE** | Ignored. That is what the class means. If you fixed it anyway it was a MINOR. |
 
 **Every finding is published, including the NON-ISSUEs.** Those are the cheapest lines in the
 table and often the most useful: they are the only record that the question was asked.
+
+**The class is self-assigned, and that is the soft spot in the whole scheme.** Nothing checks
+it, so the cheapest route through this rule is not to skip the review — it is to review
+honestly and then classify downward, because NON-ISSUE/Ignored costs one line, no fix, no
+tracking link and no second round. The argument against exempting a diff by size applies
+unchanged one storey down: *"not really a problem"* is the verdict a finding returns about
+itself once fixing it has become inconvenient. If the reason you would write for Ignored does
+not name a specific condition that cannot occur, the finding was not a NON-ISSUE.
 
 ### 4. Publish it in the pull request body
 
 ```markdown
 ## Review
 
-Five reviewers over `main...HEAD`, by angle: correctness, contracts, security, tests, scope.
+Five reviewers over `main...HEAD`, by angle: correctness, contracts, security, tests,
+should-this-exist.
 
 | # | Class | Finding | Disposition | Why |
 |---|---|---|---|---|
-| 1 | BLOCKER | `install-payload` writes before checking the tree is clean | Implemented | Moved the check above the first write (a1b2c3d) |
-| 2 | MAJOR | No test covers the pruning path | Implemented | Added the retired-file case to the install job |
-| 3 | MINOR | `verify` prints two near-identical warnings | Deferred | Cosmetic, and it touches an output format other checks grep — #41 |
-| 4 | NON-ISSUE | Race between wire and verify | Ignored | Both run under the same lock; concurrent invocation is not reachable |
+| 1 | BLOCKER | `sync-widgets` writes before checking the tree is clean | Implemented | Moved the check above the first write (<sha>) |
+| 2 | MAJOR | No test covers the pruning path | Implemented | Added the retired-file case to the integration job |
+| 3 | MINOR | `widget verify` prints two near-identical warnings | Deferred | Cosmetic, and it touches an output format other checks grep — <issue> |
+| 4 | NON-ISSUE | Race between `sync` and `verify` | Ignored | Both run under the same lock; concurrent invocation is not reachable |
 ```
+
+**Invent the names in your examples; never borrow a real path.** The table above describes a
+repository that does not exist, deliberately. A worked example naming a file this project
+actually ships reads, to the next agent that greps for that filename, as a recorded defect in
+it — and a fabricated BLOCKER against a real path costs somebody an afternoon disproving it.
 
 ### One further round, and no more
 
 After fixing the BLOCKERs and MAJORs, re-review — but only the files the fixes touched, and
 only once. Beyond that it does not terminate: a fix is itself a change, so a rule that
-re-reviews every change would re-review for ever. If the second round still returns a
-BLOCKER, the change is not converging, and the answer is to open the pull request with the
-disagreement visible in the findings table rather than to spawn a third round.
+re-reviews every change would re-review for ever. This is the same bound, for the same
+reason, that caps the plan stress-test at one revision in
+[interaction-preferences.md](interaction-preferences.md); if one of them ever changes, both
+do, or the two halves of one mechanism start specifying different limits.
+
+**If the second round still returns a BLOCKER, the change is not converging.** Open it as a
+**draft**, with the BLOCKER carried in the table as Deferred and the disagreement stated in
+the body — not as a pull request proposing a merge. That is the only case in which a BLOCKER
+reaches a published branch, and the draft state is what keeps the exception honest: a draft
+asks for help, a ready pull request asks for a merge, and the whole point of the rule is that
+the second request has not been earned. Spawning a third round instead buys nothing; two
+rounds that disagree is a signal for a human, not for more agents.
 
 ## After it is open
 
@@ -126,6 +163,15 @@ Three things land, and each has one correct response:
 | **CI goes red** | Diagnose and fix it. This is rule 6 — a red run *on your own pull request* is the task, not a report. Push the fix; do not ask first. |
 | **A review comment** | Address it or answer it. Every comment gets one of the two, and "answer it" means saying why the change is not being made, not silence. |
 | **A merge conflict** | Resolve it yourself: merge trunk into the branch, fix the conflicts, push. Escalate only when both sides changed the same logic and picking one loses behaviour. |
+
+**This does not reopen "never push without being asked"**
+([interaction-preferences.md](interaction-preferences.md)). That rule governs the decision to
+publish, and on a branch with an open pull request the decision has already been made — by
+the user, when they asked for the pull request. Pushing a fix to it continues a published
+branch; it does not publish a new one, and the prohibition is unchanged everywhere else. What
+does survive is the smaller half of the reason: a push re-runs CI and can invalidate a review
+someone is in the middle of, so say what you pushed in the thread rather than letting a
+reviewer discover that the diff moved under them.
 
 **Prefer the harness's own event stream over polling.** If the environment can wake you when
 CI or a comment arrives, subscribe and stop; a loop of `sleep` and status checks burns a
@@ -144,15 +190,30 @@ its diff rots against a moving trunk, and the context needed to fix its first CI
 which is entirely in your session and nowhere else — decays with every hour it waits. The
 work of driving it green is small while that context is warm and large once it is gone.
 
-Stop when it merges, when it closes, or when the user says stop. And before merging one that
-nobody has commented on, say so first — [merge-gates.md](merge-gates.md) carries that warning
-and the paths that never merge autonomously at all.
+**The loop stops on four things**, and only these:
+
+- it **merges**, or it **closes**;
+- the **user says stop**;
+- it is **held for a human** under [merge-gates.md](merge-gates.md). A held pull request is
+  finished as far as you are concerned: the hold sequence ends "do not continue to the next
+  step of whatever workflow you are in", and that includes this one. Without this line the
+  loop has no reachable exit on exactly the pull requests riprap protects hardest — unattended,
+  where "the user says stop" can never fire, the only reachable exit left would be the merge
+  the hold exists to prevent;
+- **your session ends** with it still open. Then write the state into the pull request thread
+  — what is red, what you tried, what you would do next — and not into `tmp/handover/`, which
+  is git-ignored and local and which the next session, on another machine, will never see.
+  The thread is the only handover surface that travels with the pull request.
+
+And before merging one that nobody has commented on, say so first —
+[merge-gates.md](merge-gates.md) carries that warning and the paths that never merge
+autonomously at all.
 
 ## Exceptions
 
 **No exemption by size.** "Too small to review" is exactly the verdict a diff returns about
-itself, and one-line changes are disproportionately represented in production incidents
-precisely because they are the ones that get waved through.
+itself once it is written, and it is the author returning it — which is the judgment this
+whole file exists to distrust.
 
 The genuine carve-outs:
 
@@ -163,21 +224,24 @@ The genuine carve-outs:
 - **Generated output** — a rebuilt manifest, a lockfile, a version bump — is reviewed as
   "was the generator run correctly", not line by line.
 
-**There is no unattended carve-out**, unlike the plan stress-test. That rule's carve-out
-exists because plan mode needs a human present to review anything at all; this one writes its
-output into the pull request, where it waits for whoever arrives. An unattended run has
-somewhere to put its findings, so it has no excuse not to.
+**There is no unattended carve-out, and the plan stress-test does not really have one
+either.** What that rule exempts is *waiting for approval* — an unattended agent still
+dispatches its critics and still records what they found, it simply proceeds on the findings
+rather than blocking on a human who is not there. Nothing here needs even that much: this
+rule's output goes into the pull request, which waits perfectly well on its own. So an
+unattended run reviews, fixes, publishes the table, and opens — the same as an attended one,
+minus nobody.
 
 ## Enforcement
 
 **Document only, deliberately** — riprap ships no hook for this, and the gap is worth stating
 rather than leaving to look like an oversight.
 
-A git hook cannot see it: the commit and the pull request are different events, and the body
-this rule is about does not exist yet when `pre-commit` and `pre-push` run. The layer that
-*would* hold it is a required check on the pull request itself, reading the body for a review
-section — and that depends on which forge you use, which riprap does not know and refuses to
-guess.
+A git hook cannot see it. `pre-commit` and `pre-push` run against a repository; the thing this
+rule is about lives on a forge, behind an API, and on the push that matters most — the one
+before the pull request exists — there is nothing there to read at all. The layer that *would*
+hold it is a required check on the pull request itself, reading the body for a review section,
+and that depends on which forge you use, which riprap does not know and refuses to guess.
 
 If you want the check, it is a project-side one. [guardrail-template.md](guardrail-template.md)
 is the shape, and [project-standards.md](project-standards.md) covers where it gets

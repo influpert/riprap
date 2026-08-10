@@ -21,6 +21,34 @@ abandoned, your history contains work that will never be reviewed on its own ter
 **Why:** the cost is not the wrong base commit, it is that nobody notices until several hours of
 work sit on top of it. By then unwinding means rewriting history a reviewer has already read.
 
+## Work in a worktree by default
+
+**Unless the user says otherwise, give each task its own worktree — and tell them the path and
+the branch in the same message.**
+
+```bash
+git worktree add ../<repo>-<task> -b <branch> "$TRUNK"
+git worktree remove ../<repo>-<task>            # once the work has landed
+```
+
+Saying the path out loud is not politeness, it is the whole safety property. A worktree the user
+does not know about is a directory full of their work that they cannot find, in a place they
+never look, while the checkout they *are* looking at appears untouched.
+
+**Why:** the main checkout stays usable. Someone can build, run and read the code at trunk while
+an agent works, instead of finding a half-finished tree underneath them mid-command. It also
+makes branch contamination — the failure this file spends forty lines on — structurally harder,
+because a worktree added from `"$TRUNK"` cannot inherit a dirty base.
+
+**The cost, so nobody is surprised by it:** a fresh worktree has no `node_modules`, no
+virtualenv, no build cache. Run `bin/setup` in it. Hooks are fine — in a worktree `.git` is a
+file rather than a directory and riprap's hooks handle that ([git-hooks.md](git-hooks.md)), and
+`core.hooksPath` is repository-level config, so wiring it once covers every worktree.
+
+**Carve-outs:** when the user asks for the main checkout; when the project has an absolute path
+baked into its tooling that a second checkout breaks; and when the change is small enough that
+the branch will live for a single commit.
+
 ## Do not run `git diff` before committing
 
 Use these instead:
@@ -42,6 +70,12 @@ session's work, or recovering from a bad rebase — and scope it: `git diff -- <
 
 Even when the instruction is "just commit and push", or "commit this straight to trunk". Translate
 it: branch, commit, push, open a PR. Then say that is what you did.
+
+**This is not in tension with "never push without being asked" below.** Asking to push *is* the
+instruction here — "just commit and push" is a request to publish, and this section only redirects
+*where* it lands. What the rule below forbids is publishing on your own initiative, when nobody
+asked for anything to leave the machine. Told to push: branch and open a PR. Told nothing: commit
+locally and stop.
 
 **Why:** a PR is the only artifact that shows a reviewer the change as a unit. Direct pushes to trunk
 skip the hooks that run on pull requests, skip required checks, and leave no place to attach the
@@ -130,6 +164,40 @@ drives reliably — it is an editor session whose failure mode is silently dropp
 
 Hand it over explicitly, and say which commits are yours. A loop a human ends in two minutes can
 otherwise run for hours.
+
+## Commit at every coherent boundary
+
+**As soon as a task, or a part of a task, produces a change that stands on its own, commit it.**
+Do not accumulate a session's work into one commit, and do not wait to be asked.
+
+**What "coherent" means** is the test the next section already applies to subject lines: the
+tests pass, the change is meaningful on its own, and describing it does not need an "and". If it
+needs an "and", it was two commits, and the boundary between them was visible while you were
+doing the work.
+
+```bash
+git add -- <the paths you touched>       # by name
+git commit -m "Add retry to the export job"
+```
+
+**Stage by path. Never `git add -A` or `git commit -a`.** The working tree may hold work that is
+not yours — a half-finished edit the user left open, a file another tool wrote — and a commit that
+swallows it is the one case where "amendable and resettable" stops being true, because the person
+who lost the work is not the person holding the reflog. This matters most in the user's own
+checkout; in a dedicated worktree the tree contains only your work, which is one more reason the
+section above makes a worktree the default.
+
+**Why:** an uncommitted working tree is the only state from which work is actually lost, and it
+is the state that blocks every tool that refuses to run dirty — riprap's own installer among
+them. On the other side, a session that lands as one enormous commit cannot be bisected,
+reverted in part, or reviewed in pieces. Those boundaries existed while the work was happening;
+throwing them away is not something a later reader can undo.
+
+**Committing often is not pushing often**, and that distinction carries the whole rule. Never
+push without being asked ([interaction-preferences.md](interaction-preferences.md)); still
+branch and open a pull request, per the section above; still never merge a gated path
+autonomously ([merge-gates.md](merge-gates.md)). A commit is local, amendable and resettable. A
+push is the first irreversible step.
 
 ## Commit messages
 

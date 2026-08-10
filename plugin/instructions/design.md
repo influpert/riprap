@@ -4,6 +4,10 @@ A change that materially affects what a user sees gets a mockup before it gets a
 implementation, and the mockup goes on the surface the user has chosen — Claude Design by
 default.
 
+Not to be confused with [design-principles.md](design-principles.md), which is next door
+and is about a different question: how much structure to build. This file is about what
+the user ends up looking at.
+
 ---
 
 ## The rule

@@ -93,6 +93,16 @@ Pick five or more from this menu, taking the angles that actually apply:
 | Codebase fit & reuse | Does something here already do this? Is this a new pattern where an existing one fits? |
 | Alternative architecture | What is the shape nobody proposed, and why is it worse? |
 
+**One angle is mandatory and is not one of the five: the devil's advocate.** Its brief is to
+argue that the plan should not be done at all — what is the case for the status quo, and what
+does this cost that nobody priced? Dispatch it *in addition to* the five, every time.
+
+**Why it cannot be a menu item:** every other angle asks how to do this well, and so every
+other angle presupposes doing it. The devil's advocate is the only critic that can come back
+with "don't", which makes it the only one that can catch the most expensive class of mistake —
+a plan that is excellent at something not worth doing. An angle that valuable, left on a menu,
+gets picked exactly when it is least needed.
+
 Findings come back classified:
 
 | Class | Meaning | Effect on the plan |
@@ -104,6 +114,41 @@ Findings come back classified:
 
 Present the plan with the surviving findings visible. "Five critics, here is what they
 found and what changed" is reviewable. "Looks good to me" is a report about a mood.
+
+### A changed plan is a new plan
+
+**Whenever a plan changes materially — after review feedback, after a discovery
+mid-implementation, after a deviation report — stress-test the revision before presenting
+it.** Same bar as the first time: five or more critics from distinct angles, plus the
+devil's advocate, findings classified.
+
+Material means the approach changed, a subsystem entered or left scope, a new dependency or
+migration appeared, or the verification story changed. Reordered steps and reworded
+sentences do not.
+
+**This applies to a plan that has already been presented, and it caps at one further
+round.** Without both bounds it does not terminate: a critic's finding is itself review
+feedback, and acting on a BLOCKER almost always changes the approach or the verification
+story, so round one's output would mandate round two for ever. Revising a draft nobody has
+seen yet is just writing it. If a second round still returns a BLOCKER, the plan is not
+converging and the answer is to present it with the disagreement visible, not to spawn a
+third.
+
+**Why:** the critics that cleared version one reviewed version one. A revision inherits the
+*approval* of the original without inheriting its *review*, and that is exactly how an
+unreviewed approach ships under a reviewed plan's banner — the reader sees an approved plan
+and has no way to tell which parts of it were ever looked at. Worse, a revision is written
+under time pressure with the original's momentum behind it, which is the worst available
+condition for self-review.
+
+The unattended carve-out stated above applies here unchanged.
+
+`/riprap:council` runs a critic roster of this shape and is a reasonable starting point, but
+it is not a substitute for the rule: its roster can come to four, none of its critics is the
+devil's advocate — its Alternative Proponent is asked for *other ways to achieve the same
+objective*, which presupposes the objective — and it classifies findings its own way rather
+than as BLOCKER/MAJOR/MINOR/NON-ISSUE. Use it, then check the count, add the advocate, and
+classify as above.
 
 ---
 
@@ -170,16 +215,25 @@ Impact:   faster commits; a violation in an untouched file stops being caught
 
 ---
 
-## The post-change commit checkpoint
+## The post-change commit boundary
 
-After a round of edits lands, **stop and ask: commit now, or keep editing?**
+When a round of edits adds up to a coherent change, **commit it — do not stop to ask.**
+[git.md](git.md) defines what makes a change coherent and carries the commands.
 
-- **Never auto-commit.** The user decides what becomes a commit, and when.
-- **Never silently move on.** Rolling straight into the next change buries the natural
-  boundary, and a session that produces one enormous commit cannot be bisected, reverted
-  in part, or reviewed in pieces.
+- **Never auto-push.** The user decides what leaves the machine, and when. A commit is
+  local, amendable and resettable; a push is visible to everyone watching the branch and is
+  undone only by a force-push over history other people may already have pulled.
+- **Never silently move on.** Say what you committed and what comes next, in one line.
 
-The checkpoint costs one line and buys a history shaped like the work.
+**Why the prohibition sits on the push rather than the commit:** asking permission at every
+commit boundary spends a round trip to learn nothing — the user already approved the plan
+that produced the change — while the work sits uncommitted, which is the only state it can
+be lost from. The risk worth guarding against was never that commits happen; it is that a
+session lands as one enormous commit that cannot be bisected, reverted in part, or reviewed
+in pieces. Committing at *coherent* boundaries is what prevents that. Waiting to be asked
+made it more likely.
+
+The one-line announcement costs nothing and buys a history shaped like the work.
 
 ---
 

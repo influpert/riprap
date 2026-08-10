@@ -59,6 +59,16 @@ source of truth for what riprap wires, and CI cross-checks it against the payloa
 directions. That check exists because a hook once shipped unwired and looked enforced for
 months.
 
+**The behavioural and critical rules are stated in four places, and the router is the one
+that counts.** `plugin/instructions/README.md` is what the model is actually given;
+`docs/rules.md` and the tables in `README.md` and `docs/index.md` only describe it. CI binds
+all four — the two tables must be byte-identical, the counts must match the router, and the
+spelled-out numbers ("the six behavioural rules") must agree. Add or remove a rule and every
+site moves together or the build fails. Without that, a rule that reads differently in two
+places is not a formatting slip: it is two different rules, and a reader has no way to tell
+which one the model got. The spelled-out counts are the half that rots quietest — there is no
+digit in them for the document-count check to catch.
+
 **Everything published gets scrubbed.** riprap is distilled from a private codebase.
 `bin/scrub-check` gates `plugin/`, `docs/`, `.github/`, and the root markdown in CI. If a hit is
 deliberate, add it to `allowed()` or `allowed_line()` **with a stated reason** — an unexplained

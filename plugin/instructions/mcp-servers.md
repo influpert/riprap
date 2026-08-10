@@ -65,7 +65,9 @@ call instead of forty" resolves that; "reads and writes supported" does not.
 ## Adding a server
 
 1. **Establish the need.** Name the operations you cannot do with a CLI or a built-in
-   tool, or can only do badly. If that list is short, stop here.
+   tool, or can only do badly. If that list is short, stop here. A server is also a
+   footprint addition — something everyone now has to configure and keep running — so
+   [tech-footprint.md](tech-footprint.md) applies: ask before adding one.
 2. **Check what it can reach.** Scope, credentials, blast radius. A server holding write
    access to something irreversible deserves the scrutiny of a deploy credential, and its
    secrets follow [secret-hygiene.md](secret-hygiene.md).

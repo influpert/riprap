@@ -23,6 +23,10 @@ is code someone feels attached to, so the wrong approach is more likely to be pa
 
 Below the gate, just do the work. Asking permission for a one-line typo fix wastes the mechanism.
 
+Above it, once the plan is approved, **the tests are the first code you write** — and they get
+critiqued before any implementation exists. [testing.md](testing.md) has the procedure and the
+carve-outs.
+
 ## Bug fixes: always check for similar patterns
 
 This is the rule that earns the most and gets skipped the most.
@@ -77,3 +81,28 @@ who has already stopped thinking about the change.
 
 If verification is impossible here, say so and name what still needs running. That is a useful
 handover; a confident "done" that nobody ran is not.
+
+## Clean up after yourself, and stop there
+
+**Remove what you created and no longer need.** Scratch files outside `tmp/`, debug logging,
+commented-out experiments, the branch you merged, the worktree you finished with. `tmp/` is
+session scratch and git-ignored ([handovers.md](handovers.md)), so anything left there is fine;
+anything left elsewhere has just become the repository's problem.
+
+**Suggest, do not perform, the cleanup that is not yours.** Merged local branches and stale
+worktrees accumulate, and `/riprap:branch-cleaner` exists to prune them — offer it and let the
+user run it. It reports before it acts and confirms every deletion individually, which is the
+right posture for a destructive sweep over work you did not create.
+
+**Report what you notice; do not go and fix it.** Bugs, unnecessary complexity, dead code,
+broken or skipped tests, unused dependencies, duplicated logic — surface every one of them, and
+**do not deviate from the task you were given in order to repair them.** The disposition is the
+user's: extend the scope now, record it as a task for later, or discard it.
+[project-standards.md](project-standards.md) has the form to surface them in.
+
+**Why:** an agent that fixes what it finds returns a diff nobody asked for, in which the change
+that *was* requested is no longer separable from four that were not. That diff cannot be
+reviewed as a unit, cannot be reverted in part, and is the most common reason a small pull
+request becomes unmergeable. Meanwhile the finding itself is worth more reported than silently
+fixed: reported, it is a decision with a record; silently fixed, it is a surprise in somebody
+else's review.

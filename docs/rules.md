@@ -5,7 +5,7 @@ lede: >-
   The rules injected into every session, how they get there without touching your
   CLAUDE.md, and what they cost you in context.
 description: >-
-  riprap's six behavioural rules and three critical rules, the SessionStart injection that
+  riprap's six behavioural rules and four critical rules, the SessionStart injection that
   delivers them, the precedence rule when a project disagrees, and the context cost.
 ---
 
@@ -40,13 +40,13 @@ The same reasoning covers the skills. They are namespaced by the harness as `/ri
 
 riprap is paid for on every turn, so it is careful about what it injects.
 
-What arrives at session start is a **router of roughly 120 lines** — the six rules, a
-task-to-document map, and three rules restated in full. It is not the 16 guardrail documents
+What arrives at session start is a **router of roughly 140 lines** — the six rules, a
+task-to-document map, and four rules restated in full. It is not the 18 guardrail documents
 themselves. Those are read when they are needed and not before, which is why the router
 carries a line count beside each entry: two 80-line files usually beat one 215-line file
 when either would answer the question.
 
-The three exceptions are restated in full because the cost of forgetting them is not
+The four exceptions are restated in full because the cost of forgetting them is not
 symmetrical with the cost of carrying them. A model that has to go and read `testing.md`
 before it knows not to weaken a test has already weakened the test.
 
@@ -77,29 +77,37 @@ conversation gets made again next week.
 output shown, behaviour checked. If tests fail, say so and show the failure. If you skipped
 a step, say which.
 
-**5. Prefer the simpler solution.** On non-trivial changes, pause and ask whether there is a
-cleaner approach before presenting. Skip this for obvious fixes — it is a check against
-hacks, not an invitation to over-engineer.
+**5. Prefer the simpler solution.** When two designs both work, ship the one with less code in
+it, and add structure at the second occurrence rather than in anticipation of one. Skip this
+for obvious fixes — it is a check against hacks, not an invitation to over-engineer.
 
 **6. Fix bugs autonomously.** Given a bug report, a failing test, or a red CI run: diagnose
 and fix it. Do not round-trip for permission to start.
 
-## The three that cost the most when forgotten
+## The four that cost the most when forgotten
 
 **Never weaken code to make a test pass.** When a deliberate change breaks tests, the tests
 change — all of them, however many. If you are unsure whether a failure is a real bug or a
 stale assertion, ask. Guessing wrong commits a regression with an updated assertion
 certifying it as correct.
 
-**Always stress-test a plan before presenting it.** Dispatch critic subagents from distinct
-angles, every time. There is no trivial-plan exemption: a plan's own author is the worst
-possible judge of whether it needs review, and the plans that most need it are exactly the
-ones that feel finished.
+**Always stress-test a plan before presenting it, and again whenever it changes materially.**
+Dispatch critic subagents from distinct angles, plus a devil's advocate whose brief is that
+the plan should not happen at all. There is no trivial-plan exemption: a plan's own author is
+the worst possible judge of whether it needs review, and the plans that most need it are
+exactly the ones that feel finished. A revision inherits the approval of the original without
+inheriting its review, which is how an unreviewed approach ships under a reviewed plan's
+banner.
 
 **Never merge a security-sensitive change autonomously.** Hooks, permissions, CI
 configuration, auth, payments, and dependency manifests need a human on the merge, however
 green CI is. This one was added after a self-reviewed pull request touching a security hook
 came within one step of merging with a genuine regression in it.
+
+**Never add a technology the repository does not already use without asking.** A script in a
+new language, a new runtime, a new build tool. The diff shows forty working lines; the cost
+lands on every future clone, every CI image, and every upgrade — and it is one-way in
+practice, because reversing it means rewriting code that works.
 
 ## What the permission lists can and cannot do
 

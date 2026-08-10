@@ -267,7 +267,8 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           fail=0
           for n in block-destructive-outside-cwd.sh block-unreviewed-merge.sh \
-                   lint-secrets.sh format-on-write.sh session-end.sh; do
+                   lint-secrets.sh format-on-write.sh session-end.sh \
+                   lint-tech-footprint.sh; do
             out=$(echo '{}' | CLAUDE_PROJECT_DIR=/tmp/bare \
                   plugin/hooks/run-payload-hook "$n" 2>&1) || {
               echo "❌ $n exited non-zero with no payload"; fail=1; continue; }
@@ -305,6 +306,14 @@ jobs:
           git commit -qm "install riprap" 2>&1 | tee /tmp/commit.log
           grep -q "secret hygiene passed" /tmp/commit.log \
             || { echo "❌ the seed pre-commit did not reach riprap's checks"; exit 1; }
+          # The tech-footprint rule blocks a file whose technology nothing in HEAD
+          # uses, and this commit adds shell to a repo that had none. It passes only
+          # because riprap's own paths neither flag nor establish, so assert the
+          # check actually RAN — a hook that silently no-ops on the payload looks
+          # exactly like a hook that passed. The rejection path itself is covered by
+          # tests/test-tech-footprint-git.sh, which drives real commits.
+          grep -q "tech footprint unchanged" /tmp/commit.log \
+            || { echo "❌ the tech-footprint check did not run on install"; exit 1; }
 
       - name: Re-running the install is the update path, and changes nothing
         run: |

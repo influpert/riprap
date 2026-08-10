@@ -101,29 +101,35 @@ first Python file is not.
   tool documented as the way to do something stops being optional at its second reference.
   Ask.
 
-## Enforcement: none yet, deliberately
+## Enforcement
 
-**This rule currently has one layer — this document.** No hook enforces it.
-[project-standards.md](project-standards.md) asks for four layers and
-[guardrail-template.md](guardrail-template.md) says an absent layer must say so and say
-why, so: the hooks were written, reviewed, and withdrawn before shipping.
+Three layers ship, over one pattern library so the rule has a single definition:
 
-**Why they were withdrawn.** Three rounds of review found the same shape of defect each
-time, and twice the fix for one round introduced the next round's. A version that resolved
-paths by string comparison silently disabled itself in any repository reached through a
-symlink — every write allowed, no output, on a platform where the temporary directory is
-symlinked by default. Another exempted riprap's own scripts from being *flagged* while
-letting them *establish* shell, so installing riprap permanently disarmed the rule in the
-pure-Go and pure-Python repositories it was written for. A third blocked the very file an
-adopter must write to configure it.
+- **This document**, restated in the router's critical rules.
+- **A pre-commit check** — the tech-footprint block in `bin/hooks/riprap/git/pre-commit`,
+  rejecting a commit that introduces a first-of-its-kind file. It runs for everybody who
+  clones the repository, including teammates who never installed the plugin.
+- **A PreToolUse hook** — `bin/hooks/riprap/claude/lint-tech-footprint.sh`, blocking the
+  write itself, at the moment this rule actually names.
+- **The shared library** — `bin/hooks/riprap/lib/tech-footprint-patterns.sh`, holding the
+  signals and the allow-list, sourced by both enforcers.
 
-None of those were caught by the tests, because there was no test that ran the git-side
-enforcer at all — the one thing that would have caught two of the three.
+**What is exempt is also not evidence.** riprap's own files, and your
+`bin/hooks/lib/` directory, are skipped when deciding whether a file is a violation *and*
+when deciding what the repository already uses. The first version skipped only the former,
+so installing riprap — a dozen shell scripts — made shell "already here" in every adopting
+repository and permanently disarmed the rule in the pure-Go and pure-Python trees it was
+written for. Exempting a path from a rule while letting it vote on that rule is a way of
+switching the rule off without noticing.
 
-**A guardrail that fails open is worse than no guardrail**, and this is the document that
-says so about other people's rules. Shipping one that looks enforced and is not would be
-the founding mistake in `CLAUDE.md` repeated by the tool built to prevent it. The rule
-holds on its own; a reader who follows it gets the outcome. What is missing is the machine
-that catches the reader who does not.
+**The signal list will not be right for every repository.** Trim or extend it in
+`bin/hooks/lib/tech-footprint-patterns.local.sh`, which riprap sources if present and never
+overwrites — see [project-standards.md](project-standards.md). That directory is exempt for
+a reason worth stating: you cannot require somebody to disable a guardrail in order to
+configure it.
 
-Until the enforcers return, the honest statement is the one at the top: **ask.**
+**The escape hatch is per file**, because the violation is the file's existence rather than
+a line in it: `lint-ok:tech-footprint` anywhere in the file skips it. On the git side the
+marker is read from the **staged blob**, not the worktree — only the index is being
+committed, and the two can disagree. Every rule needs a way out; one without gets disabled
+wholesale the first time it is wrong.

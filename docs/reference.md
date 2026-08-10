@@ -103,6 +103,11 @@ The other view: what to scan when you want to be sure you have seen everything.
 
 Namespaced by the harness, so a repository with its own `/learn` keeps it.
 
+None of them carry settings for you to edit. What a skill needs to know about your
+project it works out, confirms with you once, and writes into your own
+`.claude/instructions/` — a value edited into a skill would be reverted the next time the
+plugin updates.
+
 - **`/riprap:learn`** — reviews the session and writes what was learned into *your* project's instructions, never riprap's, which are replaced on update.
 - **`/riprap:spec`** — interactive feature definition: stakeholder interviews, mockups, phased work items, acceptance tests. Planning only; it writes no implementation.
 - **`/riprap:council`** — a planning council: parallel research agents, a draft, then parallel critics against it before anything is presented.

@@ -346,6 +346,13 @@ jobs:
             if grep -qE "(^|[^:])/$n\b" "$d/SKILL.md"; then
               echo "❌ $d/SKILL.md refers to /$n; it is invoked as /riprap:$n"; fail=1
             fi
+            # No skill carries a settings block. plugin/skills/ is replaced wholesale
+            # on update, so a value an adopter edits into one is reverted the next time
+            # the plugin moves — and the skill goes on behaving as though it were still
+            # set. Skills ask once and store the answer in the project instead.
+            if grep -qiE '^#+[[:space:]]+(configuration|config|settings)\b' "$d/SKILL.md"; then
+              echo "❌ $d/SKILL.md has a settings block; ask once and store it in the project"; fail=1
+            fi
           done
           [ "$fail" -eq 0 ] && echo "✅ skills namespaced"
           exit "$fail"

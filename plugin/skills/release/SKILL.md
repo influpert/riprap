@@ -20,39 +20,68 @@ that shipped with no release object, no notes, and nothing to point anyone at. *
 green pipeline is not a finished release.** Do not report success from anything except
 step 7.
 
-## What this reads from the repository
+## What this needs to know
 
-Derive all of it, report what was found, and only then act. Detection that is wrong
-and silent is worse than no detection.
+Four facts about the project decide everything below: **the branch releases are cut
+from**, **the shape of a tag**, **which files carry the shipped version**, and **where
+the notes live**.
 
-| Fact | How to derive it | If that fails |
-|---|---|---|
-| Base branch | `git symbolic-ref --short refs/remotes/origin/HEAD`, minus the `origin/` prefix | `main` |
-| Tag shape | The highest tag from `git ls-remote --refs --tags origin` — whether it leads with `v`, and whether it is semantic or date-shaped | `v` and semantic |
-| Current version | That same highest tag | ask |
-| Files carrying the version | `git grep -lF "<current version>"` narrowed to manifests and metadata, not lockfiles or documentation | ask |
-| Where notes live | A directory of per-version note files, else a changelog at the root, else the forge release body alone | the release body alone |
+Never edit them into this file. Skills ship from the plugin cache and are replaced
+wholesale when the plugin updates, so a value set here is reverted the next time it
+moves — and a release skill that has quietly lost its base branch tags the wrong
+commit. An answer stored in the project survives, and is the only kind that does.
+
+**1. Read the stored answers first.** Look for a `## riprap:release` section in the
+project's `.claude/instructions/riprap-skills.md`, and in `CLAUDE.md`. If it is there,
+say what you found and go straight to the steps — do not ask again.
+
+**2. Only if there is none, ask — once — with `AskUserQuestion`.** Work each answer
+out first and offer it as the recommended option, so the ordinary case is a
+confirmation rather than a typed path:
 
 ```bash
-BASE_BRANCH="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || echo origin/main)"
-BASE_BRANCH="${BASE_BRANCH#origin/}"
+# The branch releases are cut from: the remote's own default, almost always.
+git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||'
 
+# The tag shape, and the current version: read from the highest existing tag —
+# whether it leads with `v`, and whether it is semantic or date-shaped.
+#
 # From origin, never from the local tag cache. A local tag ref that has diverged is
 # not corrected by a plain `git fetch --tags` — it declines to move an existing ref
 # without --force — so the local cache is the one source that can be quietly stale,
 # and everything below is measured against it.
 git ls-remote --refs --tags origin | sed 's|.*refs/tags/||' | sort -V | tail -5
+
+# The files carrying the version: whatever states the current one. Narrow to
+# manifests and metadata — lockfiles and documentation mention it without owning it.
+git grep -lF "<current version>"
 ```
 
-Report the table back before going further, the way this plugin's other skills report
+For where the notes live, offer what the repository already has: a directory of
+per-version note files, a changelog at the root, or the forge release body alone.
+
+**3. Write the answers down**, so the next run does not ask. Append to the project's
+`.claude/instructions/riprap-skills.md`, creating it if absent:
+
+```markdown
+## riprap:release
+
+- Release branch: `main`
+- Tag shape: `v` + semantic, e.g. `v1.4.2`
+- Version files: `package.json`
+- Notes: `.github/releases/<tag>.md`
+```
+
+If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that
+does. The instructions file is the record; `CLAUDE.md` is what makes it findable.
+
+**4. Re-ask when a stored answer stops resolving** — a version file that no longer
+exists, a branch that was renamed. Say so and ask again rather than guessing. A stale
+stored answer is exactly as dangerous as a stale setting in a file, and this is the one
+thing storing answers could otherwise make worse.
+
+Report the answers back before going further, the way this plugin's other skills report
 their whole plan first.
-
-### Where corrections go
-
-If any of it is wrong, record the correction in **the project's own** `CLAUDE.md` or
-`.claude/instructions/` — never in this file. Skills ship from the plugin cache and
-are replaced wholesale on update, so an edit here is reverted the next time the plugin
-moves, and a release skill that quietly loses its base branch tags the wrong thing.
 
 ## How to ask the forge
 
@@ -124,7 +153,7 @@ uses. Write each line for someone deciding whether to upgrade:
 - "Updated code" — says nothing
 - "Fixed a nil check in the payout serialiser" — true, and no help to a reader
 
-Put the notes where step *What this reads* found they belong, and get them in place
+Put the notes where *What this needs to know* established they belong, and get them in place
 **before** tagging. A release whose body is written afterwards is a release that spent
 some period published and empty.
 

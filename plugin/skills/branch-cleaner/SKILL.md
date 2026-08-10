@@ -12,27 +12,65 @@ This skill reports before it acts. It produces the full plan first, and it never
 deletes, merges, or closes anything without an explicit confirmation for that
 specific action. There is no mode that skips confirmation.
 
-## Configuration
+## What this needs to know
 
-Two settings need to match the repository. Read them once at the start of the
-run; everything else is derived.
+Two facts about the project decide everything below: **the branch that finished
+work merges into**, and **the branches that must never be deleted**.
+
+Never edit them into this file. Skills ship from the plugin cache and are replaced
+wholesale when the plugin updates, so a value set here is reverted the next time it
+moves — and a branch cleaner that has quietly lost its protected list deletes
+something it was told to keep. An answer stored in the project survives, and is the
+only kind that does.
+
+**1. Read the stored answers first.** Look for a `## branch-cleaner` section in the
+project's `.claude/instructions/riprap-skills.md`, and in `CLAUDE.md`. If it is
+there, say what you found and go straight to the steps. Do not ask again — a skill
+that re-interrogates the user every run trains them to answer without reading.
+
+**2. Only if there is none, ask — once — with `AskUserQuestion`.** Work out the
+likely answer first and offer it as the recommended option, so the ordinary case is
+one keystroke rather than a typed branch name:
 
 ```bash
-# The branch that finished work merges into. Everything is measured against it.
-BASE_BRANCH=main
+# The remote's own default branch, which is the answer in almost every repository.
+git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||'
 
-# Branches this skill must never delete, under any mode or flag. Add release
-# branches, long-lived integration branches, or anything the host protects.
-# BASE_BRANCH and the currently checked-out branch are always protected too,
-# whether or not they appear here.
-PROTECTED_BRANCHES=(main)
+# Candidates worth offering as protected: long-lived branches that are not the base.
+git branch -r --format='%(refname:short)' | sed 's|^origin/||' | grep -vE '^(HEAD|$)'
 ```
 
-Build one keep-list and reuse it in every filter below. Exact line matching
-(`-vxF`) is deliberate: branch names may contain `.`, `+`, or other characters
-that a regex would interpret.
+Ask two questions: which branch work merges into, and which branches must never be
+deleted. Offer the detected default first, marked as recommended.
+
+**3. Write the answers down**, so the next run does not ask. Append to the
+project's `.claude/instructions/riprap-skills.md`, creating it if absent:
+
+```markdown
+## branch-cleaner
+
+- Base branch: `main`
+- Never delete: `main`, `release/*`
+```
+
+If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that
+does. The instructions file is the record; `CLAUDE.md` is what makes it findable.
+
+**4. Re-ask when a stored answer stops resolving.** If the stored base branch no
+longer exists, say so and ask again rather than falling back to a guess — a stale
+stored answer is exactly as dangerous as a stale setting in a file, and this is the
+one thing storing answers could otherwise make worse.
+
+Then bind the answers for the rest of the run. Build one keep-list and reuse it in
+every filter below. Exact line matching (`-vxF`) is deliberate: branch names may
+contain `.`, `+`, or other characters that a regex would interpret.
 
 ```bash
+BASE_BRANCH=<the stored base branch>
+PROTECTED_BRANCHES=(<the stored never-delete list>)
+
+# BASE_BRANCH and the currently checked-out branch are always protected too,
+# whether or not they were named.
 CURRENT_BRANCH=$(git symbolic-ref --quiet --short HEAD || echo "")
 KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
 [ -n "$CURRENT_BRANCH" ] && KEEP+=("$CURRENT_BRANCH")

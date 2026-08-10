@@ -49,6 +49,16 @@ outright.
 under `plugin/hooks/`, `plugin/scripts/`, or `plugin/payload/bin/`. CI enforces this with
 one `find`.
 
+**No shipped skill carries a settings block.** `plugin/skills/` is replaced wholesale on
+`/plugin update`, so a value an adopter edits into a `SKILL.md` is reverted the next time the
+plugin moves — and the skill goes on behaving as though it were still set, which is worse
+than never having offered the setting. Whatever a skill needs to know about the project it
+works out first, asks once with `AskUserQuestion` offering that as the default, writes into
+the adopter's own `.claude/instructions/`, and reads back on every later run. A stored answer
+that no longer resolves gets re-asked, never guessed around — otherwise storing answers just
+relocates the stale-setting bug. CI rejects a `## Configuration` heading under
+`plugin/skills/`, because this is a rule about a file nobody re-reads once it works.
+
 **Two hook families, two exit codes.** `plugin/payload/bin/hooks/riprap/claude/` blocks a
 tool call with exit 2 and its message must go to **stderr**;
 `plugin/payload/bin/hooks/riprap/git/` rejects a commit with exit 1. They share pattern

@@ -97,8 +97,9 @@ files usually beat one 215-line file when either would answer the question.
 
 - Naming things, sizing functions, writing comments? → [code-style.md](code-style.md) (~105)
 - Catching, raising, suppressing, or logging an error? → [error-handling.md](error-handling.md) (~80)
-- Changing a screen, a flow, or anything else a user sees? Mock it up first — on Claude
-  Design, or on the design tool the project already uses → [design.md](design.md) (~125)
+- Changing a screen, a flow, or anything else a user sees? Mock it up first, inside the
+  project's design system — on Claude Design, or the design tool it already uses. A new
+  feature gets a full design, not one screen → [design.md](design.md) (~215)
 - Fixing a bug and wondering how far the pattern spreads? → [development-workflow.md](development-workflow.md) (~70)
 - Reaching for an external tool or integration? → [mcp-servers.md](mcp-servers.md) (~90)
 

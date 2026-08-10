@@ -100,13 +100,15 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
 12. **UI Mockup Workflow**:
 
-    Draft a UI mockup that reflects the user journey from Phase 2 and the scope from Phase 3. Include fabricated-but-realistic sample data, cover the empty/loading/error states rather than only the happy path, and keep the mockup easy to review.
+    A feature is being defined here, so the target is a **full design**, not one screen: every step of the user journey from Phase 2, every state of each screen (empty, loading, error, permission-denied, overflow), the dead ends, the entry points, and the narrowest supported width. Include fabricated-but-realistic sample data. Full scales with the feature — one dialog and its states is a complete design of a one-dialog feature.
 
-    a. Build it on the surface the design rule names — Claude Design by default, or the design tool the user or the project already uses. See `"${CLAUDE_PLUGIN_ROOT}"/instructions/design.md`. If that integration is unavailable in this session, create a scratch folder for the feature, put a self-contained HTML mockup there instead, and say which surface you used and why.
+    a. Find the design system first, per the search order in `"${CLAUDE_PLUGIN_ROOT}"/instructions/design.md`: the user's own design system, then the project's instructions and theme config, then the corporate identity and components already visible in shipped features. If the project uses a frontend library, design in that library's own components and scale. If nothing exists, propose the palette, type scale and spacing rather than inventing them silently.
 
-    b. Show the mockup to the stakeholder for review and approval.
+    b. Build it on the surface the design rule names — Claude Design by default, or the design tool the user or the project already uses. If that integration is unavailable in this session, create a scratch folder for the feature, put a self-contained HTML mockup there instead, and say which surface you used and why.
 
-    c. Ask for approval via `AskUserQuestion`:
+    c. Show the design to the stakeholder for review and approval, saying which design system it was assembled from.
+
+    d. Ask for approval via `AskUserQuestion`:
     ```
     options:
       - label: "Approve mockup"
@@ -117,9 +119,9 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
         description: "No mockup needed — proceed to documentation"
     ```
 
-    d. If "Request changes", iterate (max 3 rounds) until the design direction is agreed.
+    e. If "Request changes", iterate (max 3 rounds) until the design direction is agreed.
 
-    e. Record where the approved design artifact lives — its link on the design surface, or its path in the scratch area — so implementation planning can reference it without re-deriving it.
+    f. Record where the approved design artifact lives — its link on the design surface, or its path in the scratch area — so implementation planning can reference it without re-deriving it.
 
 13. **Create the feature document**:
 

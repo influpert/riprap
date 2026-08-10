@@ -42,7 +42,7 @@ them and they would rot on every edit of every document.
 
 - [code-style.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-style.md) — naming, structure, and comments: the parts of style a formatter cannot decide for you.
 - [error-handling.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/error-handling.md) — let errors surface, and keep secrets and personal data out of the logs.
-- [design.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design.md) — anything a user sees gets a mockup before it gets an implementation, on Claude Design or on the design tool the project already uses.
+- [design.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design.md) — anything a user sees gets a mockup before it gets an implementation, drawn inside the project's design system and in its frontend library's own primitives. A new feature gets a full design, not one screen.
 - [mcp-servers.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/mcp-servers.md) — how to decide whether a capability belongs in an MCP server at all, and what has to be written down when you add one.
 {: .doc-links}
 
@@ -78,7 +78,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 |---|---|
 | `ci-hygiene.md` | Re-running CI without corrupting the result or burning the budget |
 | `code-style.md` | Naming, structure, comments — what a formatter cannot decide |
-| `design.md` | Mocking up a UI change before building it, and where the mockup goes |
+| `design.md` | Mocking up a UI change before building it, inside the existing design system |
 | `development-workflow.md` | When to plan, how to scope a fix, what "done" has to mean |
 | `error-handling.md` | Letting errors surface; keeping secrets out of logs |
 | `git.md` | Branching, committing, merging, and the costly failure modes |

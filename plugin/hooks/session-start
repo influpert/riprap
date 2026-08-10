@@ -7,8 +7,8 @@
 # update, and a project that never adopted riprap would still be carrying it.
 #
 # What is emitted is a router, not the rules themselves. It is paid for on every
-# turn, so it stays around 135 lines and points at the files rather than
-# inlining them — with one exception, the four critical rules, which are
+# turn, so it stays around 150 lines and points at the files rather than
+# inlining them — with one exception, the five critical rules, which are
 # restated in full because the cost of forgetting them exceeds the cost of
 # carrying them.
 set -euo pipefail

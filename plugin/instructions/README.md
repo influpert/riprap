@@ -43,7 +43,7 @@ is a report, not a new task. → [development-workflow.md](development-workflow.
 
 ## Critical rules
 
-These four are restated in full rather than linked: they cost the most when forgotten.
+These five are restated in full rather than linked: they cost the most when forgotten.
 
 **Never weaken code to make a test pass.** When a deliberate change breaks tests, the
 tests change — all of them, however many. If you are unsure whether a failure is a real
@@ -68,6 +68,15 @@ cost lands on every future clone, every CI image, and every upgrade. Ask before 
 file — there is no cheap moment after it. **Unattended, with nobody to ask, the answer is
 no** — this is the one gate that does not proceed-and-record.
 → [tech-footprint.md](tech-footprint.md)
+
+**Never open a pull request on a diff nobody reviewed, and never abandon one you opened.**
+Before opening: parallel review sub-agents over the diff, one angle each; every BLOCKER and
+MAJOR fixed first; every finding published in the body with a disposition — implemented,
+deferred or ignored — and the reason. A finding dropped in silence is indistinguishable from
+one nobody made, and the reviewer repeats the search you already did. After opening: stay in
+the loop until it merges — CI red is yours to fix, every review comment gets a change or an
+answer, conflicts get resolved rather than reported.
+→ [code-review.md](code-review.md)
 
 ---
 
@@ -120,9 +129,10 @@ beat one 215-line file when either would answer the question.
 
 **Committing and merging**
 
-- Branching, worktrees, when to commit, opening a pull request? → [git.md](git.md) (~200)
+- Branching, worktrees, when to commit, opening a pull request? → [git.md](git.md) (~220)
+- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~185)
 - A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~125)
-- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~115)
+- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~140)
 - CI is red, or needs re-running? → [ci-hygiene.md](ci-hygiene.md) (~60)
 
 **Security**

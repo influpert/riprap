@@ -103,6 +103,33 @@ These apply to every PR, gated or not:
 3. **CI fully green.** Every check passing. **`--admin` bypass is forbidden** — if the
    check is wrong, fix the check.
 
+## A pull request with no comments has not been reviewed
+
+**When asked to merge a pull request that carries no review comments at all — no reviews, no
+inline comments, no discussion — say so before you merge it.** One sentence, naming what is
+missing, and then do what the user decides.
+
+```
+This PR has no review comments — no reviews and no inline comments, so nothing on it
+records a second pair of eyes. Merge anyway, or request a review first?
+```
+
+**This is a warning, not a gate.** A solo repository, a revert, a docs typo: plenty of pull
+requests legitimately merge unread, and blocking them would be the kind of rule that gets
+switched off wholesale. Asking costs a line; the user has context you do not, and after
+they answer it is their call.
+
+**Why it is worth the line anyway:** an empty comment thread is ambiguous in the one
+direction that matters. It looks identical whether the change was reviewed carefully in a
+session nobody wrote down, or opened and merged by the same party in ninety seconds — and
+those are the two ends of the range this file exists to keep apart. Empty threads are also
+exactly what an agent-authored pull request produces by default, so without the warning the
+unreviewed case is the *quiet* one and the reviewed case is the loud one, which is backwards.
+
+The findings table from [code-review.md](code-review.md) is what usually fills the gap. A
+pull request whose body carries its own review findings is not an unread one, and saying that
+is a better answer than merging in silence.
+
 ## Never fabricate an approval
 
 When every agent authenticates as the same account, a formal approval on your own PR will

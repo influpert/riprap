@@ -211,6 +211,14 @@ jobs:
             echo "❌ docs/rules.md's heading does not say '$cw that cost the most'"; fail=1; }
           grep -q "$bw behavioural rules and $cw critical rules" docs/rules.md || {
             echo "❌ docs/rules.md's front matter does not say '$bw behavioural rules and $cw critical rules'"; fail=1; }
+          # The two sites that summarise the critical rules underneath the table. They are
+          # the other half of the "four sites move together" claim, and until this check
+          # they were the half nothing bound: the table above them is diffed byte-for-byte
+          # while the sentence below it could say any number at all.
+          grep -q "Plus $cw restated in full because they cost the most when forgotten" README.md || {
+            echo "❌ README.md does not say 'Plus $cw restated in full'"; fail=1; }
+          grep -qi "^$cw more are restated in full because they cost the most when forgotten" docs/index.md || {
+            echo "❌ docs/index.md does not say '$cw more are restated in full'"; fail=1; }
 
           [ "$fail" -eq 0 ] && echo "✅ site, README and repository agree"
           exit "$fail"

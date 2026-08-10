@@ -16,6 +16,59 @@ riprap is a Claude Code plugin. Three things must not be confused:
 A change under `plugin/` changes what every future adopter receives. A change outside it
 changes only riprap.
 
+## riprap runs on itself
+
+`.claude/settings.json` registers this repository as its own marketplace and enables the
+plugin **from the working tree** — not from a cached copy. So the skills, the hooks and the
+session router you are subject to here are the ones in `plugin/`, as they currently stand
+on your branch. Edit a skill and `/reload-plugins` picks it up.
+
+This is deliberate, and it is the point: a defect in a shipped skill should cost riprap
+first. It also means two things are true here that are true nowhere else, and both are
+traps.
+
+**The session router is written for adopters, and two of its statements are false here.**
+It is `plugin/instructions/README.md`, injected at the start of every session. It says its
+own files are read-only and that a lesson must never be written into them — in an adopting
+repo those files are a plugin cache the next update overwrites, so that is right; here
+they are the source, and editing them is the job. It also carries a Quick reference to
+`bin/test`, `bin/lint`, `bin/format`, `bin/setup` and `bin/riprap verify`. The first four
+exist and are riprap's own; **`bin/riprap` does not exist here**, because riprap has not
+run `/riprap:install` against itself.
+
+The router settles this itself: *where a project doc and a riprap doc disagree, the project
+doc wins*. This file is that project doc. Both statements above are overridden here, and
+this paragraph is what overrides them.
+
+**Do not run `/riprap:install` in this repository.** A human has to type it, so it cannot
+happen by accident — but it is now one keystroke away, and it would drop seed stubs, git
+hooks and hook test fixtures into the root. Those fixtures contain token-shaped strings on
+purpose, and `bin/` is in none of the scrub path lists.
+
+### The skills, and what they are for here
+
+Cutting a release, pruning branches, recording a lesson, defining a feature and planning
+something hard all have a skill already. **Use it rather than writing the procedure out
+again.** A procedure spelled out in this file beside a skill that covers the same ground is
+not a convenience — it is a second definition of the same rule, and it wins by default
+because this file is injected every session while a skill is not. The two then drift with
+nothing to catch it, which is the failure the four-places rule below exists to prevent.
+
+| Skill | For |
+|---|---|
+| `/riprap:release` | Cutting a release. See **Cutting a release** below for what is specific to riprap. |
+| `/riprap:branch-cleaner` | Pruning merged and stale branches, and triaging quiet pull requests. |
+| `/riprap:learn` | Recording what a session taught. **Read the note in the answers file first** — this skill's central rule inverts here. |
+| `/riprap:spec` | Defining a feature. It writes into `tmp/`; nothing it generates may land under `plugin/`, and `docs/` is the public site, not a scratch area. |
+| `/riprap:council` | Planning something hard, with research and adversarial critique. Stateless. |
+
+**riprap's answers to its own skills live in [.claude/instructions/riprap-skills.md](.claude/instructions/riprap-skills.md).**
+Two of the skills read that file before asking anything, so it is what stops them
+re-interviewing this repository every run. It also carries the corrections for `learn` and
+`spec` — they are there rather than here because a skill is licensed to rewrite this file
+and told to keep it short, and a rule constraining a skill should not sit somewhere that
+skill can shrink.
+
 ## The rules that are easy to get wrong here
 
 **The split between `plugin/` and `plugin/payload/` is not arbitrary.** Prose, skills and
@@ -92,14 +145,16 @@ both the path and the exact string being permitted.
 ## Before you commit
 
 ```bash
-bin/build-manifest --check                       # manifest matches, namespace holds
-bin/scrub-check plugin/ docs/ README.md CONTRIBUTING.md TRADEMARK.md CLA.md .github/
-cmp LICENSE plugin/LICENSE && \
-  cmp LICENSE plugin/payload/bin/hooks/riprap/LICENSE   # notice travels with every copy
-for t in plugin/payload/bin/hooks/riprap/tests/test-*.sh; do bash "$t"; done
-shellcheck -S warning $(find bin plugin/hooks plugin/scripts plugin/payload/bin \
-  -type f \( -name '*.sh' -o -perm -u+x \))
+bin/lint     # shellcheck over every script, and bin/scrub-check over everything published
+bin/test     # the hook tests, the generated manifest, and the licence copies
 ```
+
+**Those two are the definition, and this file no longer holds a copy of it.** They are the
+same seams riprap ships to every project, they are what CI runs, and they are what the
+router already told you to run. Writing the underlying commands out here as well is how
+the list in this file came to disagree with the one in CI about which paths get scrubbed —
+a difference nobody noticed, because both looked authoritative. If you need to know what
+they do, read them: they are twenty lines each and they say why.
 
 Changes to hooks deserve more than that: install into a scratch repo and confirm a fresh
 install still commits cleanly *and* that the commit output shows riprap's checks ran — the

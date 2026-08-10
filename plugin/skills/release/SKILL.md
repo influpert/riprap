@@ -22,9 +22,9 @@ step 7.
 
 ## What this needs to know
 
-Five facts about the project decide everything below: **the branch releases are cut
+Six facts about the project decide everything below: **the branch releases are cut
 from**, **the shape of a tag**, **which files carry the shipped version**, **where the
-notes live**, and **what publishes the artifact**.
+notes live**, **what performs the bump and the tag**, and **what publishes the artifact**.
 
 Never edit them into this file. Skills ship from the plugin cache and are replaced
 wholesale when the plugin updates, so a value set here is reverted the next time it
@@ -60,6 +60,31 @@ git grep -lF "<current version>"
 For where the notes live, offer what the repository already has: a directory of
 per-version note files, a changelog at the root, or the forge release body alone.
 
+For what performs the bump and the tag, **look for a release script before assuming this
+skill does it**:
+
+```bash
+# A project that has one usually keeps it somewhere obvious.
+ls bin/release script/release tools/release 2>/dev/null
+git grep -lE '^\s*(release|publish):' Makefile Justfile Taskfile.yml package.json 2>/dev/null
+```
+
+Offer three answers:
+
+- **This skill, by hand** — steps 4 and 5 exactly as written. The right answer for most
+  projects, and the one to offer first when the search above finds nothing.
+- **A project script** — then steps 4 and 5 defer to it entirely.
+- **A pipeline, on merge** — then this skill neither bumps nor tags, and step 2's warning
+  about two things computing a version is the whole of the problem to solve.
+
+A project keeps a release script because it enforces something no reviewer re-checks:
+that the version moves forwards, that the commit about to be tagged is really on the base
+branch, that the tag list was read from the remote rather than a local cache that git
+will not update without `--force`. Setting the version files by hand and typing `git tag`
+reproduces the visible half of that script and none of the checks — and the failure it
+lets through is a published tag, which is the one thing here that cannot be withdrawn.
+Search before you offer, and prefer the script wherever one exists.
+
 For what publishes the artifact, the manifests already say which registry the project
 belongs to — `package.json`, `Cargo.toml`, `pyproject.toml`, a `.gemspec`, a
 `Dockerfile`. Offer the matching command, and offer these two alongside it, because
@@ -86,8 +111,14 @@ published. Ask rather than infer, even when a manifest makes the registry obviou
 - Tag shape: `v` + semantic, e.g. `v1.4.2`
 - Version files: `package.json`
 - Notes: `.github/releases/<tag>.md`
+- Bump and tag: this skill, by hand — steps 4 and 5 as written
 - Publishes: a workflow, on tag push — run nothing by hand
 ```
+
+**Write all six lines, including the ones whose answer is the default.** The section gets
+rewritten whenever an answer stops resolving, and a fact recorded outside this list is
+dropped by that rewrite without anything saying so. The next release is what finds out,
+and by then it has already tagged.
 
 If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that
 does. The instructions file is the record; `CLAUDE.md` is what makes it findable.
@@ -213,6 +244,11 @@ Set every version file named in *What this needs to know*, in one commit. If tho
 gated — they usually are, and should be — the bump goes through a pull request like
 any other change. Wait for it to merge. Do not tag yet.
 
+**Where the stored answer names a project script, run the script instead.** Setting the
+files is what it is for, and it is the only thing checking the version actually moves
+forwards. Show its output, and do not edit a version file by hand as well: two writers of
+the same number is how a bump lands half-applied.
+
 ### 5. Tag the commit that merged
 
 Tag the merge commit specifically, and immediately.
@@ -228,6 +264,13 @@ git fetch origin "$BASE_BRANCH"
 git tag -a "$TAG" -m "$TAG" "$MERGE_SHA"   # ← the sha the merge produced
 git push origin "$TAG"
 ```
+
+**Where the stored answer names a project script, the block above is not yours to run.**
+Run the script on the merged commit and show its output. Checking that the commit really
+is on the base branch is exactly the kind of thing such a script does and the block above
+does not — it tags whatever `$MERGE_SHA` happens to hold. If the script declines to push,
+that is deliberate; push the tag yourself as a separate, stated act, and never work around
+a refusal by tagging by hand.
 
 ### 6. Publish
 
@@ -333,5 +376,7 @@ was replaced is more useful than a gap where it used to be.
 - **Report, then act.** Every refusal names which check failed and what to do next.
 - **Never bypass a failing check**, however small the release.
 - **One decision point for the version**, confirmed by a human.
+- **Defer to the project's release script** wherever one exists. It enforces checks this
+  skill cannot see, and hand-tagging around it is unrecoverable.
 - **Notes before the tag**, always.
 - **Finish at step 7.** A green pipeline is not a finished release.

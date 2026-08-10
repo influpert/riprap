@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# bin/lint — lint riprap. Given paths, lint only those.
+#
+# The path-taking half of the contract is not decoration: riprap's own pre-commit
+# hook passes staged files, so a seam that ignored its arguments would scan the
+# whole tree on every commit and get switched off within a week.
+#
+# Two checks, and the second is the one that matters most here. shellcheck keeps
+# the scripts honest; bin/scrub-check keeps the private codebase riprap was
+# distilled from out of everything published. Both are what CI runs, so local and
+# CI cannot drift.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Paths riprap publishes, and therefore scrubs. Kept in step with the same list
+# in .github/workflows/ci.yml, CLAUDE.md and CONTRIBUTING.md.
+SCRUB_PATHS=(plugin/ docs/ .claude/ README.md CONTRIBUTING.md TRADEMARK.md CLA.md .github/)
+
+shell_files() {
+  find bin plugin/hooks plugin/scripts plugin/payload/bin \
+    -type f \( -name '*.sh' -o -perm -u+x \) ! -path '*/.git/*' | sort -u
+}
+
+if [ "$#" -gt 0 ]; then
+  # Only the arguments, and only the ones each tool can say anything about.
+  # A formatter or linter handed a file it does not understand should be a
+  # no-op, never an error, or editing an unrelated file starts failing commits.
+  shell_args=()
+  scrub_args=()
+  for f in "$@"; do
+    [ -f "$f" ] || continue
+    case "$f" in
+      *.sh) shell_args+=("$f") ;;
+      *) head -n1 -- "$f" | grep -q '^#!.*\(bash\|sh\)$' && shell_args+=("$f") ;;
+    esac
+    case "$f" in
+      plugin/*|docs/*|.claude/*|.github/*|README.md|CONTRIBUTING.md|TRADEMARK.md|CLA.md)
+        scrub_args+=("$f") ;;
+    esac
+  done
+  [ "${#shell_args[@]}" -eq 0 ] || shellcheck -S warning "${shell_args[@]}"
+  [ "${#scrub_args[@]}" -eq 0 ] || bin/scrub-check "${scrub_args[@]}"
+  echo "✅ bin/lint passed"
+  exit 0
+fi
+
+echo "--- shellcheck ---"
+# shellcheck disable=SC2046  # word splitting is what feeds the file list in
+shellcheck -S warning $(shell_files)
+echo "✅ shellcheck clean"
+
+echo
+echo "--- Nothing publishable leaks ---"
+bin/scrub-check "${SCRUB_PATHS[@]}"
+
+echo
+echo "✅ bin/lint passed"

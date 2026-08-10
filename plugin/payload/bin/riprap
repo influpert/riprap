@@ -160,7 +160,14 @@ verify_claude_hooks() {
 
   [ "$found" -eq 1 ] || fail "❌ $HOOK_DIR holds no hooks. Re-run /riprap:install."
 
-  if [ -f "$SETTINGS" ] && grep -q '"riprap"[[:space:]]*:[[:space:]]*false' "$SETTINGS"; then
+  # enabledPlugins is keyed `plugin@marketplace`, not by the bare plugin name, so
+  # the `@...` suffix has to be part of the pattern. Matching only `"riprap"` made
+  # this check unable to fire at all — a disabled plugin verified clean, which is
+  # the exact reading this function exists to refuse. The suffix is optional and
+  # the marketplace unanchored: a fork publishes under its own marketplace name,
+  # and this should catch a disabled riprap whichever one installed it.
+  if [ -f "$SETTINGS" ] && \
+     grep -qE '"riprap(@[^"]+)?"[[:space:]]*:[[:space:]]*false' "$SETTINGS"; then
     fail "❌ $SETTINGS disables the riprap plugin, so none of these hooks run."
   fi
 }

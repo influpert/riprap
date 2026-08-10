@@ -1,5 +1,13 @@
 .DS_Store
 
+# Per-developer settings, written by Claude Code itself. It is ignored for two
+# reasons and either alone would be enough: it holds machine-specific absolute
+# paths in its permission rules, and bin/scrub-check walks the filesystem rather
+# than git — so an un-ignored copy hands every contributor an "absolute home
+# path" finding from a file they never wrote and cannot commit away.
+.claude/settings.local.json
+
+
 # Jekyll build output, if anyone previews the site in place. Belt and braces only: the real
 # control is building elsewhere, because bin/scrub-check walks the filesystem rather than
 # git and would scan an ignored directory. Preview with:

@@ -16,34 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Shellcheck
+      # These two steps run riprap's own stack seams rather than restating what
+      # they do. That is the contract riprap ships — "hooks and CI both call this,
+      # so there is exactly one definition and the two cannot drift" — and it was
+      # not true of riprap itself: CI and CLAUDE.md held separate copies of the
+      # scrub path list, and they had already come to disagree.
+      #
+      # bin/lint  = shellcheck over every script + bin/scrub-check over everything
+      #             published, including .claude/.
+      # bin/test  = the hook tests, bin/build-manifest --check, and the licence
+      #             copies with the Required Notice line the licence obliges.
+      - name: Lint
         run: |
           sudo apt-get update -qq && sudo apt-get install -y shellcheck
-          shellcheck -S warning $(find bin plugin/hooks plugin/scripts plugin/payload/bin \
-            -type f \( -name '*.sh' -o -perm -u+x \) ! -path '*/.git/*' 2>/dev/null | sort -u)
+          bin/lint
 
-      - name: Hook tests
-        run: for t in plugin/payload/bin/hooks/riprap/tests/test-*.sh; do bash "$t"; done
-
-      - name: Manifest matches the payload, and stays namespaced
-        run: bin/build-manifest --check
-
-      - name: Nothing publishable leaks
-        run: |
-          bin/scrub-check plugin/ docs/ README.md \
-            CONTRIBUTING.md TRADEMARK.md CLA.md .github/
-
-      # The licence's Notices clause obliges anyone redistributing riprap to pass
-      # on the `Required Notice:` line, not just the terms. A payload copy that
-      # drifts to the bare licence body silently drops the attribution at the
-      # highest-volume boundary there is — every adopter's repository.
-      - name: Every licence copy is identical, notice included
-        run: |
-          cmp LICENSE plugin/LICENSE
-          cmp LICENSE plugin/payload/bin/hooks/riprap/LICENSE
-          grep -q '^Required Notice:' LICENSE
-          test ! -x plugin/payload/bin/hooks/riprap/LICENSE
-          echo "✅ three identical licence copies, notice present"
+      - name: Test
+        run: bin/test
 
       # The plugin ships prose and skills; every executable is in the payload,
       # where the project can read it. One find keeps that true.
@@ -166,16 +155,23 @@ jobs:
           #    And the enumerations beside the counts. A count that moves while the list
           #    next to it does not is the same rot in a shape no count check can see:
           #    five promised, four named. Every document that names any skill names all.
-          for f in README.md docs/index.md docs/install.md docs/reference.md docs/rules.md; do
+          #
+          #    CLAUDE.md is in this list because riprap uses the skills it ships, and
+          #    the way that stops being true is not a deletion — it is someone writing
+          #    the procedure out again beside the skill that already covers it. Naming
+          #    every skill is the part of that a check can see. Note what it does NOT
+          #    prove: a CLAUDE.md that names all of them and still restates a whole
+          #    procedure passes this. No check can prove prose has stopped forking one.
+          for f in README.md CLAUDE.md docs/index.md docs/install.md docs/reference.md docs/rules.md; do
             for d in plugin/skills/*/; do
               k=$(basename "$d")
               grep -qF "/riprap:$k" "$f" || { echo "❌ $f never names /riprap:$k"; fail=1; }
             done
             #    And the other direction, which is the half a one-way check misses: a
-            #    skill that was renamed or retired leaves its old name in all five
-            #    documents, every count still agrees, and CI stays green. Same rot as
-            #    "five promised, four named", pointing the reader at an invocation that
-            #    no longer exists.
+            #    skill that was renamed or retired leaves its old name in every one of
+            #    these documents, every count still agrees, and CI stays green. Same rot
+            #    as "five promised, four named", pointing the reader at an invocation
+            #    that no longer exists.
             for m in $(grep -oE '/riprap:[a-z][a-z0-9-]*' "$f" | sort -u); do
               n="${m#/riprap:}"
               [ "$n" = "install" ] && continue   # a command, not a skill
@@ -402,7 +398,15 @@ jobs:
               echo "❌ $d/SKILL.md name: does not match its directory"; fail=1; }
             # The harness prefixes the plugin name; the description has to agree,
             # or a project with its own /$n leaves the model choosing between two.
-            if grep -qE "(^|[^:])/$n\b" "$d/SKILL.md"; then
+            #
+            # A leading path component is not an invocation. `bin/release` and
+            # `script/release` are what a release skill has to tell you to look for,
+            # and the first version of this check read them as bare invocations —
+            # a guardrail firing on the legitimate case, which is how guardrails get
+            # deleted. So the character before the slash must be one that could not
+            # be part of a path: not a colon (that is /riprap:$n), and not alphanumeric,
+            # dot, dash, underscore or another slash. A bare " /$n" or "`/$n`" still fails.
+            if grep -qE "(^|[^:[:alnum:]_./-])/$n\b" "$d/SKILL.md"; then
               echo "❌ $d/SKILL.md refers to /$n; it is invoked as /riprap:$n"; fail=1
             fi
             # No skill carries a settings block. plugin/skills/ is replaced wholesale
@@ -420,6 +424,57 @@ jobs:
             done < <(find "$d" -name '*.md')
           done
           [ "$fail" -eq 0 ] && echo "✅ skills namespaced"
+          exit "$fail"
+
+      # riprap stores its own answers to its own skills, which is what stops them
+      # re-interviewing this repository every run. Both skills that read those
+      # answers say the same thing about them: re-ask when one stops resolving,
+      # because a stale stored answer is the single thing storing answers could
+      # make worse. That rule is addressed to a model mid-run, which is the worst
+      # place to first discover that a path moved. This checks it at merge instead.
+      - name: riprap's answers to its own skills still resolve
+        run: |
+          fail=0
+          A=.claude/instructions/riprap-skills.md
+          [ -f "$A" ] || { echo "❌ $A is missing; every skill will re-interview the repo"; exit 1; }
+
+          # A section per skill that carries the stored-answers protocol. Detected by
+          # the protocol itself rather than a hardcoded list, so a skill that grows one
+          # is caught the day it ships rather than the day it asks.
+          for d in plugin/skills/*/; do
+            n=$(basename "$d")
+            grep -q 'riprap-skills\.md' "$d/SKILL.md" || continue
+            grep -q "^## riprap:$n\$" "$A" || {
+              echo "❌ $A has no '## riprap:$n' section, but that skill reads one"; fail=1; }
+          done
+
+          # Every path named as a version file exists. This is the answer whose rot is
+          # worst: the release skill writes the version into whatever it is told, and a
+          # path that moved means a release that ships the old number everywhere.
+          while IFS= read -r p; do
+            [ -e "$p" ] || { echo "❌ $A names version file $p, which does not exist"; fail=1; }
+          done < <(sed -n 's/^- Version files: //p' "$A" | tr ',' '\n' | tr -d ' `')
+
+          # The release branch is the repository's actual default. A renamed branch is
+          # how a release gets cut from somewhere nobody is watching.
+          D=$(sed -n 's/^- Release branch: //p' "$A" | tr -d ' `')
+          B=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
+          [ -n "$D" ] || { echo "❌ $A records no release branch"; fail=1; }
+          if [ -n "$D" ] && ! git show-ref --verify --quiet "refs/heads/$D" \
+             && ! git show-ref --verify --quiet "refs/remotes/origin/$D" \
+             && [ "$D" != "$B" ]; then
+            echo "❌ $A records release branch '$D', which resolves to nothing"; fail=1
+          fi
+
+          # And the answer that is load-bearing for riprap specifically: the bump and
+          # the tag go through bin/release, which enforces three things nothing else
+          # does. Hand-tagging around it publishes a tag that cannot be withdrawn and
+          # burns the version number for good.
+          grep -q '^- Bump and tag: .*bin/release' "$A" || {
+            echo "❌ $A no longer records bin/release as what performs the bump and tag"; fail=1; }
+          [ -x bin/release ] || { echo "❌ bin/release is not executable"; fail=1; }
+
+          [ "$fail" -eq 0 ] && echo "✅ riprap's stored answers resolve"
           exit "$fail"
 
       # The plugin must be harmless in a repository that never ran the install.

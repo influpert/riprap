@@ -219,17 +219,36 @@ jobs:
           #    riprap's own machinery lives under plugin/ — so every guardrail script
           #    it ships could be changed without an owner review.
           #
-          #    Only root-anchored patterns are checked. The keyword globs
-          #    (**/*auth*, **/*payment*) are deliberately aspirational: they cost
-          #    nothing while matching nothing, and a missing one costs a merge.
-          #    ASPIRATIONAL lists the anchored paths allowed to match nothing, each
-          #    of which is a real path in an ADOPTING project rather than in this one.
-          ASPIRATIONAL='^/bin/hooks/|^/\.claude/settings\.json$'
-          while read -r pat _rest; do
-            case "$pat" in ''|'#'*) continue ;; /*) ;; *) continue ;; esac
-            printf '%s\n' "$pat" | grep -qE "$ASPIRATIONAL" && continue
-            probe="${pat#/}"; probe="${probe%/\*\*}"
-            [ -n "$(git ls-files -- "$probe" | head -1)" ] || {
+          #    There is NO exemption list. The first version of this check had one,
+          #    and it contained /bin/hooks/ — the exact rule that was broken — so it
+          #    passed against the very file it was written to reject. An exemption
+          #    shaped around the bug is not an exemption, it is a blindfold. Rules
+          #    for paths this repository does not have are simply not kept.
+          #
+          #    Only PATH rules are checked. The keyword globs (**/*auth*,
+          #    **/*payment*) carry no slash, match on filename anywhere, and are
+          #    meant to match nothing until the day such a file appears.
+          #
+          #    `:(glob)` is load-bearing. Git's DEFAULT pathspec lets `*` cross a
+          #    slash; gitignore and CODEOWNERS do not. Without it a rule like
+          #    /plugin/payload/bin/hooks/*.sh — which owns nothing at all — matches
+          #    14 files here and passes, so tightening a rule to own less would look
+          #    like tightening it to own something.
+          while read -r pat owner || [ -n "$pat" ]; do   # `||` so a file with no
+            case "$pat" in ''|'#'*) continue ;; esac      # trailing newline still
+            case "$pat" in '**/'*) continue ;; esac       # yields its last rule
+            # A pattern carrying a slash anywhere is root-anchored under gitignore
+            # rules, so `plugin/ghost/**` is as live on GitHub as `/plugin/ghost/**`
+            # and has to be checked too. The `**/`-leading keyword globs above are
+            # the only ones meant to match nothing.
+            case "$pat" in */*) ;; *) continue ;; esac
+            case "$owner" in @*) ;; *)
+              echo "❌ CODEOWNERS rule '$pat' names no owner — it REMOVES ownership"
+              echo "   from that path, because the last matching rule wins."
+              fail=1; continue ;;
+            esac
+            probe="${pat#/}"
+            [ -n "$(git ls-files -- ":(glob)$probe" | head -1)" ] || {
               echo "❌ CODEOWNERS rule '$pat' matches no tracked file"; fail=1; }
           done < .github/CODEOWNERS
 

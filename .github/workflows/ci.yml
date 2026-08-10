@@ -463,6 +463,15 @@ jobs:
       # make worse. That rule is addressed to a model mid-run, which is the worst
       # place to first discover that a path moved. This checks it at merge instead.
       - name: riprap's answers to its own skills still resolve
+        env:
+          # The repository's real default branch, from the event payload. It has to
+          # come from here: actions/checkout leaves a detached HEAD with no branch
+          # refs at all, so asking git whether refs/heads/main exists answers "no" on
+          # every PR. The first version of this check did exactly that and failed the
+          # build on a correct answers file — the same guardrail-fires-on-the-
+          # legitimate-case shape the skill-invocation check above had to be narrowed
+          # for. release.yml already reads the default branch this way.
+          REPO_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           fail=0
           A=.claude/instructions/riprap-skills.md
@@ -485,15 +494,20 @@ jobs:
             [ -e "$p" ] || { echo "❌ $A names version file $p, which does not exist"; fail=1; }
           done < <(sed -n 's/^- Version files: //p' "$A" | tr ',' '\n' | tr -d ' `')
 
-          # The release branch is the repository's actual default. A renamed branch is
-          # how a release gets cut from somewhere nobody is watching.
+          # The recorded release branch is the repository's actual default. A renamed
+          # branch is how a release gets cut from somewhere nobody is watching.
           D=$(sed -n 's/^- Release branch: //p' "$A" | tr -d ' `')
-          B=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "")
           [ -n "$D" ] || { echo "❌ $A records no release branch"; fail=1; }
-          if [ -n "$D" ] && ! git show-ref --verify --quiet "refs/heads/$D" \
-             && ! git show-ref --verify --quiet "refs/remotes/origin/$D" \
-             && [ "$D" != "$B" ]; then
-            echo "❌ $A records release branch '$D', which resolves to nothing"; fail=1
+          # Authoritative in CI; outside it, fall back to the remote's own HEAD.
+          ACTUAL="${REPO_DEFAULT_BRANCH:-}"
+          [ -n "$ACTUAL" ] || ACTUAL=$(git symbolic-ref --quiet --short \
+            refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
+          if [ -n "$D" ] && [ -n "$ACTUAL" ] && [ "$D" != "$ACTUAL" ]; then
+            echo "❌ $A records release branch '$D', but the default is '$ACTUAL'"; fail=1
+          elif [ -n "$D" ] && [ -z "$ACTUAL" ]; then
+            # Never let an unanswerable question read as a pass. Same rule the release
+            # skill states for the forge: "could not check" is not "checked and fine".
+            echo "ℹ️  could not determine the default branch; '$D' went unverified"
           fi
 
           # And the answer that is load-bearing for riprap specifically: the bump and

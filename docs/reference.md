@@ -42,7 +42,7 @@ them and they would rot on every edit of every document.
 
 - [code-style.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-style.md) — naming, structure, and comments: the parts of style a formatter cannot decide for you.
 - [error-handling.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/error-handling.md) — let errors surface, and keep secrets and personal data out of the logs.
-- [design.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design.md) — anything a user sees gets a mockup before it gets an implementation, drawn inside the project's design system and in its frontend library's own primitives. A new feature gets a full design, not one screen.
+- [design.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design.md) — a change with material UI or UX impact gets a mockup before it gets an implementation, drawn inside the project's design system and in its frontend library's own primitives. Copy edits and invisible refactors are explicitly exempt; a new feature gets a full design, not one screen.
 - [mcp-servers.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/mcp-servers.md) — how to decide whether a capability belongs in an MCP server at all, and what has to be written down when you add one.
 {: .doc-links}
 
@@ -70,7 +70,7 @@ them and they would rot on every edit of every document.
 - [guardrail-template.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/guardrail-template.md) — the shape every guardrail document follows. Copy it, fill in the sections, delete the guidance.
 {: .doc-links}
 
-### All sixteen, alphabetically
+### All 16 guardrail documents, alphabetically
 
 The other view: what to scan when you want to be sure you have seen everything.
 

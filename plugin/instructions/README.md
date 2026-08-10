@@ -89,7 +89,8 @@ files usually beat one 215-line file when either would answer the question.
 **Starting work**
 
 - First session in a repo? → [project-standards.md](project-standards.md) (~150)
-- Proposing a plan, a design, or an alternative? → [interaction-preferences.md](interaction-preferences.md) (~215)
+- Proposing a plan, an approach, or an alternative? → [interaction-preferences.md](interaction-preferences.md) (~215)
+- Planning anything a user will see? Mock it up first, in the project's design system → [design.md](design.md) (~245)
 - Deciding whether to plan or just do it? → [development-workflow.md](development-workflow.md) (~70)
 - Picking up from a previous session, or ending one? → [handovers.md](handovers.md) (~10)
 
@@ -97,9 +98,6 @@ files usually beat one 215-line file when either would answer the question.
 
 - Naming things, sizing functions, writing comments? → [code-style.md](code-style.md) (~105)
 - Catching, raising, suppressing, or logging an error? → [error-handling.md](error-handling.md) (~80)
-- Changing a screen, a flow, or anything else a user sees? Mock it up first, inside the
-  project's design system — on Claude Design, or the design tool it already uses. A new
-  feature gets a full design, not one screen → [design.md](design.md) (~215)
 - Fixing a bug and wondering how far the pattern spreads? → [development-workflow.md](development-workflow.md) (~70)
 - Reaching for an external tool or integration? → [mcp-servers.md](mcp-servers.md) (~90)
 

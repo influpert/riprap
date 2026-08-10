@@ -1,7 +1,8 @@
 # Design
 
-Anything that changes what a user sees gets a mockup before it gets an implementation, and
-the mockup goes on the surface the user has chosen — Claude Design by default.
+A change that materially affects what a user sees gets a mockup before it gets an
+implementation, and the mockup goes on the surface the user has chosen — Claude Design by
+default.
 
 ---
 
@@ -14,18 +15,26 @@ Design**, unless one of these holds:
   it every feature.
 - **A different design tool is already the project's** — Figma, Penpot, a house design
   system, whatever the user or the project's own instructions name. Then *that* tool is the
-  surface, driven through the integration it already has: its MCP server, its CLI, or the
-  wrapper in `bin/`. Follow the preference order in [mcp-servers.md](mcp-servers.md) when
-  more than one of those exists.
+  surface, driven through the integration it already has. Where it offers more than one,
+  take them in the order [mcp-servers.md](mcp-servers.md) argues for: a `bin/` wrapper or
+  its own CLI first, its MCP server where the operation is genuinely structured.
+
+**Claude Design** is the design surface at claude.ai/design, reached from a session through
+whatever design tooling the harness exposes. It is the default for one reason: it is the
+only surface where the same session can write the mockup, read the design system back, and
+then write the code. Every other arrangement joins design to implementation with a human
+copying between two tools, and that seam is where the two quietly stop matching. **If the
+session has no such tooling, that is the absent-integration case below** — not a licence to
+skip the design.
 
 **Never produce two.** A mockup in the project's tool *and* a courtesy copy on Claude
-Design is one design with two versions, and the second one to drift is the one somebody
-builds from.
+Design is one design in two places. They diverge, nobody is told which is current, and the
+stale one is as likely to be built from as the live one.
 
 **Why:** the expensive part of a UI mistake is not the CSS, it is that the mistake ships as
 a shape people have already learned. Rearranged navigation, a flow with a step in the wrong
 place, an error the user cannot act on — each of those is cheap to redraw and expensive to
-recall, because by the time it is visible the code exists, the tests assert it, and the
+withdraw, because by the time it is visible the code exists, the tests assert it, and the
 discussion has quietly become how to patch it rather than whether it is right. A mockup
 moves that discussion to the point where changing your mind costs one picture.
 
@@ -37,18 +46,24 @@ moves that discussion to the point where changing your mind costs one picture.
 |---|---|
 | A new screen, page, dialog, or view | A copy edit that does not move anything |
 | A new, removed, or reordered step in a user flow | A refactor with no visible change |
-| A component gaining or changing a state — empty, loading, error, overflow, disabled | A change behind a flag that is off everywhere — mock it before the flag turns on |
+| A component gaining or changing any of the states listed below | A change behind a flag that is off everywhere — not yet; the flip is the material change, and it carries the mockup |
 | Layout, navigation, or information hierarchy | Restoring a design that already shipped and was already reviewed — link that instead |
-| Anything that changes an interaction a user has already learned | |
+| Anything that changes an interaction a user has already learned | Machine-readable output — a wire format, a JSON payload, a log line no person reads |
 
 **The surfaces people forget are still user interfaces:** terminal output, an email, a
 generated report, an error message someone actually reads. The mockup for those is a
 rendered sample — the real text, at the real width, including the truncated case — not a
 design file. It belongs in the plan the same way.
 
-When you cannot tell whether a change qualifies, mocking it costs a few minutes and asking
-costs one message. Deciding on your own that it was minor is the branch that costs a
-release.
+**A repository with no human-facing surface at all is outside this document.** A library, a
+daemon, a data pipeline whose only consumers are other programs: say that once, in the
+plan, and move on. What this rule refuses is the *assumption* of no surface in a repository
+that has one.
+
+When you cannot tell whether a change qualifies, **mock it** — a few minutes, and no round
+trip. Do not spend a question on it: below the complexity gate in
+[interaction-preferences.md](interaction-preferences.md), asking is itself the failure
+mode. Deciding on your own that it was minor is the branch that costs a release.
 
 ---
 
@@ -62,8 +77,10 @@ What "full" has to include:
 
 - **Every step of the journey**, from how the feature is entered to where the user lands
   when it is finished — and where they land when they abandon it halfway.
-- **Every state of every screen**: empty, loading, partial, error, permission-denied, and
-  the overflow case where real data is longer than the sample data.
+- **Every state of every screen.** The state list, canonical for this document and the one
+  every other mention here points at: **empty, loading, partial, error, permission-denied,
+  disabled, and overflow** — overflow being the case where real data is longer than the
+  sample data, which is the one sample data hides by construction.
 - **The dead ends.** What is on the screen when the user cannot proceed, and what they can
   do from there. This is the part that gets invented at build time when it is missing.
 - **The entry points.** How the feature is discovered from the rest of the product. A
@@ -78,10 +95,12 @@ whoever is implementing that afternoon, without the flow in front of them. That 
 product acquires five error presentations, three ways back to the start, and a step that
 nobody can reach from anywhere.
 
-**Full scales with the feature.** A feature that is one dialog is fully designed by that
-dialog and its states — the target is complete, not large. What is not acceptable is
-designing the happy path of a five-screen flow and calling the remainder an implementation
-detail.
+**A complete design scales with the feature, and with its blast radius.** A feature that is
+one dialog is fully designed by that dialog and its states — the target is complete, not
+large. An internal tool three colleagues use does not earn the depth a public sign-up flow
+earns, for the same reason riprap scales questions and merge gates by blast radius
+everywhere else. What is not acceptable at any size is designing the happy path of a
+five-screen flow and calling the remainder an implementation detail.
 
 ---
 
@@ -96,8 +115,9 @@ design inside it. Look in this order, and stop at the first that answers:
 2. **The project's own instructions and config** — `.claude/instructions/`, a style guide,
    a tokens or theme file, a brand doc. Where a project doc and this one disagree, the
    project doc wins.
-3. **The product as it already exists.** Read the code for the corporate identity:
-   colours, type scale, spacing, the components that exist and what they are called.
+3. **The product as it already exists.** Read the code for the visual identity the product
+   has whether or not anyone wrote it down: brand colours, type scale, spacing, the
+   components that exist and what they are called.
    Shipped features are a design system written down badly, and they bind anyway — what
    goes next to them has to look like them.
 4. **Ask.** If the first three come back empty, the project has no system, and quietly
@@ -159,14 +179,15 @@ the work already exists, so every question becomes a question about patching it.
 2. **Find the system before drawing anything either** — the four-step search above. It
    comes first because it decides what the components *are*; discovering the design system
    afterwards means redrawing, not adjusting.
-3. **Cover the states, not just the happy path.** Empty, loading, error, long text, and the
-   narrowest supported width. The happy path is the state nobody implements wrong; the
-   other four are the ones that get invented at the end of the day by whoever is closest to
-   the deadline.
+3. **Cover the state list, not just the happy path**, plus the narrowest supported width.
+   The happy path is the state nobody implements wrong; every other one on that list gets
+   invented at the end of the day by whoever is closest to the deadline.
 4. **Fabricate the sample data.** A mockup on a shared design surface is published — real
    names, real account numbers, real ticket contents leave the repository the moment it is
-   shared, and deleting the frame afterwards does not unshare them. See
-   [secret-hygiene.md](secret-hygiene.md).
+   shared, and deleting the file afterwards does not unshare them.
+   [secret-hygiene.md](secret-hygiene.md) governs credentials, which must never reach a
+   tracked file or a session at all; this is the weaker sibling rule for everything else a
+   real record contains, and it is stated here because no other document covers it.
 5. **Record the link where the change is reviewed** — the plan, the pull request body, the
    feature document. A mockup nobody can find gets re-derived from the code, which is
    exactly backwards.
@@ -179,27 +200,35 @@ the work already exists, so every question becomes a question about patching it.
 ## When the integration is not there
 
 Design tools authenticate interactively, so in a headless or scheduled run the integration
-may simply be absent — no login, no session, nothing to push to. Treat it exactly as
-[mcp-servers.md](mcp-servers.md) says to treat any absent server: **detect it and degrade
-loudly.**
+may simply be absent — no login, no session, nothing to push to. Treat it as
+[mcp-servers.md](mcp-servers.md) says to treat any absent server: **degrade gracefully** —
+detect the absence, report it, and fall back rather than failing or pretending.
 
-The fallback is a self-contained HTML mockup in `tmp/` (git-ignored, per
-[handovers.md](handovers.md)), linked from the plan or the pull request, plus one line
-saying which surface you used and why it was not the intended one.
+The fallback is a self-contained HTML mockup in a scratch directory the repository does not
+track — `tmp/` by riprap's convention, though **check that it is actually ignored before
+writing there**, because riprap seeds no `.gitignore` and an unignored mockup gets swept
+into the next `git add -A`. Link it from the plan or the pull request, with one line naming
+the surface you used and why it was not the intended one.
 
-What must not happen is the mockup being skipped because the tool was unreachable and that
-never being mentioned. Silence reads as "this change needed no design".
+What must not happen: the tool is unreachable, the mockup is skipped, and nobody is told.
+Silence there reads as "this change needed no design".
 
 ---
 
 ## Enforcement
 
-**Doc and review only, and deliberately so.** No hook can decide whether a diff changed the
-experience — nothing in a pattern library distinguishes a renamed CSS class from a
-rearranged checkout, and a hook that guessed would either block refactors or wave through
-redesigns. So this rule is carried by the plan and by review.
+**Doc and review only, and deliberately so.** No pattern can decide *reliably enough to
+block* whether a diff changed the experience: nothing in a pattern library separates a
+renamed CSS class from a rearranged sign-up flow, so a blocking hook would either stop
+refactors or wave redesigns through. This rule is therefore carried by the plan and by
+review.
 
-The reviewer's question is "where is the mockup?". *"This change did not need one"* is a
+An **advisory** check is a different proposition and is not ruled out — something that
+notices staged paths under the project's UI globs and prints "no design linked in this
+change" without blocking. Nobody has built one; it would need the project's own globs, so
+it belongs in the project's hooks rather than riprap's.
+
+The reviewer's question is: where is the mockup? *"This change did not need one"* is a
 complete answer — when it is stated, not assumed.
 
 ---

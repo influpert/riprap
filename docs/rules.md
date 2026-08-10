@@ -41,7 +41,7 @@ The same reasoning covers the skills. They are namespaced by the harness as `/ri
 riprap is paid for on every turn, so it is careful about what it injects.
 
 What arrives at session start is a **router of roughly 120 lines** — the six rules, a
-task-to-document map, and three rules restated in full. It is not the 16 documents
+task-to-document map, and three rules restated in full. It is not the 16 guardrail documents
 themselves. Those are read when they are needed and not before, which is why the router
 carries a line count beside each entry: two 80-line files usually beat one 215-line file
 when either would answer the question.

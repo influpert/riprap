@@ -47,7 +47,7 @@ On this page
 **`/plugin marketplace add influpert/riprap`** registers this repository as a plugin
 marketplace. The repository is its own marketplace, so there is no directory to go through.
 
-**`/plugin install riprap@influpert`** installs the plugin: 18 guardrail documents, four
+**`/plugin install riprap@influpert`** installs the plugin: 19 guardrail documents, four
 skills, and the Claude hook registrations. The form is `plugin@marketplace` — the plugin is
 `riprap`, and it comes from the `influpert/riprap` marketplace you registered in the previous
 step. Nothing lands in any repository. You can stop here if all you want is the documents and

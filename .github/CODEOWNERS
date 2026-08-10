@@ -14,9 +14,30 @@
 # The team named below must have write access to the repository, or GitHub silently
 # ignores every rule here — the same failure this file's own gotcha warns about.
 
-# The guardrail machinery itself — a change here can disable everything else.
-/bin/hooks/**            @influpert/code-reviewers
-/.claude/settings.json   @influpert/code-reviewers
+# Everything riprap publishes — a change here can disable everything else.
+#
+# NOTE ON THE PATHS BELOW. riprap's own hooks do NOT live at /bin/hooks/. That is
+# where they land in a project that has installed riprap, and the two layouts are
+# easy to conflate. In this repository the shipped machinery is under plugin/, and
+# /bin/ holds only build-manifest and scrub-check. A rule written for the adopter's
+# layout matches nothing here — which is the failure this file's own header warns
+# about, in the file that warns about it.
+#
+# /plugin/** is deliberately the whole directory rather than the hook scripts
+# alone. plugin/payload/bin/riprap is the installer: it sets core.hooksPath and
+# implements `wire --uninstall`, so editing it disables every guardrail in every
+# adopting repository — a wider blast radius than any single hook. And the prose
+# under plugin/instructions/ is enforcement too: a rule the model is *given* is
+# the thing it obeys, so changing merge-gates.md changes what an agent refuses to
+# do everywhere riprap is installed, with no test that would notice.
+#
+# No rule here is aspirational. A pattern kept for a path this repository does not
+# have would have to be exempted from the check below, and an exemption shaped
+# around the broken rule is what blinded the first version of that check to the
+# very bug it was written for.
+/plugin/**               @influpert/code-reviewers
+/.claude-plugin/**       @influpert/code-reviewers
+/bin/**                  @influpert/code-reviewers
 /.github/workflows/**    @influpert/code-reviewers
 /.github/CODEOWNERS      @influpert/code-reviewers
 

@@ -82,6 +82,10 @@ skip the hooks that run on pull requests, skip required checks, and leave no pla
 review conversation. Recovering from a bad direct push means either a revert commit in trunk's
 history or a force-push that rewrites history other people have already pulled.
 
+**Opening it is not the whole job at either end.** The diff gets reviewed by parallel sub-agents
+before it opens, and the pull request gets watched until it merges after — both in
+[code-review.md](code-review.md), which also defines what goes in the body.
+
 ## If you must force-push, use `--force-with-lease`
 
 ```bash

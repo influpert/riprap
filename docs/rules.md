@@ -5,7 +5,7 @@ lede: >-
   The rules injected into every session, how they get there without touching your
   CLAUDE.md, and what they cost you in context.
 description: >-
-  riprap's six behavioural rules and four critical rules, the SessionStart injection that
+  riprap's six behavioural rules and five critical rules, the SessionStart injection that
   delivers them, the precedence rule when a project disagrees, and the context cost.
 ---
 
@@ -40,13 +40,13 @@ The same reasoning covers the skills. They are namespaced by the harness as `/ri
 
 riprap is paid for on every turn, so it is careful about what it injects.
 
-What arrives at session start is a **router of roughly 140 lines** — the six rules, a
-task-to-document map, and four rules restated in full. It is not the 18 guardrail documents
+What arrives at session start is a **router of roughly 150 lines** — the six rules, a
+task-to-document map, and five rules restated in full. It is not the 19 guardrail documents
 themselves. Those are read when they are needed and not before, which is why the router
 carries a line count beside each entry: two 80-line files usually beat one 215-line file
 when either would answer the question.
 
-The four exceptions are restated in full because the cost of forgetting them is not
+The five exceptions are restated in full because the cost of forgetting them is not
 symmetrical with the cost of carrying them. A model that has to go and read `testing.md`
 before it knows not to weaken a test has already weakened the test.
 
@@ -84,7 +84,7 @@ for obvious fixes — it is a check against hacks, not an invitation to over-eng
 **6. Fix bugs autonomously.** Given a bug report, a failing test, or a red CI run: diagnose
 and fix it. Do not round-trip for permission to start.
 
-## The four that cost the most when forgotten
+## The five that cost the most when forgotten
 
 **Never weaken code to make a test pass.** When a deliberate change breaks tests, the tests
 change — all of them, however many. If you are unsure whether a failure is a real bug or a
@@ -108,6 +108,15 @@ came within one step of merging with a genuine regression in it.
 new language, a new runtime, a new build tool. The diff shows forty working lines; the cost
 lands on every future clone, every CI image, and every upgrade — and it is one-way in
 practice, because reversing it means rewriting code that works.
+
+**Never open a pull request on a diff nobody reviewed, and never abandon one you opened.**
+Before it opens: parallel review sub-agents over the diff, one angle each, every BLOCKER and
+MAJOR fixed first, and every finding published in the body with a disposition — implemented,
+deferred or ignored — and the reason behind it. A finding that was made and then dropped in
+silence is indistinguishable from a finding nobody made, so the reviewer repeats the search
+you already did. After it opens: a red CI run on your own pull request is the task rather
+than a report, every review comment gets a change or an answer, and a conflict gets resolved
+rather than announced. The loop ends when the pull request does.
 
 ## What the permission lists can and cannot do
 

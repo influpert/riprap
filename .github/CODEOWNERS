@@ -15,9 +15,25 @@
 # ignores every rule here — the same failure this file's own gotcha warns about.
 
 # The guardrail machinery itself — a change here can disable everything else.
-/bin/hooks/**            @influpert/code-reviewers
-/.claude/settings.json   @influpert/code-reviewers
-/.github/workflows/**    @influpert/code-reviewers
+#
+# NOTE ON THE PATHS BELOW. riprap's own hooks do NOT live at /bin/hooks/. That is
+# where they land in a project that has installed riprap, and the two layouts are
+# easy to conflate. In this repository the shipped machinery is under plugin/, and
+# /bin/ holds only build-manifest and scrub-check. A rule written for the adopter's
+# layout matches nothing here — which is the failure this file's own header warns
+# about, in the file that warns about it.
+/plugin/hooks/**                  @influpert/code-reviewers
+/plugin/payload/bin/hooks/**      @influpert/code-reviewers
+/plugin/payload/MANIFEST          @influpert/code-reviewers
+/plugin/scripts/**                @influpert/code-reviewers
+/bin/**                           @influpert/code-reviewers
+/.github/workflows/**             @influpert/code-reviewers
+
+# Kept for the day riprap gains either. Both are real paths in an adopting
+# project, and a pattern that matches nothing costs nothing; a missing one costs
+# a merge.
+/bin/hooks/**                     @influpert/code-reviewers
+/.claude/settings.json            @influpert/code-reviewers
 /.github/CODEOWNERS      @influpert/code-reviewers
 
 # Dependencies: the classic supply-chain vector.

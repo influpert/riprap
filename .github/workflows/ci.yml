@@ -212,6 +212,27 @@ jobs:
           grep -q "$bw behavioural rules and $cw critical rules" docs/rules.md || {
             echo "❌ docs/rules.md's front matter does not say '$bw behavioural rules and $cw critical rules'"; fail=1; }
 
+          # 8. A CODEOWNERS rule that matches no tracked file is a review gate that
+          #    looks configured and requests nobody. That is the same shape as the
+          #    unregistered hook in the step below, and it had already happened here:
+          #    /bin/hooks/** was written for the layout riprap installs INTO, while
+          #    riprap's own machinery lives under plugin/ — so every guardrail script
+          #    it ships could be changed without an owner review.
+          #
+          #    Only root-anchored patterns are checked. The keyword globs
+          #    (**/*auth*, **/*payment*) are deliberately aspirational: they cost
+          #    nothing while matching nothing, and a missing one costs a merge.
+          #    ASPIRATIONAL lists the anchored paths allowed to match nothing, each
+          #    of which is a real path in an ADOPTING project rather than in this one.
+          ASPIRATIONAL='^/bin/hooks/|^/\.claude/settings\.json$'
+          while read -r pat _rest; do
+            case "$pat" in ''|'#'*) continue ;; /*) ;; *) continue ;; esac
+            printf '%s\n' "$pat" | grep -qE "$ASPIRATIONAL" && continue
+            probe="${pat#/}"; probe="${probe%/\*\*}"
+            [ -n "$(git ls-files -- "$probe" | head -1)" ] || {
+              echo "❌ CODEOWNERS rule '$pat' matches no tracked file"; fail=1; }
+          done < .github/CODEOWNERS
+
           [ "$fail" -eq 0 ] && echo "✅ site, README and repository agree"
           exit "$fail"
 

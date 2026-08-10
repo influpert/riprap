@@ -10,7 +10,7 @@
 # cannot introduce a first-of-its-kind path, and matching it would cost an
 # invocation on every edit in every session to catch nothing.
 #
-# See .claude/instructions/tech-footprint.md.
+# See riprap's tech-footprint guardrail (riprap.dev/reference).
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -99,7 +99,7 @@ ROOT_PHYS=$(cd "$ROOT" 2>/dev/null && pwd -P) || exit 0
 # of riprap's blocking hooks already follow.
 if ! TARGET_PHYS=$(tf_physical_path "$FILE_PATH"); then
   echo "❌ Blocked: cannot resolve $FILE_PATH to a real location." >&2
-  echo "   Refusing rather than guessing. See .claude/instructions/tech-footprint.md." >&2
+  echo "   Refusing rather than guessing. See riprap's tech-footprint guardrail (riprap.dev/reference)." >&2
   exit 2
 fi
 
@@ -150,6 +150,6 @@ SIGNAL=${VIOLATIONS%% ::*}
   echo "  - If this was already agreed, add 'lint-ok:tech-footprint' to the file."
   echo ""
   echo "Running unattended, with nobody to ask? The answer is no — hand it over"
-  echo "instead. See .claude/instructions/tech-footprint.md for the full rule."
+  echo "instead. See riprap's tech-footprint guardrail (riprap.dev/reference) for the full rule."
 } >&2
 exit 2

@@ -115,7 +115,13 @@ verify_git_hooks_effective() {
   [ -f "$hook" ] || { fail "❌ core.hooksPath points at $dir, which has no pre-commit. Nothing is enforced."; return; }
   [ -x "$hook" ] || { fail "❌ $hook is not executable. git ignores a hook it cannot run, silently."; return; }
 
-  if [ "$dir" != "$GIT_HOOKS" ] && ! grep -q 'bin/hooks/riprap/git/pre-commit' "$hook"; then
+  # Checked even when the directory is riprap's own. The skipped case assumed riprap
+  # wrote the hook there — but the seed rule means it deliberately does not when one
+  # already exists, so a repository that had its own bin/hooks/git/pre-commit installed,
+  # wired and verified clean while enforcing nothing. That is the mature repository this
+  # install path is written for, and "a broken delegation looks exactly like a passing
+  # commit" is the failure it was written to prevent.
+  if ! grep -q 'bin/hooks/riprap/git/pre-commit' "$hook"; then
     # Not "run bin/riprap wire": that refuses to touch a hooks directory it does
     # not own, so it cannot fix this. Print the line instead of naming a command
     # that will decline.

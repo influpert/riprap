@@ -132,16 +132,18 @@ jobs:
           #    coded, so adding a skill fails here naming the files, not on a bare number.
           s=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
           sw=$(word_for "$s")
-          #    Two phrases name a number of skills without claiming what riprap ships,
-          #    and both are excluded by the words next to them rather than by file, so
-          #    the check still covers the rest of those documents:
-          #      "…, 20 skills, and 16 agent roles" — the provenance figures, which
-          #        describe the private codebase riprap was distilled from. Exactly the
-          #        trap "instruction document" sets for the document count above.
-          #      "two skills with near identical descriptions" — about a name collision
-          #        in an adopter's repository, not about riprap's own count.
-          for f in README.md docs/_config.yml .claude-plugin/marketplace.json \
-                   plugin/commands/install.md $(find docs -name '*.md'); do
+          #    Matched on the claim rather than on the word, because "N skills" appears in
+          #    prose that claims nothing about what riprap ships: the provenance figures
+          #    for the private codebase ("20 skills, and 16 agent roles"), a note about
+          #    two skills colliding in an adopter's repository, another tool's count. A
+          #    check that fires on those blocks an unrelated docs change and reports a
+          #    count its author never wrote, which is how a check gets deleted. So the
+          #    window has to look like the real claim: next to "guardrail document", next
+          #    to "loaded every session", or written as "the N skills".
+          for f in README.md CLAUDE.md docs/_config.yml .claude-plugin/marketplace.json \
+                   plugin/commands/install.md plugin/instructions/README.md \
+                   $(find docs -name '*.md'); do
+            [ -f "$f" ] || { echo "❌ skill-count sweep: $f is missing"; fail=1; continue; }
             #    Matched on the claim, not on the word. "N skills" appears in prose that
             #    is not a claim about what riprap ships — the provenance figures for the
             #    private codebase ("20 skills, and 16 agent roles"), a note about two
@@ -407,9 +409,15 @@ jobs:
             # on update, so a value an adopter edits into one is reverted the next time
             # the plugin moves — and the skill goes on behaving as though it were still
             # set. Skills ask once and store the answer in the project instead.
-            if grep -qiE '^#+[[:space:]]+(configuration|config|settings)\b' "$d/SKILL.md"; then
-              echo "❌ $d/SKILL.md has a settings block; ask once and store it in the project"; fail=1
-            fi
+            # Every markdown file in the directory, not just SKILL.md. A skill is allowed
+            # reference files beside it, they ship from the same replaced-on-update cache,
+            # and CLAUDE.md states the rule as "under plugin/skills/" — so a check that
+            # read one filename was narrower than the rule it enforces.
+            while IFS= read -r m; do
+              if grep -qiE '^#+[[:space:]]+(configuration|config|settings)\b' "$m"; then
+                echo "❌ $m has a settings block; ask once and store it in the project"; fail=1
+              fi
+            done < <(find "$d" -name '*.md')
           done
           [ "$fail" -eq 0 ] && echo "✅ skills namespaced"
           exit "$fail"

@@ -84,22 +84,36 @@ here survives into the next one, and the guard is what makes that survivable:
 ```bash
 BASE_BRANCH=main                  # ← the stored base branch
 PROTECTED_BRANCHES=(main)         # ← the stored never-delete list, literal names
+USER_BRANCH=                      # ← the branch the user was on, captured ONCE (below)
 
-# BASE_BRANCH and the currently checked-out branch are always protected too,
-# whether or not they were named.
-CURRENT_BRANCH=$(git symbolic-ref --quiet --short HEAD || echo "")
+# The currently checked-out branch is protected too. Capture it BEFORE step 2 creates a
+# worktree and carry it forward: inside a --detach'ed worktree `git symbolic-ref HEAD`
+# returns nothing, so re-deriving it there silently drops the user's own branch out of
+# the keep-list — the one entry nobody thinks to name explicitly.
+[ -n "$USER_BRANCH" ] || USER_BRANCH=$(git symbolic-ref --quiet --short HEAD || echo "")
+
 KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
-[ -n "$CURRENT_BRANCH" ] && KEEP+=("$CURRENT_BRANCH")
+[ -n "$USER_BRANCH" ] && KEEP+=("$USER_BRANCH")
 
-# Refuse rather than proceed on an empty keep-list. `grep -vxF -f` fed an empty
-# pattern list excludes nothing and exits 0, so an unset KEEP does not look like an
-# error — it looks like every branch in the repository is safe to delete, base branch
-# included, and that list is what gets read aloud under "Safe to delete".
-[ "${#KEEP[@]}" -gt 0 ] && [ -n "$BASE_BRANCH" ] || {
-  echo "❌ keep-list or base branch not set — refusing to classify anything" >&2
-  exit 1
-}
+# Refuse rather than proceed on a keep-list that is missing entries. `grep -vxF -f` fed
+# an empty pattern list excludes nothing and exits 0, so a keep-list that never got its
+# values does not look like an error — it looks like every branch in the repository is
+# safe to delete, base branch included, and that list is what gets read aloud under
+# "Safe to delete".
+#
+# Checking `${#KEEP[@]}` alone is not enough: KEEP always has at least one element, even
+# when that element is the empty string. Every entry has to be non-empty.
+[ -n "$BASE_BRANCH" ] || { echo "❌ base branch not set" >&2; exit 1; }
+for k in "${KEEP[@]}"; do
+  [ -n "$k" ] || { echo "❌ keep-list has an empty entry — refusing to classify" >&2; exit 1; }
+done
 ```
+
+The placeholders above are real branch names rather than `<tokens>` so the block runs,
+which means an unsubstituted block runs too — and quietly protects `main` in a
+repository whose branches are something else. **Say out loud which values you
+substituted** before classifying anything; that report is the only thing standing
+between a stale default and a deletion list.
 
 ## Steps
 
@@ -136,10 +150,14 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    git worktree remove ../branch-cleanup
    ```
 
-   **Re-derive `CURRENT_BRANCH` after moving into the worktree**, or drop the
-   worktree step. `git symbolic-ref HEAD` answers for whichever tree you are standing
-   in, so the branch the user actually had checked out silently falls out of the
-   keep-list — the one entry nobody thought to protect explicitly.
+   **`USER_BRANCH` must already be captured before this step runs** (see *What this
+   needs to know*). Inside a `--detach`ed worktree `git symbolic-ref HEAD` returns
+   nothing, so re-deriving it here cannot recover the value — it can only lose it, and
+   the branch the user had checked out falls out of the keep-list.
+
+   One more consequence of standing in a detached worktree: `git branch --merged` emits
+   a `(no branch)` row for the detached HEAD, which lands in Category 1's list and its
+   count. Drop it — `keep_out` will not, because it is not a branch name anyone stored.
 
    Skipping is safe. `git branch -d` refuses to delete the branch that is
    currently checked out, and the keep-list above already excludes it. The only
@@ -167,77 +185,96 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    git branch --merged "$BASE_BRANCH"
    ```
 
-5. **Identify cleanup candidates**
+5. **Protect first, classify second**
+
+   **Category 0 — unpushed work.** Not a cleanup candidate; this is the guard rail, and
+   it runs *before* anything is classified so the rest can be filtered through it. Two
+   distinct populations, and only the first has an upstream to be ahead of:
+
+   ```bash
+   # 0a. Tracking a live upstream, with commits not yet on it.
+   git for-each-ref refs/heads/ --format='%(refname:short) %(upstream:track)' \
+     | grep -v 'gone' | grep 'ahead' | awk '{print $1}'
+
+   # 0b. No upstream at all, holding commits that exist on no remote. `%(upstream:track)`
+   #     is EMPTY for a branch that was never pushed — not "ahead" — so a filter looking
+   #     for "ahead" misses precisely the branch whose work exists in exactly one place.
+   for b in $(git for-each-ref refs/heads/ --format='%(refname:short)'); do
+     [ -n "$(git for-each-ref "refs/heads/$b" --format='%(upstream)')" ] && continue
+     # No `--` before "$b": that would make it a pathspec instead of a revision,
+     # and the count silently comes back 0 for every branch.
+     n=$(git rev-list --count "$b" --not --remotes 2>/dev/null || echo 0)
+     [ "${n:-0}" -gt 0 ] && echo "$b"
+   done
+   ```
+
+   **Write the result into the stored never-delete list, then re-derive `KEEP`.** The
+   additions must survive into the next command, and the bind block rebuilds `KEEP` from
+   `PROTECTED_BRANCHES` every time it is re-stated — so anything held only in a shell
+   variable is gone by the following step. Persisting them is what makes the protection
+   real rather than momentary.
+
+   **Then filter every category through `KEEP`.** Not just the first one:
+
+   ```bash
+   # Reuse this in every category below. Exact whole-line matching (-vxF) is deliberate:
+   # branch names contain `.`, `+` and `/`, which a regex would interpret.
+   keep_out() { grep -vxF -f <(printf '%s\n' "${KEEP[@]}"); }
+   ```
+
+   A category that skips it is not a smaller mistake than an empty keep-list. Category 4
+   below is the one that proves it: a long-lived release branch, merged into base, whose
+   remote was tidied away lands in "upstream gone", whose suggested default is **yes**,
+   and `git branch -d` allows it precisely *because* it is merged. The keep-list is
+   computed correctly and simply never consulted, and the branch is gone.
 
    **Category 1 — merged branches.** Already contained in the base branch, so
    deleting them loses nothing:
 
    ```bash
-   git branch --merged "$BASE_BRANCH" --format='%(refname:short)' \
-     | grep -vxF -f <(printf '%s\n' "${KEEP[@]}")
+   git branch --merged "$BASE_BRANCH" --format='%(refname:short)' | keep_out
    ```
 
    **Category 2 — stale branches** (no commits in more than 30 days):
 
    ```bash
-   git for-each-ref --sort=committerdate refs/heads/ \
-     --format='%(refname:short)|%(committerdate:relative)|%(committerdate:unix)'
+   # Names first so keep_out can match whole lines, then the date per surviving branch.
+   for b in $(git for-each-ref --sort=committerdate refs/heads/ \
+                --format='%(refname:short)' | keep_out); do
+     printf '%s\t%s\t%s\n' "$b" \
+       "$(git log -1 --format=%cr "$b")" "$(git log -1 --format=%ct "$b")"
+   done
    ```
 
-   Compare the unix timestamp against the thresholds below rather than parsing
-   the relative string.
+   Compare the unix timestamp against the thresholds below rather than parsing the
+   relative string.
 
-   **Category 3 — abandoned pull requests.** Requires the GitHub CLI. Check that it
-   is present *and* authenticated before the first call, not at step 9 — step 9 runs
-   after the deletions, so a check that lives only there is made too late to keep this
-   category out of the report:
+   **Category 3 — abandoned pull requests.** Requires the GitHub CLI. Check it is
+   present *and* that its credential actually works, before the first call — not at
+   step 9, which runs after the deletions:
 
    ```bash
-   command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1 || echo "no gh — skipping category 3"
+   # `gh auth status` is NOT the check: it exits 0 while printing "The token in GH_TOKEN
+   # is invalid", so a gate built on it passes and every later gh call fails. Ask for
+   # something only a working credential returns.
+   gh api "repos/{owner}/{repo}" --jq .full_name >/dev/null 2>&1 || echo "no usable gh — skipping category 3"
    ```
 
    ```bash
    gh pr list --state all --limit 100 --json number,headRefName,state,updatedAt
    ```
 
-   Branches whose PR was closed without merging, or that never had a PR at all.
+   Branches whose PR was closed without merging, or that never had a PR at all —
+   filtered through `keep_out` like everything else.
 
    **Category 4 — branches tracking a deleted remote**:
 
    ```bash
-   git branch -vv | grep ': gone]'
+   git branch -vv | grep ': gone]' | awk '{print $1}' | keep_out
    ```
 
-   The upstream is gone. The local copy is usually a leftover.
-
-   **Category 5 — unpushed work.** Not a cleanup candidate; this is the guard
-   rail. Any branch here is excluded from automatic suggestions entirely.
-
-   Two distinct populations, and only the first has an upstream to be ahead of:
-
-   ```bash
-   # 5a. Tracking a live upstream, with commits not yet on it.
-   git for-each-ref refs/heads/ --format='%(refname:short) %(upstream:track)' \
-     | grep -v 'gone' | grep 'ahead'
-
-   # 5b. No upstream at all, holding commits that exist on no remote. `%(upstream:track)`
-   #     is EMPTY for a branch that was never pushed — not "ahead" — so a filter looking
-   #     for "ahead" misses precisely the branch whose work exists in exactly one place.
-   #     Such a branch is also unmerged and often old, so it lands in the stale and
-   #     "never had a PR" categories and is offered for deletion under a report that
-   #     says unpushed work is excluded.
-   for b in $(git for-each-ref refs/heads/ --format='%(refname:short)'); do
-     [ -n "$(git for-each-ref "refs/heads/$b" --format='%(upstream)')" ] && continue
-     # No `--` before "$b": that would make it a pathspec instead of a revision,
-     # and the count silently comes back 0 for every branch.
-     n=$(git rev-list --count "$b" --not --remotes 2>/dev/null || echo 0)
-     [ "${n:-0}" -gt 0 ] && echo "$b ($n commit(s) on no remote)"
-   done
-   ```
-
-   Add every branch either query returns to `KEEP` before classifying anything else.
-   `git branch -d` would refuse them anyway, but the report is what the user reads,
-   and a branch listed as safe to delete is one they will reach for `-D` to remove.
+   The upstream is gone. The local copy is usually a leftover — unless it is one of the
+   branches the user named, which is why this list is filtered too.
 
 6. **Generate the cleanup report**
 
@@ -284,7 +321,6 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    - Total local branches: 26
    - Cleanup candidates: 17
    - Held back for review: 2
-   - Estimated reclaim: ~5 MB
    ```
 
 7. **Ask for confirmation, one category at a time**
@@ -309,16 +345,20 @@ KEEP=("$BASE_BRANCH" "${PROTECTED_BRANCHES[@]}")
    interrupted, the record is the thing that lets the work be recovered.
 
    ```bash
+   branch_name=<the branch about to be deleted>   # substitute; never leave this unset
+
+   # Unset, `git rev-parse ""` fails but printf still exits 0, so the archive gains a
+   # blank line and the deletion proceeds — an empty record for the step the skill calls
+   # the worst one to have fail first. Refuse instead.
+   [ -n "${branch_name:-}" ] || { echo "❌ no branch named — refusing to archive" >&2; exit 1; }
+   sha="$(git rev-parse --verify "$branch_name")" || exit 1
+
    # --git-common-dir, not a literal .git. In a linked worktree — the one step 2
    # recommends — .git is a *file* pointing elsewhere, so `mkdir -p .git/…` fails
-   # with "Not a directory". The archive is the step whose whole point is to run
-   # before the deletion, so it is the worst one to have fail first.
-   ARCHIVE="$(git rev-parse --git-common-dir)/deleted-branches"
+   # with "Not a directory".
+   ARCHIVE="$(git rev-parse --path-format=absolute --git-common-dir)/deleted-branches"
    mkdir -p "$ARCHIVE"
-   printf '%s\t%s\t%s\n' \
-     "$(date -u '+%F %T')" \
-     "$branch_name" \
-     "$(git rev-parse "$branch_name")" \
+   printf '%s\t%s\t%s\n' "$(date -u '+%F %T')" "$branch_name" "$sha" \
      >> "$ARCHIVE/archive.txt"
    ```
 
@@ -594,7 +634,7 @@ That is the whole reason the SHA is written down before the deletion rather than
 
 ```bash
 # Read the tip straight out of the archive — the reliable route
-grep branch_name "$(git rev-parse --git-common-dir)/deleted-branches/archive.txt"
+grep "$branch_name" "$(git rev-parse --path-format=absolute --git-common-dir)/deleted-branches/archive.txt"
 
 # The reflog may also still hold it, if the branch was checked out here
 git reflog

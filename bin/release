@@ -76,7 +76,11 @@ set_version() {
   fi
 }
 
-is_version() { printf '%s' "$1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; }
+# No leading zeros. 0.05.0 passes a naive digits-only check and is not semver: it
+# installs as a string no adopter's tooling equates with 0.5.0, and `sort -V` places it
+# above 0.4.0 — so one typo also blocks every later 0.x release behind a refusal that
+# reads like a bug in this script.
+is_version() { printf '%s' "$1" | grep -qE '^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)){2}$'; }
 
 # Strictly greater, version-ordered. `sort -V` alone cannot answer this — it puts
 # equal inputs in an arbitrary order — so equality is ruled out first.
@@ -152,8 +156,14 @@ gh_release_body() {
   fi
   out="$(cat "$err")"
   rm -f "$err"
+  # Anchored on gh's own "(HTTP nnn)" suffix, not a bare 404 substring. Unanchored, a
+  # proxy error carrying a request id like 4048812, or a gateway page reading "…was Not
+  # Found on this proxy", classifies as a missing release — the exact false finding this
+  # function exists to prevent, and it clusters behind the same authenticating proxies
+  # that produce the auth failures it is separating. A format gh stops using would make
+  # a real 404 read as "could not tell", which is the safe direction to be wrong in.
   case "$out" in
-    *404* | *"Not Found"*) return 1 ;;
+    *"(HTTP 404)"*) return 1 ;;
     *)
       printf '%s\n' "$out" | sed 's/^/     /' >&2
       return 2
@@ -169,19 +179,12 @@ verify_one() {
     return 1
   fi
 
-  published="$(gh_release_body "$tag")" && rc=0 || rc=$?
-  case "$rc" in
-    1)
-      echo "  ❌ $tag is tagged, but no release exists behind it"
-      echo "     Publish it: gh workflow run release.yml -f tag=$tag"
-      return 1
-      ;;
-    2)
-      echo "  ⚠️  $tag: could not ask GitHub whether a release exists — not checked"
-      return 1
-      ;;
-  esac
-
+  # The tagged tree is checked FIRST, and unconditionally. It is pure git and needs no
+  # forge credential, so making it wait behind the release lookup meant a GitHub outage
+  # hid a genuine version mismatch — and the case where that matters most is a tag with
+  # no release behind it, where the wrong version is about to be published rather than
+  # already public.
+  #
   # The tree the tag points at, not the working tree. That tree is the artifact, and
   # it is what every adopting repository installs.
   #
@@ -208,6 +211,28 @@ verify_one() {
     found=1
   fi
 
+  # Now ask the forge. Kept after the git-only checks so its failure cannot suppress them.
+  published="$(gh_release_body "$tag")" && rc=0 || rc=$?
+  case "$rc" in
+    1)
+      echo "  ❌ $tag is tagged, but no release exists behind it"
+      echo "     Publish it: gh workflow run release.yml -f tag=$tag"
+      return 1
+      ;;
+    2)
+      echo "  ⚠️  $tag: could not ask GitHub whether a release exists — not checked"
+      return 1
+      ;;
+  esac
+
+  # An empty body is the one body difference that is never a deliberate edit: it means
+  # the release object exists carrying nothing, which is a publish that half-failed. The
+  # ℹ️-never-fails rule below is right for edits and wrong for this.
+  if [ -z "$published" ] || [ "$published" = "null" ]; then
+    echo "  ❌ $tag: the release exists but its body is empty"
+    found=1
+  fi
+
   # Reported, never failed. The publish workflow reads the body from the default branch
   # rather than from the tag, precisely so prose can be corrected after a tag is cut —
   # and CLAUDE.md says a superseded release is better marked superseded than removed.
@@ -221,7 +246,10 @@ verify_one() {
       echo "  ℹ️  $tag: $notes has changed since it was published (edits are allowed)"
     fi
   else
-    echo "  ⚠️  $tag: no $notes to compare the published body against"
+    # ℹ️ rather than ⚠️, deliberately. Every ⚠️ in this function sets found=1; this one
+    # never did, so it printed a warning and then "✅ nothing to fix" two lines later.
+    # A symbol that the summary contradicts is worse than no symbol.
+    echo "  ℹ️  $tag: no $notes to compare the published body against"
   fi
 
   [ "$found" -eq 0 ] && echo "  ✅ $tag"
@@ -253,6 +281,11 @@ do_verify() {
   # Same reasoning one level up: prove the credential works before drawing any
   # conclusion from what GitHub does not return. Without this, an expired token
   # turns the whole sweep into a list of releases that all look missing.
+  #
+  # It proves repository metadata is readable, which is not the same as releases being
+  # readable: a fine-grained token with metadata but not contents passes here and then
+  # receives genuine 404s from the releases endpoint. That gap is why a 404 is reported
+  # as a finding to act on rather than acted on automatically.
   gh api "repos/{owner}/{repo}" --jq '.full_name' >/dev/null 2>&1 || {
     echo "❌ gh cannot reach this repository — check 'gh auth status'. Nothing checked." >&2
     echo "   In a Claude Code session, /riprap:release checks the same things via MCP." >&2
@@ -339,8 +372,8 @@ TAG="v$VERSION"
 # and a guess about which one the notes file is called. The tag drives the
 # published version, so a typo here is a release nobody can install.
 if ! is_version "$VERSION"; then
-  echo "❌ not a version: $1 (expected x.y.z, no leading v)" >&2
-  exit 1
+  echo "❌ not a version: $1 (expected x.y.z, no leading v, no leading zeros)" >&2
+  exit 2
 fi
 
 for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
@@ -363,6 +396,19 @@ fi
 if printf '%s\n' "$REMOTE_VERSIONS" | grep -qxF "$VERSION"; then
   echo "❌ $TAG already exists on $TAG_SOURCE. A published version does not get re-cut." >&2
   exit 1
+fi
+
+# Tagged locally but not pushed. The likely sequence is a successful second run followed
+# by a distraction, then a re-run to get the push line back — and without this, `git tag`
+# aborts with a raw "fatal: tag already exists" and exit 128, the one refusal in the
+# script that neither explains itself nor says what to do next.
+if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  echo "✅ $TAG already exists locally, at $(git rev-parse --short "$TAG^{commit}")."
+  echo "   Nothing to do but push it:"
+  echo
+  echo "     git push origin $TAG"
+  echo "     bin/release --verify $VERSION"
+  exit 0
 fi
 
 # Forwards only, and against the highest tag rather than the last one cut. The
@@ -421,12 +467,33 @@ if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
     fi
   done
 
+  # Detached HEAD makes the guidance below unrunnable — BRANCH is the literal string
+  # "HEAD", `git push -u origin HEAD` is rejected as not a full refname, and the next
+  # printed line would orphan the commit just made. Refuse before writing anything.
+  if [ "$BRANCH" = "HEAD" ]; then
+    echo "❌ HEAD is detached. Check out a branch first — the bump has to become a" >&2
+    echo "   pull request, and a commit made here belongs to no branch to open one from." >&2
+    exit 1
+  fi
+
   set_version "$PLUGIN_JSON" "$VERSION"
   set_version "$MARKET_JSON" "$VERSION"
   git add -- "$PLUGIN_JSON" "$MARKET_JSON"
-  git commit -q -m "Ship $VERSION" \
+
+  # A commit can fail for reasons that have nothing to do with this script — a rejecting
+  # pre-commit hook, a broken signing key. riprap installs such a hook into its own
+  # repository, so this is not hypothetical. Left alone, `set -e` would abort here with
+  # only the hook's output, leaving both files rewritten and staged: every later run then
+  # refuses with "uncommitted changes", and the advice it gives ("commit or stash") makes
+  # the bump commit without the message this script exists to write. Undo it and say so.
+  if ! git commit -q -m "Ship $VERSION" \
     -m "plugin.json and marketplace.json both move, because the release workflow
-refuses a tag whose tree claims a different version than the tag does."
+refuses a tag whose tree claims a different version than the tag does."; then
+    git restore --staged --worktree -- "$PLUGIN_JSON" "$MARKET_JSON" 2>/dev/null ||
+      git checkout -- "$PLUGIN_JSON" "$MARKET_JSON"
+    echo "❌ the commit was rejected — see above. Both version files put back as they were." >&2
+    exit 1
+  fi
   echo "✅ $plugin_was → $VERSION in both files, committed on $BRANCH"
 
   cat <<NEXT
@@ -466,7 +533,7 @@ if ! git rev-parse -q --verify "refs/remotes/origin/$DEFAULT" >/dev/null; then
   exit 1
 fi
 
-if ! git merge-base --is-ancestor HEAD "origin/$DEFAULT"; then
+if ! git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT"; then
   echo "❌ HEAD is not on origin/$DEFAULT. Nothing tagged." >&2
   echo "   Publishing this would build the release from a commit that is not on the" >&2
   echo "   default branch, and a squash-merge will discard it. Merge the bump, then" >&2
@@ -477,7 +544,7 @@ fi
 # On the default branch but behind its tip: legitimate — the bump commit is what should
 # wear the tag — but not silent. Anything merged after it is in the release's history
 # and not in its notes, and that is worth seeing before the tag is pushed.
-BEHIND="$(git rev-list --count "HEAD..origin/$DEFAULT" 2>/dev/null || echo 0)"
+BEHIND="$(git rev-list --count "HEAD..refs/remotes/origin/$DEFAULT" 2>/dev/null || echo 0)"
 if [ "$BEHIND" -gt 0 ]; then
   echo "⚠️  origin/$DEFAULT has $BEHIND commit(s) after this one; they ship in $TAG" >&2
   echo "   without appearing in its notes. Tag the tip instead if that is wrong." >&2

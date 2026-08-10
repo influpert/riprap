@@ -142,10 +142,22 @@ jobs:
           #        in an adopter's repository, not about riprap's own count.
           for f in README.md docs/_config.yml .claude-plugin/marketplace.json \
                    plugin/commands/install.md $(find docs -name '*.md'); do
+            #    Matched on the claim, not on the word. "N skills" appears in prose that
+            #    is not a claim about what riprap ships — the provenance figures for the
+            #    private codebase ("20 skills, and 16 agent roles"), a note about two
+            #    skills colliding, another tool's skill count — and a check that fires on
+            #    those blocks an unrelated docs change with a message about a count the
+            #    author never wrote. So it requires "riprap" or "guardrail document" in
+            #    the same window: the shapes the real claim actually takes.
+            #
+            #    A window is also allowed to contain the right count somewhere, which is
+            #    what makes "it had four skills, now five" writable. That costs the check
+            #    a sentence naming both counts wrongly, and buys back every sentence that
+            #    legitimately names two.
             bad=$(tr '\n' ' ' <"$f" | tr -s ' ' \
-                    | grep -oiE "[^.]{0,40}\b(one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+) +skills?\b[^.]{0,40}" \
-                    | grep -viE "\b($sw|$s) +skills?\b" \
-                    | grep -viE 'agent roles|near.identical' || true)
+                    | grep -oiE "[^.]{0,60}\b(one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+) +skills?\b[^.]{0,40}" \
+                    | grep -iE "guardrail document|loaded every session|\bthe +[a-z0-9]+ +skills?\b" \
+                    | grep -viE "\b($sw|$s) +skills?\b" || true)
             [ -z "$bad" ] || { echo "❌ $f: skill count is not $sw:"; echo "$bad"; fail=1; }
           done
 
@@ -155,7 +167,17 @@ jobs:
           for f in README.md docs/index.md docs/install.md docs/reference.md docs/rules.md; do
             for d in plugin/skills/*/; do
               k=$(basename "$d")
-              grep -q "/riprap:$k" "$f" || { echo "❌ $f never names /riprap:$k"; fail=1; }
+              grep -qF "/riprap:$k" "$f" || { echo "❌ $f never names /riprap:$k"; fail=1; }
+            done
+            #    And the other direction, which is the half a one-way check misses: a
+            #    skill that was renamed or retired leaves its old name in all five
+            #    documents, every count still agrees, and CI stays green. Same rot as
+            #    "five promised, four named", pointing the reader at an invocation that
+            #    no longer exists.
+            for m in $(grep -oE '/riprap:[a-z][a-z0-9-]*' "$f" | sort -u); do
+              n="${m#/riprap:}"
+              [ "$n" = "install" ] && continue   # a command, not a skill
+              [ -d "plugin/skills/$n" ] || { echo "❌ $f names $m, which ships no skill"; fail=1; }
             done
           done
 

@@ -103,18 +103,29 @@ Where the two sources disagree, `.claude/instructions/riprap-skills.md` wins and
 Report the answers back before going further, the way this plugin's other skills report
 their whole plan first. Then bind them for the run — real values, not placeholders — and
 re-state them in every later shell command, because each command runs in a fresh shell
-and nothing set in one survives into the next:
+and nothing set in one survives into the next.
+
+`BASE_BRANCH` and `TAG` bind at different moments, and conflating them makes step 1
+impossible to run:
 
 ```bash
+# Binds before step 1, and is re-stated in every command from there on.
 BASE_BRANCH=main         # ← the stored release branch
-TAG=v1.4.3               # ← the tag being cut, once step 2 has settled the version
-
-[ -n "$BASE_BRANCH" ] || { echo "❌ base branch not set"  >&2; exit 1; }
-[ -n "$TAG" ]         || { echo "❌ tag not set"          >&2; exit 1; }
+[ -n "$BASE_BRANCH" ] || { echo "❌ base branch not set" >&2; exit 1; }
 ```
 
-An unset `$TAG` is not a harmless no-op here: `git tag -a "" -m "" <sha>` and
-`git push origin ""` are what the later steps become.
+```bash
+# Binds only from step 5, because step 2 is what settles the version. Guarding it any
+# earlier refuses preflight — the step that must always run.
+TAG=v1.4.3               # ← substitute the version step 2 confirmed
+[ -n "$TAG" ] || { echo "❌ tag not set" >&2; exit 1; }
+```
+
+An unset `$TAG` is not a harmless no-op: `git tag -a "" -m "" <sha>` and
+`git push origin ""` are what the later steps become. Neither is a *plausible* `$TAG` a
+harmless default — `v1.4.3` above is a real-looking tag, so an unsubstituted block
+passes the guard and publishes a version nobody chose. **State the tag you substituted
+before step 5 runs**, and check it against the version step 2 confirmed.
 
 ## How to ask the forge
 
@@ -214,7 +225,7 @@ version nobody installed.
 
 ```bash
 git fetch origin "$BASE_BRANCH"
-git tag -a "$TAG" -m "$TAG" <merge-commit-sha>
+git tag -a "$TAG" -m "$TAG" "$MERGE_SHA"   # ← the sha the merge produced
 git push origin "$TAG"
 ```
 
@@ -248,8 +259,8 @@ here the only correction is another release.
 
 Run this as its own step, after everything else, and report what it found:
 
-Two of the three answers come from the forge, so use the route established in *How to
-ask the forge*:
+Only the last of these needs the forge — the first two are plain git against the
+remote. For that one, use the route established in *How to ask the forge*:
 
 ```bash
 # The tag resolves on the remote, not just locally. --exit-code and an exact refspec,
@@ -260,11 +271,18 @@ git ls-remote --exit-code --refs --tags origin "refs/tags/$TAG"
 # The tagged tree claims the version the tag claims. The leading + is load-bearing:
 # without it git refuses to move a local tag that has diverged from the remote, which
 # is exactly the case being checked — so the fetch fails, `git show` quietly reads the
-# stale local tag, and the answer looks right. Treat a failed fetch as unchecked.
-git fetch origin "+refs/tags/$TAG:refs/tags/$TAG" || echo "UNCHECKED: could not fetch $TAG"
-git show "$TAG:<version-file>"
+# stale local tag, and the answer looks right.
+#
+# && rather than two lines: a failed fetch must SUPPRESS the version read, not merely be
+# mentioned above it. Printed anyway, the stale version is a confident wrong answer, and
+# it is the number a reader takes as confirmation.
+git fetch origin "+refs/tags/$TAG:refs/tags/$TAG" \
+  && git show "$TAG:$VERSION_FILE" \
+  || echo "UNCHECKED: could not fetch $TAG — the version in it is unknown"
 
-# The release exists, and its body is the one that was written
+# The release exists, and its body is the one that was written.
+# VERSION_FILE and MERGE_SHA are substituted, not literal: an unquoted <placeholder>
+# is a bash redirection and aborts the block with a syntax error pointing at nothing.
 gh release view "$TAG" --json tagName,publishedAt,body
 ```
 

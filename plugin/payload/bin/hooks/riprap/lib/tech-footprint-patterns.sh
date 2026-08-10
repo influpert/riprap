@@ -13,7 +13,7 @@
 # fine in one repo and a blocker in the next, so a FORBIDDEN_PATTERNS array
 # cannot express it.
 #
-# See .claude/instructions/tech-footprint.md.
+# See riprap's tech-footprint guardrail (riprap.dev/reference).
 
 # Paths riprap itself installs, plus the project's own guardrail directory.
 #

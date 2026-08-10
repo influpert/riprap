@@ -73,6 +73,18 @@ jobs:
         run: |
           fail=0
 
+          # Spelled-out counts rot silently — no digit for the count regexes to catch.
+          # Only the numbers riprap could plausibly reach are mapped; an unmapped count
+          # fails loudly rather than skipping the check. Defined up here because both
+          # the skill count and the rule counts need it.
+          word_for() {
+            case "$1" in
+              3) echo three ;; 4) echo four ;; 5) echo five ;; 6) echo six ;;
+              7) echo seven ;; 8) echo eight ;; 9) echo nine ;; 10) echo ten ;;
+              *) echo "UNMAPPED-$1" ;;
+            esac
+          }
+
           # 1. The catalogue cannot rot, in either direction. A sixteenth document that
           #    the site never mentions is invisible: nothing looks broken.
           for f in plugin/instructions/*.md; do
@@ -111,8 +123,65 @@ jobs:
                   | grep -vE "[^0-9]$n guardrail document" || true)
           [ -z "$bad" ] || { echo "❌ document count is not $n:"; echo "$bad"; fail=1; }
 
+          #    The skill count is the same shape, with one difference that cost a release
+          #    note: the phrase is hard-wrapped mid-sentence in two places — "19 guardrail
+          #    documents, four\nskills" — and a line-oriented grep cannot see across the
+          #    break. index.md ended up saying four in one paragraph and five in two
+          #    others, on the same page, with every check green. So the file is flattened
+          #    before matching. The count is read from the filesystem rather than hard-
+          #    coded, so adding a skill fails here naming the files, not on a bare number.
           s=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')
-          [ "$s" -eq 4 ] || { echo "❌ $s skills ship, but the site says four"; fail=1; }
+          sw=$(word_for "$s")
+          #    Matched on the claim rather than on the word, because "N skills" appears in
+          #    prose that claims nothing about what riprap ships: the provenance figures
+          #    for the private codebase ("20 skills, and 16 agent roles"), a note about
+          #    two skills colliding in an adopter's repository, another tool's count. A
+          #    check that fires on those blocks an unrelated docs change and reports a
+          #    count its author never wrote, which is how a check gets deleted. So the
+          #    window has to look like the real claim: next to "guardrail document", next
+          #    to "loaded every session", or written as "the N skills".
+          for f in README.md CLAUDE.md docs/_config.yml .claude-plugin/marketplace.json \
+                   plugin/commands/install.md plugin/instructions/README.md \
+                   $(find docs -name '*.md'); do
+            [ -f "$f" ] || { echo "❌ skill-count sweep: $f is missing"; fail=1; continue; }
+            #    Matched on the claim, not on the word. "N skills" appears in prose that
+            #    is not a claim about what riprap ships — the provenance figures for the
+            #    private codebase ("20 skills, and 16 agent roles"), a note about two
+            #    skills colliding, another tool's skill count — and a check that fires on
+            #    those blocks an unrelated docs change with a message about a count the
+            #    author never wrote. So it requires "riprap" or "guardrail document" in
+            #    the same window: the shapes the real claim actually takes.
+            #
+            #    A window is also allowed to contain the right count somewhere, which is
+            #    what makes "it had four skills, now five" writable. That costs the check
+            #    a sentence naming both counts wrongly, and buys back every sentence that
+            #    legitimately names two.
+            bad=$(tr '\n' ' ' <"$f" | tr -s ' ' \
+                    | grep -oiE "[^.]{0,60}\b(one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+) +skills?\b[^.]{0,40}" \
+                    | grep -iE "guardrail document|loaded every session|\bthe +[a-z0-9]+ +skills?\b" \
+                    | grep -viE "\b($sw|$s) +skills?\b" || true)
+            [ -z "$bad" ] || { echo "❌ $f: skill count is not $sw:"; echo "$bad"; fail=1; }
+          done
+
+          #    And the enumerations beside the counts. A count that moves while the list
+          #    next to it does not is the same rot in a shape no count check can see:
+          #    five promised, four named. Every document that names any skill names all.
+          for f in README.md docs/index.md docs/install.md docs/reference.md docs/rules.md; do
+            for d in plugin/skills/*/; do
+              k=$(basename "$d")
+              grep -qF "/riprap:$k" "$f" || { echo "❌ $f never names /riprap:$k"; fail=1; }
+            done
+            #    And the other direction, which is the half a one-way check misses: a
+            #    skill that was renamed or retired leaves its old name in all five
+            #    documents, every count still agrees, and CI stays green. Same rot as
+            #    "five promised, four named", pointing the reader at an invocation that
+            #    no longer exists.
+            for m in $(grep -oE '/riprap:[a-z][a-z0-9-]*' "$f" | sort -u); do
+              n="${m#/riprap:}"
+              [ "$n" = "install" ] && continue   # a command, not a skill
+              [ -d "plugin/skills/$n" ] || { echo "❌ $f names $m, which ships no skill"; fail=1; }
+            done
+          done
 
           # 3. One install command form. Both work, but two documented forms is how the
           #    README and the site started disagreeing in the first place.
@@ -201,16 +270,6 @@ jobs:
           [ "$c" -eq "$d" ] || {
             echo "❌ docs/rules.md restates $d critical rules; the router has $c"; fail=1; }
 
-          # Spelled-out counts rot silently — no digit for check 2's regex to catch.
-          # Only the numbers riprap could plausibly reach are mapped; an unmapped
-          # count fails loudly rather than skipping the check.
-          word_for() {
-            case "$1" in
-              3) echo three ;; 4) echo four ;; 5) echo five ;; 6) echo six ;;
-              7) echo seven ;; 8) echo eight ;; 9) echo nine ;; 10) echo ten ;;
-              *) echo "UNMAPPED-$1" ;;
-            esac
-          }
           bw=$(word_for "$b"); cw=$(word_for "$c")
           # The router states its own critical-rule count in prose, and that was the one
           # spelled-out number this check did not bind — while CLAUDE.md claimed all four
@@ -346,6 +405,19 @@ jobs:
             if grep -qE "(^|[^:])/$n\b" "$d/SKILL.md"; then
               echo "❌ $d/SKILL.md refers to /$n; it is invoked as /riprap:$n"; fail=1
             fi
+            # No skill carries a settings block. plugin/skills/ is replaced wholesale
+            # on update, so a value an adopter edits into one is reverted the next time
+            # the plugin moves — and the skill goes on behaving as though it were still
+            # set. Skills ask once and store the answer in the project instead.
+            # Every markdown file in the directory, not just SKILL.md. A skill is allowed
+            # reference files beside it, they ship from the same replaced-on-update cache,
+            # and CLAUDE.md states the rule as "under plugin/skills/" — so a check that
+            # read one filename was narrower than the rule it enforces.
+            while IFS= read -r m; do
+              if grep -qiE '^#+[[:space:]]+(configuration|config|settings)\b' "$m"; then
+                echo "❌ $m has a settings block; ask once and store it in the project"; fail=1
+              fi
+            done < <(find "$d" -name '*.md')
           done
           [ "$fail" -eq 0 ] && echo "✅ skills namespaced"
           exit "$fail"

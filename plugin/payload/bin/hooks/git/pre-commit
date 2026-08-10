@@ -13,7 +13,9 @@ set -eu
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
-# riprap:begin — managed by bin/riprap wire. Delete this block to unwire riprap's checks.
+# riprap:begin — riprap wrote this block once, on install. Nothing rewrites it later, so
+# if you delete these two lines riprap's checks stop running and `bin/riprap verify` will
+# tell you so. That is the intended way to opt out; it is not managed behind your back.
 "$REPO_ROOT"/bin/hooks/riprap/git/pre-commit "$@" || exit $?
 # riprap:end
 

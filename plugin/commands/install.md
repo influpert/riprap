@@ -9,7 +9,7 @@ Install riprap's repo-side half into the current project.
 
 Raw slash-command arguments: `$ARGUMENTS`
 
-The plugin already provides the guardrail documents, the four skills, and the Claude hook
+The plugin already provides the guardrail documents, the five skills, and the Claude hook
 registrations — none of which touch a file in this repository. What this command adds is the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries, the
 git hooks, and the four stack commands the hooks call.

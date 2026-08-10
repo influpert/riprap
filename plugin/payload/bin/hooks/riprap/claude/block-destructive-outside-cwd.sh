@@ -389,7 +389,7 @@ if [ -n "$BLOCK_REASON" ]; then
     echo "run it yourself at a terminal — this hook governs agent tool calls, not"
     echo "commands you type directly."
     echo ""
-    echo "See .claude/instructions/project-standards.md for the rule."
+    echo "See riprap's project-standards guardrail (riprap.dev/reference) for the rule."
   } >&2
   exit 2
 fi

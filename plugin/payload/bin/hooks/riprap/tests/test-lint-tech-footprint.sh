@@ -107,7 +107,7 @@ echo "--- The refusal explains itself ---"
 # hook that printed nothing useful at all.
 check_contains "names what the repo already uses" "go" "$(w "$TMP/repo/tool.py" 'print(1)')"
 check_contains "names the new technology"  "New:" "$(w "$TMP/repo/tool.py" 'print(1)')"
-check_contains "points at the rule" "tech-footprint.md" "$(w "$TMP/repo/tool.py" 'print(1)')"
+check_contains "points at the rule" "tech-footprint guardrail" "$(w "$TMP/repo/tool.py" 'print(1)')"
 check_contains "says what unattended means" "The answer is no" "$(w "$TMP/repo/tool.py" 'print(1)')"
 
 echo "--- Working from a subdirectory sees the whole tree ---"

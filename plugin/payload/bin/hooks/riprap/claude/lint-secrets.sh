@@ -8,7 +8,7 @@
 # model provider, and tool output cannot be un-sent. So the control has to be at
 # the read, not after it.
 #
-# See .claude/instructions/secret-hygiene.md.
+# See riprap's secret-hygiene guardrail (riprap.dev/reference).
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,7 +49,7 @@ block() {
     echo "  - Scope greps to source dirs rather than the repo root."
     echo "  - Edit .env.example; leave .env to the human."
     echo ""
-    echo "See .claude/instructions/secret-hygiene.md for the full rule."
+    echo "See riprap's secret-hygiene guardrail (riprap.dev/reference) for the full rule."
   } >&2
   exit 2
 }

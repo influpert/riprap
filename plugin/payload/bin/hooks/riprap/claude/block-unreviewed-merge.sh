@@ -9,7 +9,7 @@
 # authenticated, offline, PR number unresolvable — the merge is BLOCKED. An
 # unverifiable merge is indistinguishable from an unsafe one.
 #
-# See .claude/instructions/merge-gates.md for the full rule and the hold procedure.
+# See riprap's merge-gates guardrail (riprap.dev/reference) for the full rule and the hold procedure.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -70,7 +70,7 @@ refuse() {
     echo "the author instead. A PR that is both 'held for approval' and 'known"
     echo "broken' conflates two different things."
     echo ""
-    echo "See .claude/instructions/merge-gates.md."
+    echo "See riprap's merge-gates guardrail (riprap.dev/reference)."
   } >&2
   exit 2
 }

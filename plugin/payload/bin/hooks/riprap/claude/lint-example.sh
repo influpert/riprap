@@ -3,7 +3,7 @@
 # under the Edit|Write matcher. Inert as shipped: the pattern list is empty.
 #
 # PreToolUse hook: block edits that introduce a forbidden <rule> pattern.
-# See .claude/instructions/<rule>.md for the rule.
+# See riprap's <rule> guardrail (riprap.dev/reference) for the rule.
 #
 # This is the shape every guardrail in this repo follows. The order of the early
 # exits matters: cheapest checks first, so the overwhelmingly common case (an
@@ -65,7 +65,7 @@ if [ -n "$VIOLATIONS" ]; then
     echo "If this line is a legitimate exception, add 'lint-ok:example' to it,"
     echo "or add the file to EXAMPLE_ALLOWED_PATHS with a reason."
     echo ""
-    echo "See .claude/instructions/<rule>.md for the full rule."
+    echo "See riprap's <rule> guardrail (riprap.dev/reference) for the full rule."
   } >&2
   exit 2
 fi

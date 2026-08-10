@@ -49,6 +49,16 @@ outright.
 under `plugin/hooks/`, `plugin/scripts/`, or `plugin/payload/bin/`. CI enforces this with
 one `find`.
 
+**No shipped skill carries a settings block.** `plugin/skills/` is replaced wholesale on
+`/plugin update`, so a value an adopter edits into a `SKILL.md` is reverted the next time the
+plugin moves — and the skill goes on behaving as though it were still set, which is worse
+than never having offered the setting. Whatever a skill needs to know about the project it
+works out first, asks once with `AskUserQuestion` offering that as the default, writes into
+the adopter's own `.claude/instructions/`, and reads back on every later run. A stored answer
+that no longer resolves gets re-asked, never guessed around — otherwise storing answers just
+relocates the stale-setting bug. CI rejects a `## Configuration` heading under
+`plugin/skills/`, because this is a rule about a file nobody re-reads once it works.
+
 **Two hook families, two exit codes.** `plugin/payload/bin/hooks/riprap/claude/` blocks a
 tool call with exit 2 and its message must go to **stderr**;
 `plugin/payload/bin/hooks/riprap/git/` rejects a commit with exit 1. They share pattern
@@ -102,20 +112,42 @@ kind of bug only a round trip finds.
 
 ```bash
 $EDITOR .github/releases/v0.5.0.md   # the published body; the workflow refuses without it
-bin/release 0.5.0                    # both version files, a commit, and the tag
+bin/release 0.5.0                    # both version files and a commit — no tag yet
+# merge that, then on the merged commit:
+bin/release 0.5.0                    # only tags
+git push origin v0.5.0               # publishes
+bin/release --verify 0.5.0           # confirms it actually published
 ```
 
 **The tag has to end up on the commit that merged, and that is two steps, not one.** The
 version files live under `/plugin/**` and `/.claude-plugin/**`, both of which CODEOWNERS
 gates, so the bump goes through a pull request like anything else. A tag cut before that
 merges points at a commit a squash-merge discards, and pushing it publishes a release built
-from a commit that is not on the default branch. So: run `bin/release` to make the bump,
-merge it, then `git tag -d v0.5.0 && bin/release 0.5.0` on the merged commit — the second run
-sees both files already at that version and only tags.
+from a commit that is not on the default branch. The first run therefore makes no tag at all,
+and the second refuses unless `HEAD` is contained in the default branch — so the two steps
+are enforced rather than remembered.
+
+`bin/release` also refuses a version that does not move forwards, and reads the tag list from
+`origin` rather than the local cache: a local tag ref that has diverged is not corrected by a
+plain `git fetch --tags`, which declines to move an existing ref without `--force`. If `gh` is
+installed it reports the CI status of the commit before tagging and asks before tagging a red
+one — advisory, because a release should not become impossible when GitHub is unreachable, but
+CI does not run on tags, so that run on the merge commit is the only evidence a release gets.
 
 Pushing the tag is what publishes. `.github/workflows/release.yml` re-checks the tagged
 tree's version against the tag and refuses to publish a disagreement, because a v0.5.0
 release built from a tree saying 0.4.0 installs as 0.4.0 in every adopting repository.
+
+**Pushing is not publishing, so check.** The workflow can refuse long after whoever pushed
+stopped watching, and nothing else looks — CI does not run on tags. `bin/release --verify
+0.5.0` asserts the tag, the release, the version in the tagged tree and the published body;
+with no argument it sweeps every `v*` tag on `origin` for ones with no release behind them.
+It reports "could not check" rather than "not published" when the credential fails, because
+a false alarm here sends someone to re-publish a release that is already live.
+
+If a release turns out to be wrong, supersede it with a patch. A published tag is never moved
+or deleted — it is what that version already means to everyone who read it — and superseded
+notes are worth more marked superseded than removed.
 
 ## Style
 

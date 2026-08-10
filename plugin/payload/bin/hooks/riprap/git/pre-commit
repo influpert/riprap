@@ -162,7 +162,7 @@ else
       echo "   A new language or toolchain is a permanent obligation on everyone who"
       echo "   clones this repo, and it does not show up in the diff. Ask first."
       echo "   If it was already agreed, add 'lint-ok:tech-footprint' to the file."
-      echo "   See .claude/instructions/tech-footprint.md."
+      echo "   See riprap's tech-footprint guardrail (riprap.dev/reference)."
     } >&2
     FAILED=1
   else

@@ -52,7 +52,7 @@ riprap is a Claude Code plugin. There is nothing to clone.
 /riprap:install
 ```
 
-The first two commands give you the guardrail documents, the four skills, and the Claude
+The first two commands give you the guardrail documents, the five skills, and the Claude
 hooks — none of which put a file in your repository. `/riprap:install` adds the half that
 has to live there: the guardrail scripts, their pattern libraries, the git hooks, and the
 four stack commands the hooks call.
@@ -99,7 +99,8 @@ Improvements flow back as ordinary pull requests.
 ```
 instructions/     19 guardrail documents, indexed by task. A router is injected each
                   session; the rest are read on demand.
-skills/           /riprap:learn  /riprap:spec  /riprap:council  /riprap:branch-cleaner
+skills/           /riprap:learn  /riprap:spec  /riprap:council
+                  /riprap:branch-cleaner  /riprap:release
 hooks/            the Claude hook registrations, and the session router
 ```
 

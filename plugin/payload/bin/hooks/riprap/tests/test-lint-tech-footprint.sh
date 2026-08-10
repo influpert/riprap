@@ -79,6 +79,20 @@ check "another .go through the symlink -> allow" 0 \
   "$(w "$TMP/link/extra.go" 'package main')"
 CLAUDE_PROJECT_DIR="$TMP/repo"
 
+echo "--- '..' must not smuggle a path past the containment check ---"
+# `pwd -P` resolves only the part of the path that exists; a `..` in the
+# not-yet-existing tail survives into the string being compared, so the path
+# checked is not the path the kernel writes to. Both directions were exploitable.
+mkdir -p "$TMP/outside"
+check "in-repo write dressed up as out-of-repo -> block" 2 \
+  "$(w "$TMP/repo/../outside/nope/../../repo/tool.py" 'print(1)')"
+check "'..' escaping an exempt prefix -> block" 2 \
+  "$(w "$TMP/repo/bin/hooks/riprap/nope/../../../../evil.py" 'print(1)')"
+# A path that climbs above / folds to a real location outside the repository,
+# which is allowed for the same reason any out-of-tree write is.
+check "a path climbing above the filesystem root -> allow, not crash" 0 \
+  "$(w "/../../../../../../../../tmp/tool.py" 'print(1)')"
+
 echo "--- Surfaces this hook does not guard ---"
 check "Edit is not matched -> allow" 0 \
   "{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"$TMP/repo/tool.py\",\"new_string\":\"x\"}}"
@@ -95,6 +109,24 @@ check_contains "names what the repo already uses" "go" "$(w "$TMP/repo/tool.py" 
 check_contains "names the new technology"  "New:" "$(w "$TMP/repo/tool.py" 'print(1)')"
 check_contains "points at the rule" "tech-footprint.md" "$(w "$TMP/repo/tool.py" 'print(1)')"
 check_contains "says what unattended means" "The answer is no" "$(w "$TMP/repo/tool.py" 'print(1)')"
+
+echo "--- Working from a subdirectory sees the whole tree ---"
+# --full-tree. Without it `ls-tree` is scoped to the cwd, so a session started in
+# services/api sees only that subtree, the established set collapses, and the two
+# enforcers disagree about the same file. Its own repo: this one commits Python.
+mkdir -p "$TMP/mono/services/api" "$TMP/mono/tools" && cd "$TMP/mono" || exit 1
+git init -q -b main .
+printf 'package main\n' > services/api/main.go
+printf 'print(1)\n' > tools/report.py
+git add -A && git commit -qm init
+git rev-parse --verify -q HEAD >/dev/null || {
+  printf 'FATAL: monorepo fixture setup failed\n' >&2; exit 1; }
+cd "$TMP/mono/services/api" || exit 1
+CLAUDE_PROJECT_DIR="$TMP/mono"
+check "a .py written from a subdir, Python at the root -> allow" 0 \
+  "$(w "$TMP/mono/services/api/helper.py" 'print(1)')"
+check "a .rb from a subdir is still blocked -> block" 2 \
+  "$(w "$TMP/mono/services/api/helper.rb" 'puts 1')"
 
 echo "--- No HEAD means no established stack ---"
 mkdir -p "$TMP/fresh" && cd "$TMP/fresh" || exit 1

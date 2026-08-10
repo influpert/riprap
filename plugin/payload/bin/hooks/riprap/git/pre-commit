@@ -129,11 +129,17 @@ while IFS= read -r -d '' f; do
   TF_STAGED+=("$f")
 done < <(git diff --cached --name-only --diff-filter=ACMR -z || true)
 
-# The `if` matters: tech_footprint_established fails only when there is no HEAD,
-# and that is different from a HEAD whose files carry no signal. Flattening the
-# two with `|| true` makes an empty set mean "nothing established", so the very
-# first commit in a repository has every file in it rejected.
-if [ ${#TF_STAGED[@]} -gt 0 ] && TF_ESTABLISHED=$(tech_footprint_established); then
+# tech_footprint_established fails when there is no baseline to compare against —
+# no HEAD, or a HEAD carrying no signal. Both mean the rule has nothing to say.
+#
+# Every branch below reports. "The check ran and found nothing" and "the check did
+# not run" are otherwise indistinguishable in the log, and that indistinguishability
+# is precisely what let an earlier version of this hook fail open through review.
+if [ ${#TF_STAGED[@]} -eq 0 ]; then
+  echo "✅ tech footprint: nothing staged to check"
+elif ! TF_ESTABLISHED=$(tech_footprint_established); then
+  echo "✅ tech footprint: no established stack in HEAD yet, nothing to depart from"
+else
   TF_CANDIDATES=()
   for f in "${TF_STAGED[@]}"; do
     # The escape hatch reads the staged blob: the worktree may carry a marker

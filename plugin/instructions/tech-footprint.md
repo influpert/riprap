@@ -103,24 +103,42 @@ first Python file is not.
 
 ## Enforcement
 
-Three layers ship, over one pattern library so the rule has a single definition:
+All four layers ship, in the shape [project-standards.md](project-standards.md) describes:
 
 - **This document**, restated in the router's critical rules.
 - **A pre-commit check** — the tech-footprint block in `bin/hooks/riprap/git/pre-commit`,
-  rejecting a commit that introduces a first-of-its-kind file. It runs for everybody who
-  clones the repository, including teammates who never installed the plugin.
+  rejecting a commit that introduces a first-of-its-kind file. It runs for everybody on the
+  team once `bin/riprap wire` has set `core.hooksPath`, including teammates who never
+  installed the plugin. A plain clone with no `bin/setup` run has no hooks at all — git
+  does not clone them.
 - **A PreToolUse hook** — `bin/hooks/riprap/claude/lint-tech-footprint.sh`, blocking the
   write itself, at the moment this rule actually names.
 - **The shared library** — `bin/hooks/riprap/lib/tech-footprint-patterns.sh`, holding the
   signals and the allow-list, sourced by both enforcers.
 
-**What is exempt is also not evidence.** riprap's own files, and your
-`bin/hooks/lib/` directory, are skipped when deciding whether a file is a violation *and*
-when deciding what the repository already uses. The first version skipped only the former,
-so installing riprap — a dozen shell scripts — made shell "already here" in every adopting
-repository and permanently disarmed the rule in the pure-Go and pure-Python trees it was
-written for. Exempting a path from a rule while letting it vote on that rule is a way of
-switching the rule off without noticing.
+**The hooks see less than this document does.** They detect file extensions and manifest
+filenames — a `.py` file, a `go.mod`, a `Dockerfile`. A new database, a queue, a cache or a
+hosted API has no filename to notice, so the rows of the table above that name those are
+yours to honour, not the hook's to catch. The mechanical layers cover a strict subset, and
+saying so is better than letting a green commit read as a cleared decision.
+
+**What is exempt is also not evidence.** The guardrail directories — riprap's own, your
+`bin/hooks/lib/`, and the four stack seams — are skipped when deciding whether a file is a
+violation *and* when deciding what the repository already uses. The first version skipped
+only the former, so installing riprap — a dozen shell scripts — made shell "already here" in
+every adopting repository and permanently disarmed the rule in the pure-Go and pure-Python
+trees it was written for. Exempting a path from a rule while letting it vote on that rule is
+a way of switching the rule off without noticing.
+
+Note the consequence, because it cuts the other way too: `bin/lint` and its siblings are
+exempt, so a `bin/lint` written in Python does not establish Python. That is deliberate —
+those are seams riprap asks you to fill, not a statement about the project's stack — but it
+means the first `.py` file elsewhere still gets a question.
+
+**With no baseline, the rule says nothing.** A repository whose `HEAD` carries no signal at
+all — a fresh `git init` with only a README, or a docs repository — has no established stack
+to depart from, so nothing is blocked. Refusing everything on the grounds that nothing is
+established would reject the first real commit of every new project.
 
 **The signal list will not be right for every repository.** Trim or extend it in
 `bin/hooks/lib/tech-footprint-patterns.local.sh`, which riprap sources if present and never

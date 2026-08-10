@@ -125,6 +125,42 @@ printf 'TECH_FOOTPRINT_ALLOWED_PREFIXES+=( "vendor/" )\n' \
 git add -A
 commit_expect "bin/hooks/lib/*.local.sh -> commit succeeds" 0 "configure the rule"
 
+echo "--- riprap's own files must not ESTABLISH, only be exempt ---"
+# The self-disarm regression. new_repo already commits riprap's namespace into
+# HEAD, so if the exemption filter were dropped from tech_footprint_established
+# those .sh files would make shell "already here" and this would pass.
+new_repo establishing
+printf 'echo hi\n' > deploy.sh && git add deploy.sh
+commit_expect "a .sh at root, with riprap's own .sh in HEAD -> rejected" 1 "shell"
+
+echo "--- a repo whose HEAD carries no signal has no baseline ---"
+# The commonest bootstrap there is: git init, commit a README, then the first
+# real code drop. Rejecting all of it and reporting "Already here:" with nothing
+# after it is worse than saying nothing.
+new_repo nobaseline
+rm -f main.go go.mod && git rm -q --cached main.go go.mod
+echo "# project" > README.md && git add -A && git commit -qm "readme only"
+printf 'package main\n' > main.go && printf 'module x\n' > go.mod
+printf 'echo hi\n' > run.sh && git add -A
+commit_expect "the first code drop after a README-only commit" 0 "add the project"
+
+echo "--- the project's own override directory loads ---"
+# The bin/hooks/lib/ prefix exemption alone would satisfy a test that only wrote
+# the file; this asserts the override is actually SOURCED and takes effect.
+new_repo override
+mkdir -p bin/hooks/lib
+printf 'TECH_FOOTPRINT_ALLOWED_PREFIXES+=( "vendor/" )\n' \
+  > bin/hooks/lib/tech-footprint-patterns.local.sh
+mkdir -p vendor && printf 'print(1)\n' > vendor/tool.py
+git add -A
+commit_expect "a .py under a prefix added by .local.sh -> allowed" 0 "vendored python"
+
+echo "--- an adopter's own git hooks are not riprap's to block ---"
+new_repo adopterhooks
+mkdir -p bin/hooks/git && printf 'echo hi\n' > bin/hooks/git/pre-push.sh
+git add -A
+commit_expect "bin/hooks/git/*.sh -> allowed" 0 "adopter hook"
+
 echo "--- a repo with no HEAD has no established stack ---"
 new_repo initial
 rm -rf .git && git init -q -b main . && git config core.hooksPath bin/hooks/riprap/git

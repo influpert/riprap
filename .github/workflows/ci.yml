@@ -306,14 +306,34 @@ jobs:
           git commit -qm "install riprap" 2>&1 | tee /tmp/commit.log
           grep -q "secret hygiene passed" /tmp/commit.log \
             || { echo "❌ the seed pre-commit did not reach riprap's checks"; exit 1; }
-          # The tech-footprint rule blocks a file whose technology nothing in HEAD
-          # uses, and this commit adds shell to a repo that had none. It passes only
-          # because riprap's own paths neither flag nor establish, so assert the
-          # check actually RAN — a hook that silently no-ops on the payload looks
-          # exactly like a hook that passed. The rejection path itself is covered by
-          # tests/test-tech-footprint-git.sh, which drives real commits.
-          grep -q "tech footprint unchanged" /tmp/commit.log \
+          # Assert the tech-footprint check reported at all. It reports on every
+          # branch precisely so "ran and found nothing" cannot be confused with
+          # "did not run" — the confusion that let an earlier version fail open.
+          grep -q "tech footprint" /tmp/commit.log \
             || { echo "❌ the tech-footprint check did not run on install"; exit 1; }
+
+      # Asserting the check RAN is not the same as asserting it WORKS. Every path
+      # in the install commit is allow-listed, so that grep alone would still pass
+      # against a scanner that classified nothing. This drives the rejection.
+      - name: The installed tech-footprint hook actually blocks
+        run: |
+          cd /tmp/target
+          # Give the repo an established stack, so the rule has a baseline.
+          printf 'package main\n' > main.go
+          printf 'module target\n' > go.mod
+          git add -A && git commit -qm "go baseline"
+          printf 'print(1)\n' > tool.py && git add tool.py
+          if git commit -qm "should be rejected" 2>/tmp/reject.log; then
+            echo "❌ a .py committed cleanly into a Go repo — the hook is not enforcing"
+            exit 1
+          fi
+          grep -q "add a technology this repository does not use" /tmp/reject.log \
+            || { echo "❌ rejected, but not by the tech-footprint rule:"; cat /tmp/reject.log; exit 1; }
+          # And the escape hatch releases it, so the rule is not a wall.
+          printf '# lint-ok:tech-footprint\nprint(1)\n' > tool.py && git add tool.py
+          git commit -qm "hatched" \
+            || { echo "❌ lint-ok:tech-footprint did not release the file"; exit 1; }
+          echo "✅ the installed hook blocks, names the rule, and honours its hatch"
 
       - name: Re-running the install is the update path, and changes nothing
         run: |

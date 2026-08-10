@@ -95,15 +95,31 @@ tech_footprint_path_allowed() {  # $1 = repo-relative path
 # seconds on a three-thousand-file repository, on a hook that runs on every
 # write; git itself takes six milliseconds.
 #
-# Returns 1 when there is no HEAD. In an initial commit every technology is new
-# and there is no established stack to depart from.
+# Returns 1 when there is no established stack to depart from — either because
+# there is no HEAD, or because nothing in HEAD carries a signal.
+#
+# The second case is not a technicality. The commonest bootstrap in existence is
+# `git init` then a commit containing only README.md; the first real code drop
+# after it would otherwise be rejected in full, reporting "Already here:" with
+# nothing after it. A docs repository that installs riprap is the same shape,
+# permanently — riprap's own files are exempt, so they establish nothing, and the
+# project's first shell script would be refused for departing from a stack that
+# does not exist. A rule with no baseline has nothing to say; it should say
+# nothing rather than refuse everything.
 tech_footprint_established() {
+  local signals
   git rev-parse --verify -q HEAD >/dev/null 2>&1 || return 1
+  signals=$(_tech_footprint_scan_tree) || return 1
+  [ -n "$signals" ] || return 1
+  printf '%s\n' "$signals"
+}
+
+_tech_footprint_scan_tree() {
   git -c core.quotePath=false ls-tree -r --full-tree --name-only HEAD 2>/dev/null |
     awk -v mans="$TECH_FOOTPRINT_MANIFESTS" \
         -v exts="$TECH_FOOTPRINT_EXTENSIONS" \
-        -v prefixes="$(printf '%s|' "${TECH_FOOTPRINT_ALLOWED_PREFIXES[@]}")" \
-        -v paths="|$(printf '%s|' "${TECH_FOOTPRINT_ALLOWED_PATHS[@]}")" '
+        -v prefixes="$(printf '%s|' ${TECH_FOOTPRINT_ALLOWED_PREFIXES[@]+"${TECH_FOOTPRINT_ALLOWED_PREFIXES[@]}"})" \
+        -v paths="|$(printf '%s|' ${TECH_FOOTPRINT_ALLOWED_PATHS[@]+"${TECH_FOOTPRINT_ALLOWED_PATHS[@]}"})" '
       BEGIN { n = split(prefixes, pfx, "|") }
       {
         if (index(paths, "|" $0 "|")) next

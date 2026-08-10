@@ -37,7 +37,7 @@ guardrails, and `pre-push` runs `bin/test`. Both get out of the way with a notic
 stack seam they call is still a stub — a template that blocks your first push before you
 have configured anything is a template you delete.
 
-An eighth script, `lint-example.sh`, ships **deliberately unregistered**. It is an inert
+An eighth hook script, `lint-example.sh`, ships **deliberately unregistered**. It is an inert
 template to copy, and wiring a rule that never fires teaches people to ignore the wiring.
 
 The secret scanner is the one worth understanding first, because it runs at the **read**. A
@@ -82,7 +82,7 @@ when it cannot determine the working directory; the merge gate refuses when it c
 determine which files a PR touches. An unverifiable action is indistinguishable from an
 unsafe one, and treating them differently is how a guardrail becomes decorative.
 
-The same reasoning covers a missing dependency. Without `jq`, the three blocking hooks
+The same reasoning covers a missing dependency. Without `jq`, the four blocking hooks
 refuse every call they inspect rather than waving it through, and say why.
 
 **Scanning strategy is part of the rule, not an implementation detail.** Secrets are scanned

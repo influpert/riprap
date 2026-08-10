@@ -56,8 +56,17 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 # the not-yet-existing remainder back on the end. Keeping only the basename would
 # collapse bin/hooks/riprap/lib/x.sh to x.sh, which then matches no allow-list
 # entry and gets blocked — riprap's own namespace, refused by riprap.
+#
+# The remainder must also be folded lexically. `pwd -P` resolves only the part
+# that exists; a `..` in the not-yet-existing tail stays in the string, so the
+# path compared is not the path the kernel writes to. Both directions are
+# exploitable: <root>/../outside/../repo/tool.py reads as out-of-tree and is
+# allowed while landing inside the repo, and
+# <root>/bin/hooks/riprap/nonexistent/../../../../evil.py prefix-matches an
+# exempt directory while landing at the root. Fold, then refuse to guess if
+# anything is left.
 tf_physical_path() {  # $1 = a path that may not exist yet
-  local d="$1" tail="" resolved
+  local d="$1" tail="" resolved out seg rebuilt=""
   while [ ! -d "$d" ]; do
     tail="${d##*/}${tail:+/$tail}"
     case "$d" in
@@ -66,11 +75,33 @@ tf_physical_path() {  # $1 = a path that may not exist yet
     esac
   done
   resolved=$(cd "$d" 2>/dev/null && pwd -P) || return 1
-  printf '%s\n' "${resolved%/}${tail:+/$tail}"
+  out="${resolved%/}${tail:+/$tail}"
+
+  # Lexical fold of . and .. over the whole path. Safe because everything up to
+  # $resolved is already symlink-free, so ".." cannot cross a link boundary.
+  local IFS=/
+  for seg in $out; do
+    case "$seg" in
+      ''|.) continue ;;
+      ..)   rebuilt="${rebuilt%/*}" ;;
+      *)    rebuilt="$rebuilt/$seg" ;;
+    esac
+  done
+  [ -n "$rebuilt" ] || rebuilt="/"
+  case "$rebuilt" in *..*) return 1 ;; esac   # never guess; caller fails closed
+  printf '%s\n' "$rebuilt"
 }
 
 ROOT_PHYS=$(cd "$ROOT" 2>/dev/null && pwd -P) || exit 0
-TARGET_PHYS=$(tf_physical_path "$FILE_PATH") || exit 0
+# Fail CLOSED on a path that cannot be resolved. A leftover `..` means the path
+# climbs above the filesystem root, which no legitimate write does, and an
+# unverifiable action is indistinguishable from an unsafe one — the rule the rest
+# of riprap's blocking hooks already follow.
+if ! TARGET_PHYS=$(tf_physical_path "$FILE_PATH"); then
+  echo "❌ Blocked: cannot resolve $FILE_PATH to a real location." >&2
+  echo "   Refusing rather than guessing. See .claude/instructions/tech-footprint.md." >&2
+  exit 2
+fi
 
 # A file outside the repository is not a footprint, and the rule says so:
 # "Ephemeral is not a footprint", the test being whether a teammate's clean clone

@@ -23,9 +23,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handoff-common.sh
 source "$SCRIPT_DIR/../lib/handoff-common.sh"
 
-# Every failure path exits 0. A teardown-shaped hook that turns a normal
-# compaction into an error costs the session it was meant to protect.
-trap 'exit 0' ERR
+# Every failure path exits 0 explicitly, below. There is deliberately no `ERR`
+# trap: it is not inherited into functions, command substitutions or subshells
+# without `set -E`, so it would have covered almost nothing here while reading
+# like a net — and any bare command added later would have exited 0 mid-write
+# instead of failing visibly.
 
 cat >/dev/null 2>&1 || true   # drain stdin; nothing here needs the payload
 
@@ -47,7 +49,7 @@ STAMP=$(date '+%Y-%m-%d %H:%M')
 CURRENT=""
 CURRENT=$(handoff_current) || true
 
-if [ -n "$CURRENT" ] && [ -f "$CURRENT" ] && ! handoff_is_capture "$CURRENT"; then
+if [ -f "$CURRENT" ] && ! handoff_is_capture "$CURRENT"; then
   printf '\n> Context was compacted at %s. Anything above this line predates the summary\n> the session is now working from; re-check it against the tree before relying on it.\n' \
     "$STAMP" >>"$CURRENT" 2>/dev/null || true
   exit 0
@@ -55,8 +57,14 @@ fi
 
 # No handoff. Record what is observable, and label it honestly.
 OUT="$DIR/handoff-$(date '+%Y-%m-%d')-precompact-capture.md"
+BRANCH=$(handoff_branch)
 {
   echo "# NOT A HANDOFF — automatic capture at $STAMP"
+  # The same marker a real handoff carries, so this is found on the branch it
+  # belongs to and nowhere else. Omitted when HEAD is detached: an unmarked file
+  # is only ever treated as current when it is the sole handoff present, which
+  # is the right answer for a capture nobody can attribute to a branch.
+  [ -z "$BRANCH" ] || echo "${HANDOFF_MARKER_OPEN}${BRANCH} -->"
   echo
   echo "The context was compacted with no handoff in place, so this is raw state a hook"
   echo "could observe. It does not say what the work is for, what was agreed, or what done"
@@ -65,7 +73,7 @@ OUT="$DIR/handoff-$(date '+%Y-%m-%d')-precompact-capture.md"
   echo
   echo "## Branch"
   echo '```'
-  git branch --show-current 2>/dev/null || echo "(detached)"
+  git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "(detached)"
   git worktree list 2>/dev/null | head -10
   echo '```'
   echo

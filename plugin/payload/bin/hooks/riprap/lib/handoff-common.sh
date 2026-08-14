@@ -8,10 +8,28 @@
 # Three copies of "which file is the handoff" would drift into three different
 # files, and the failure would look like a hook that simply never fires.
 #
+# There is a fourth copy, and it cannot be removed: plugin/hooks/session-start
+# reads the same directory and the same marker. It runs from the plugin, which
+# must stay inert in a repository that never ran /riprap:install, so it cannot
+# source a payload file. That copy is commented at its own site; if either of
+# the two constants below changes, it changes there too, and ci.yml asserts it.
+#
 # The rules these implement are stated in the plugin's handoffs.md. This file is
 # the mechanism only; it deliberately decides nothing.
 
 HANDOFF_SUBDIR="tmp/handoff"
+
+# The line that binds a handoff to the work it describes.
+#
+# Without it "the current handoff" can only mean "the newest file", and a
+# finished handoff from last week is newest for ever — so the router announces
+# work in progress that is not, and the Stop hook asks for a rewrite of a
+# document belonging to another task, which the skill explicitly forbids. A
+# branch is the closest thing to a unit of work that a shell can read.
+#
+# It also retires a handoff for free: once the branch is merged and deleted, no
+# handoff claims the branch you are on, and there is no current handoff.
+HANDOFF_MARKER_OPEN="<!-- riprap:handoff branch="
 
 # Absolute path of the handoff directory for this project.
 handoff_dir() {
@@ -24,24 +42,88 @@ handoff_dir() {
 # /riprap:install may have nothing covering tmp/. Writing there anyway would put
 # a session artifact in front of the next `git add -A`, which handoffs.md is
 # explicit that handoffs must never be. So every writer checks first and does
-# nothing when the answer is no — silence is the right failure here, because
-# there is no surface a compaction hook can report to anyway.
+# nothing when the answer is no.
 handoff_dir_is_ignored() {
-  local probe
-  probe="$(handoff_dir)/probe.md"
-  git check-ignore -q "$probe" 2>/dev/null
+  git check-ignore -q "$(handoff_dir)/probe.md" 2>/dev/null
 }
 
-# The current handoff for this work, or nothing.
+# The branch this session is on, or nothing when HEAD is detached.
 #
-# Newest first. One document per unit of work is the rule, so in a well-behaved
-# repository there is exactly one; taking the newest is what keeps this honest
-# when there is not, rather than picking arbitrarily.
-handoff_current() {
-  local dir
+# symbolic-ref rather than `git branch --show-current`: the latter needs git
+# 2.22 and appears nowhere else in this repository, and branch-cleaner's skill
+# already records why symbolic-ref is the right one in a worktree.
+handoff_branch() {
+  git symbolic-ref --quiet --short HEAD 2>/dev/null || true
+}
+
+# The branch a given handoff claims, or nothing when it carries no marker.
+#
+# awk rather than `sed | head`: a pipeline closed early kills the producer with
+# SIGPIPE, and under `pipefail` that reports the whole function as failed while
+# it printed a perfectly good answer.
+handoff_branch_of() {  # $1 = path
+  [ -f "$1" ] || return 1
+  awk -v open="$HANDOFF_MARKER_OPEN" '
+    index($0, open) == 1 {
+      s = substr($0, length(open) + 1)
+      sub(/ -->[[:space:]]*$/, "", s)
+      print s
+      exit
+    }' "$1" 2>/dev/null
+}
+
+# Every handoff, newest first, regular files only.
+#
+# The listing is captured whole rather than piped into `head`, for the SIGPIPE
+# reason above — with enough files `ls` dies mid-write and the caller sees a
+# failure beside correct output. Non-regular entries are dropped here so no
+# caller has to: a dangling symlink sorts newest by its own mtime, and every
+# consumer below would otherwise hand the model a path that is not a file.
+handoff_list() {
+  local dir listing f
   dir="$(handoff_dir)"
   [ -d "$dir" ] || return 1
-  ls -t "$dir"/*.md 2>/dev/null | head -1
+  listing=$(ls -t "$dir"/*.md 2>/dev/null) || return 1
+  [ -n "$listing" ] || return 1
+  printf '%s\n' "$listing" | while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    printf '%s\n' "$f"
+  done
+}
+
+# The handoff for the work this session is doing, or nothing.
+#
+# Newest file CLAIMING THIS BRANCH — not newest file. The difference is the
+# whole point of the marker; see it above.
+#
+# The one exception is the layout that predates the marker: a single handoff
+# carrying none is taken as current, because there is nothing it could be
+# confused with. Two or more unmarked handoffs are ambiguous, and answering
+# anyway is what the marker exists to stop.
+handoff_current() {
+  local branch f first n
+  branch=$(handoff_branch)
+  first=""
+  n=0
+  # A here-document, not a pipe: a `while` on the right of a pipe runs in a
+  # subshell and the counters below would not survive the loop.
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    n=$((n + 1))
+    [ -n "$first" ] || first="$f"
+    if [ -n "$branch" ] && [ "$(handoff_branch_of "$f")" = "$branch" ]; then
+      printf '%s\n' "$f"
+      return 0
+    fi
+  done <<EOF
+$(handoff_list)
+EOF
+
+  if [ "$n" -eq 1 ] && [ -z "$(handoff_branch_of "$first")" ]; then
+    printf '%s\n' "$first"
+    return 0
+  fi
+  return 1
 }
 
 # Was this file written by a hook rather than by a session?
@@ -55,23 +137,35 @@ handoff_is_capture() {  # $1 = path
 
 # The first changed file that is newer than the handoff, if there is one.
 #
-# Staleness is measured against the working tree rather than against the clock:
-# a handoff written an hour ago is perfectly current if nothing has been touched
-# since, and one written a minute ago is already stale if a file changed after
-# it. Reading the change list from git rather than walking the tree keeps this
-# cheap enough to run at the end of every turn.
+# Staleness is measured against the work, not the clock: a handoff written an
+# hour ago is current if nothing has happened since, and one written a minute ago
+# is stale if something has.
+#
+# All three of these lists are needed, and the third is the one whose absence
+# made this hook useless. A session that finishes a chunk and COMMITS it leaves a
+# clean tree, so the first two lists are empty and the handoff reads as current
+# at exactly the moment it is most out of date — the moment there is something to
+# record. Committed paths keep their edit mtime, so the comparison below still
+# distinguishes work done after the handoff from work done before it.
+#
+# `--relative` on both git commands that accept it: `git diff` prints
+# repo-root-relative paths while `git ls-files --others` prints cwd-relative
+# ones, so in a project whose root is a subdirectory of the repository the two
+# disagree and every tracked change is silently discarded.
 #
 # Paths git chose to quote are skipped. That loses an exotic filename and gains
-# never mis-parsing one — and the safe direction here is to under-report, since
-# the cost of a false positive is a hook that nags on a correct handoff.
+# never mis-parsing one — and under-reporting is the safe direction, since the
+# cost of a false positive is a hook that nags on a correct handoff.
 handoff_newer_change() {  # $1 = handoff path
   local handoff="$1" f
   [ -f "$handoff" ] || return 1
   {
-    git diff --name-only HEAD 2>/dev/null || true
+    git diff --name-only --relative HEAD 2>/dev/null || true
     git ls-files --others --exclude-standard 2>/dev/null || true
+    git log --pretty=format: --name-only --relative -20 2>/dev/null || true
   } | while IFS= read -r f; do
         case "$f" in
+          "") continue ;;
           "$HANDOFF_SUBDIR"/*) continue ;;   # the handoff cannot make itself stale
           '"'*) continue ;;                  # git-quoted path; see above
         esac

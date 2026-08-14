@@ -42,9 +42,9 @@ cd "$PROJECT" 2>/dev/null || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
-CURRENT=""
+# handoff_current returns non-zero for an absent directory, an empty one, and a
+# tree where no handoff claims this branch. All three mean the same thing here.
 CURRENT=$(handoff_current) || exit 0
-[ -n "$CURRENT" ] || exit 0
 
 # A machine capture is not a handoff, and asking to "update" one would tell the
 # next session that the placeholder counts. The plan-approved hook and the

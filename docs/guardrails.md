@@ -31,9 +31,14 @@ format what you just wrote, keep the handoff current, and mark the end of a sess
 | tech footprint | Write | Refuses a file whose language or toolchain nothing in the repository already uses | **yes** |
 | format on write | Edit, Write | Runs `bin/format` on the file just written | no |
 | plan approved | ExitPlanMode | Asks for the handoff to be written, or rewritten, from the plan just approved | no |
-| pre-compaction | before compaction | Stamps the handoff; records git state under a `NOT A HANDOFF` heading when there is none | no |
+| pre-compaction | before compaction | Stamps the handoff, or records git state under a heading saying it is not one. Does nothing unless `tmp/` is already git-ignored | no |
 | turn ending | Stop | Asks for a handoff that has fallen behind the tree to be brought up to date | no |
 | session end | session end | Teardown hook | no |
+
+The three handoff hooks read and write `tmp/handoff/`, and the pre-compaction one refuses to
+write there unless git already ignores it — a session artifact swept into a commit is the
+outcome it exists to prevent. `/riprap:install` seeds that ignore rule; without it,
+`git check-ignore -v tmp/handoff/probe.md` printing nothing means the capture will not happen.
 
 Plus two git hooks: `pre-commit` runs `bin/lint` on staged files and then the pattern
 guardrails, and `pre-push` runs `bin/test`. Both get out of the way with a notice if the
@@ -87,6 +92,11 @@ unsafe one, and treating them differently is how a guardrail becomes decorative.
 
 The same reasoning covers a missing dependency. Without `jq`, the four blocking hooks
 refuse every call they inspect rather than waving it through, and say why.
+
+**The three handoff hooks deliberately fail the other way**, and it is worth being explicit
+about the asymmetry: they block nothing, so without `jq` they exit silently rather than
+refusing. Nothing is unsafe when a reminder does not arrive, and turning every approved plan
+into an error over a convenience dependency is how a hook gets switched off.
 
 **Scanning strategy is part of the rule, not an implementation detail.** Secrets are scanned
 on *added lines only*: a secret already committed is a rotation problem, not a reason to

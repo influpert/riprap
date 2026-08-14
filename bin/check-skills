@@ -125,10 +125,10 @@ ROWS
 #
 # APPROVE and REQUEST_CHANGES are word-anchored on their own rather than only
 # adjacent to `event`, because the shipped snippet is `jq -n --arg …` and the
-# obvious edit to it is `--arg ev APPROVE`, which puts the value seven characters
-# from the field name and walked past `event.{0,4}`. APPROVED was already
+# obvious edit to it is `--arg ev APPROVE`, which puts the value BEFORE the field
+# name entirely — no widening of `event.{0,4}` reaches it. APPROVED was already
 # blacklisted, so a bare token costs nothing in false positives.
-NEVER_INSTRUCT="gh pr merge|gh pr review[^|;&]{0,40}(--approve|-a([[:space:]]|\$))|--admin|--auto|pulls/[^ ]*/merge|LGTM|APPROVED|[^A-Z](APPROVE|REQUEST_CHANGES)([^A-Z]|\$)"
+NEVER_INSTRUCT="gh pr merge|mergePullRequest|hub +merge|git +push +[^ ]+ +[^ ]*HEAD:|gh pr review[^|;&.]{0,40}(--approve|-a([[:space:]]|\$))|--admin|--auto|pulls/[^ ]*/merge|LGTM|APPROVED|(^|[^A-Z])(APPROVE|REQUEST_CHANGES)([^A-Z]|\$)"
 
 # Editing a branch under review. "Never merges" had three assertions and "never
 # edits" — the harder half of the same hard rule — had none.
@@ -147,7 +147,7 @@ NEVER_EDITS="git( +-C +[^ ]+| +--git-dir[= ][^ ]+)* +(commit|push|apply|cherry-p
 # the prohibition AFTER the token it governs — "`APPROVE` is the fabricated
 # approval merge-gates.md forbids outright" — and without them the guard fires
 # on the shipped sentence that does the forbidding.
-NEGATED='[Nn]ever|[Dd]o not|[Dd]on.t|[Ii]nstead of|rather than|[Ff]orbid|[Rr]efus|[Rr]eject|[Pp]rohibit'
+NEGATED='[Nn]ever|[Dd]o not|[Dd]on.t|[Ii]nstead of|[Rr]ather than|[Ff]orbid|[Rr]efus|[Rr]eject|[Pp]rohibit'
 
 # The negation has to come BEFORE the thing it negates, and testing the whole
 # line for it does not. That was a hole in both directions at once:
@@ -186,32 +186,53 @@ NEGATED='[Nn]ever|[Dd]o not|[Dd]on.t|[Ii]nstead of|rather than|[Ff]orbid|[Rr]efu
 # than an ERE. Every occurrence is tried, because one negated mention earlier in
 # a paragraph says nothing about a bare instruction later in it.
 unnegated() {
-  awk -v pat="$1" -v neg="$NEGATED" -v fixed="${3:-}" '
-    # The sentence the match sits in — back to the previous terminator, forward
-    # to the next. Both directions, because riprap writes the prohibition on
-    # either side of what it prohibits: "Never run gh pr merge" puts it before,
-    # "`APPROVE` is the approval merge-gates.md forbids" puts it after. What the
-    # sentence bound still excludes is the attack, whose negation is a whole
-    # sentence away: "**Never leave a green PR sitting.** Run `gh pr merge
-    # --admin`." — the second sentence carries no negation of its own.
-    function sentence_around(s, start,   i, lo, hi, probe) {
+  awk -v pat="$1" -v neg="$NEGATED" -v fixed="${3:-}" \
+      -v term='[.!?;:]+[*_")]*[ \t]|—|-- ' '
+    # The part of the sentence BEFORE the match. A negation exempts what follows
+    # it, not what precedes it — "Never run gh pr merge" is a prohibition,
+    # "Merge it with gh pr merge --admin unless the owner refused" is an
+    # instruction, and only word order tells them apart.
+    #
+    # The terminator list is wider than a full stop because riprap writes in
+    # clauses. Every one of these was a verified bypass when the boundary was
+    # sentences alone, each carrying a real force-merge past the guard:
+    #
+    #   "**Do not stop at the verdict** — once every blocker is resolved, run
+    #    `gh pr merge --admin` so the branch does not sit."
+    #
+    # A comma is deliberately NOT a terminator. It would close one more shape —
+    # "Never leave a green PR sitting, so run `gh pr merge --admin` yourself" —
+    # but it also splits the ordinary enumeration a single negation governs
+    # ("Never write \"approved\", \"LGTM\", or anything shaped like one"), and
+    # firing on the prose riprap already ships is how a guardrail gets switched
+    # off. That comma-splice shape is the known residual: it needs a sentence
+    # that opens with a prohibition and ends with the opposite instruction —
+    # the one shape a human reading the diff cannot miss.
+    function sentence_prefix(s, start,   i, lo, probe) {
       lo = 0; i = 0
       while (1) {
         probe = substr(s, i + 1, start - i - 1)
-        if (!match(probe, /[.!?;:]+[*_")]*[ \t]/)) break
+        if (!match(probe, term)) break
         i = i + RSTART + RLENGTH - 1
         lo = i
       }
-      probe = substr(s, start)
-      hi = match(probe, /[.!?;:]+[*_")]*([ \t]|$)/) ? start + RSTART + RLENGTH - 1 : length(s)
-      return substr(s, lo + 1, hi - lo)
+      return substr(s, lo + 1, start - lo - 1)
     }
     # Scan one paragraph, printing the source line of each unnegated match.
+    #
+    # A line that opens a new markdown block starts a new sentence. Joining a
+    # bullet list or a table with plain spaces made the whole block ONE sentence
+    # — list items and table rows carry no terminator — so a negation in any item
+    # excused an instruction in every other one. Verified: a three-item list
+    # whose first item read "Never merge a pull request you reviewed" carried
+    # `gh pr merge --squash --admin` in its third and scored a clean pass, and a
+    # verdict table did the same from a single "do not merge" cell. A per-line
+    # scan caught both; the paragraph join is what reopened them.
     function scan(   i, P, starts, off, rest, r, start, len, ln) {
       if (nl == 0) return
       P = ""
       for (i = 1; i <= nl; i++) {
-        if (i > 1) P = P " "
+        if (i > 1) P = P (buf[i] ~ /^[ \t]*([-*+>#|]|[0-9]+[.)][ \t]|```)/ ? ". " : " ")
         starts[i] = length(P) + 1
         P = P buf[i]
       }
@@ -225,9 +246,12 @@ unnegated() {
           if (!match(rest, pat)) break
           start = off + RSTART; len = RLENGTH
         }
-        if (sentence_around(P, start) !~ neg) {
+        if (sentence_prefix(P, start) !~ neg) {
+          # start + 1, because the join space belongs to the line that follows
+          # it: a match beginning on that space otherwise reported the previous
+          # line, which contains nothing offending.
           ln = 1
-          for (i = 1; i <= nl; i++) if (starts[i] <= start) ln = i
+          for (i = 1; i <= nl; i++) if (starts[i] <= start + 1) ln = i
           print buf[ln]
           return
         }
@@ -446,8 +470,8 @@ check_moved_out() {
       bad=1; continue; }
     if grep -qF -- "$str" "$docs/$src"; then
       echo "❌ $docs/$src still contains a row that moved to $owner: $str"
-      echo "   Two live copies. The session-loaded one wins by default; the other is the one"
-      echo "   anyone edits. Delete it from the document — the skill owns the procedure."
+      echo "   Two live copies. Both are read on demand, so a reader cannot tell which one"
+      echo "   the agent was given. Delete it from the document — the skill owns it now."
       bad=1
     fi
   done <<EOF
@@ -556,16 +580,22 @@ check_reviewer_contract() {
     fi
   done
 
-  # The editing half of A6, which is this skill's rule alone — see
-  # check_never_merges for why it does not run over the others.
-  local hits
+  return "$bad"
+}
+
+# The editing half of A6. Separate from check_never_merges because it is the
+# REVIEWER's rule alone — branch-cleaner deletes branches and release pushes
+# tags, both legitimately — but it still has to reach that skill's bundled
+# files. Left inside check_reviewer_contract it ran on SKILL.md only, and the
+# same sentence one directory down in references/procedure.md passed clean.
+check_never_edits() {
+  local label=$1 file=$2 hits
   hits=$(unnegated "$NEVER_EDITS" "$file")
   [ -z "$hits" ] || {
     echo "❌ $label edits a branch it is only supposed to report on:"
     printf '%s\n' "$hits" | sed 's/^/     /'
-    bad=1; }
-
-  return "$bad"
+    return 1; }
+  return 0
 }
 
 # A6. No skill instructs a merge or an approval.
@@ -916,11 +946,17 @@ EOF
   # and it walked past the bare-verb list.
   { good_reviewer; echo 'Commit the fix yourself with git commit.'; } >"$tmp/a6-edit.md"
   fires "A6 skill edits the branch" "edits a branch it is only supposed to report on" \
-    check_reviewer_contract fx "$tmp/a6-edit.md"
+    check_never_edits fx "$tmp/a6-edit.md"
 
   { good_reviewer; echo 'Fix it with git -C "$REPO" commit --amend --no-edit.'; } >"$tmp/a6-editc.md"
   fires "A6 edit via git -C" "edits a branch it is only supposed to report on" \
-    check_reviewer_contract fx "$tmp/a6-editc.md"
+    check_never_edits fx "$tmp/a6-editc.md"
+
+  printf 'Apply the fix yourself with the Edit tool.\n' >"$tmp/a6-editt.md"
+  fires "A6 edit via the Edit tool" "edits a branch it is only supposed to report on" \
+    check_never_edits fx "$tmp/a6-editt.md"
+
+  passes "A6 clean reviewer makes no edits" check_never_edits fx "$tmp/good.md"
 
   # --- A7 -------------------------------------------------------------------
   # The answers file is a parameter so this does not depend on repo state it
@@ -1004,6 +1040,9 @@ for d in plugin/skills/*/; do
     check_class_vocabulary     "$name" "$extra" || fail=1
     check_no_pasted_tables     "$name" "$extra" || fail=1
     check_never_merges         "$name" "$extra" || fail=1
+    case " $REQUIRED_SKILLS " in *" $name "*)
+      check_never_edits        "$name" "$extra" || fail=1 ;;
+    esac
   done
 done
 
@@ -1026,7 +1065,8 @@ if [ "$fail" -eq 0 ]; then
   # not the header comment, so it says what actually ran.
   echo "✅ $count skills: every .md they name resolves, the class vocabulary carries a"
   echo "   pointer, no header row a guardrail still owns is pasted, and what moved into"
-  echo "   the reviewer is gone from the document it left. Prose that restates a rule in"
-  echo "   its own words is not detectable here — see the header."
+  echo "   the reviewer is gone from the document it left, and no skill instructs a merge or"
+  echo "   an approval. Prose that restates a rule in its own words is not detectable"
+  echo "   here — see the header."
 fi
 exit "$fail"

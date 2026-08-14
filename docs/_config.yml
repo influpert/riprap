@@ -14,7 +14,7 @@ title: riprap
 tagline: Guardrails for Claude Code, enforced rather than suggested
 description: >-
   Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
-  documents loaded every session, seven skills, and hooks that block rather than advise.
+  documents loaded every session, nine skills, and hooks that block rather than advise.
 url: https://riprap.dev
 baseurl: ""
 

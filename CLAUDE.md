@@ -47,8 +47,8 @@ purpose, and `bin/` is in none of the scrub path lists.
 
 ### The skills, and what they are for here
 
-Cutting a release, pruning branches, recording a lesson, defining a feature and planning
-something hard all have a skill already. **Use it rather than writing the procedure out
+Cutting a release, pruning branches, recording a lesson, defining a feature, planning a change,
+building one and planning something hard all have a skill already. **Use it rather than writing the procedure out
 again.** A procedure spelled out in this file beside a skill that covers the same ground is
 not a convenience — it is a second definition of the same rule, and it wins by default
 because this file is injected every session while a skill is not. The two then drift with
@@ -60,12 +60,14 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:branch-cleaner` | Pruning merged and stale branches, and triaging quiet pull requests. |
 | `/riprap:learn` | Recording what a session taught. **Read the note in the answers file first** — this skill's central rule inverts here. |
 | `/riprap:spec` | Defining a feature. It writes into `tmp/`; nothing it generates may land under `plugin/`, and `docs/` is the public site, not a scratch area. |
+| `/riprap:architect` | Turning a requirement into an implementation plan. Plans only — it writes no source, and its output is what `/riprap:implement` reads. |
+| `/riprap:implement` | Building an approved plan, through three review gates to a pull request. **Its answers file records why a worktree is wrong here** — the plugin loads from this working tree, so a second checkout tests the wrong copy. |
 | `/riprap:council` | Planning something hard, with research and adversarial critique. Stateless. |
 | `/riprap:reviewer` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
 | `/riprap:handoff` | Writing the handoff that carries work across a lost context, or resuming from one. Its answers file says what a handoff about `plugin/` must carry that one about an ordinary repository need not. |
 
 **riprap's answers to its own skills live in [.claude/instructions/riprap-skills.md](.claude/instructions/riprap-skills.md).**
-Two of the skills read that file before asking anything, so it is what stops them
+Five of them read that file before asking anything, so it is what stops them
 re-interviewing this repository every run. It also carries the corrections for `learn` and
 `spec` — they are there rather than here because a skill is licensed to rewrite this file
 and told to keep it short, and a rule constraining a skill should not sit somewhere that

@@ -49,7 +49,7 @@ On this page
 **`/plugin marketplace add influpert/riprap`** registers this repository as a plugin
 marketplace. The repository is its own marketplace, so there is no directory to go through.
 
-**`/plugin install riprap@influpert`** installs the plugin: 19 guardrail documents, seven
+**`/plugin install riprap@influpert`** installs the plugin: 19 guardrail documents, nine
 skills, and the Claude hook registrations. The form is `plugin@marketplace` — the plugin is
 `riprap`, and it comes from the `influpert/riprap` marketplace you registered in the previous
 step. Nothing lands in any repository. You can stop here if all you want is the documents and
@@ -87,9 +87,9 @@ The complete file-by-file inventory is on the [reference page](reference.md).
 
 **Your `CLAUDE.md` and `.claude/settings.json` are never touched.** The documents reach the
 model through a SessionStart hook and the skills are namespaced by the harness as
-`/riprap:learn`, `/riprap:spec`, `/riprap:council`, `/riprap:branch-cleaner`,
-`/riprap:release`, `/riprap:reviewer` and `/riprap:handoff`. There is nothing to merge, and a
-project with its own `/learn` keeps it.
+`/riprap:learn`, `/riprap:spec`, `/riprap:architect`, `/riprap:implement`,
+`/riprap:council`, `/riprap:branch-cleaner`, `/riprap:release`, `/riprap:reviewer` and
+`/riprap:handoff`. There is nothing to merge, and a project with its own `/learn` keeps it.
 
 Everything riprap overwrites lives under a path only riprap uses, so installing into a repo
 that already has its own instructions, skills, and hooks cannot clobber any of them.

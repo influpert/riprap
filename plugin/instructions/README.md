@@ -118,6 +118,9 @@ beat one 215-line file when either would answer the question.
 - Planning anything a user will see? Mock it up first, in the project's design system → [design.md](design.md) (~250)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
   on the way? → [development-workflow.md](development-workflow.md) (~110)
+- Handed a requirement, and the plan has to be built by somebody who was not here? →
+  `/riprap:architect`. Handed an approved plan and building it? → `/riprap:implement`, which
+  runs the tests, the reviews and the pull request in one loop.
 - Picking up from a previous session, or ending one? → [handoffs.md](handoffs.md) (~105)
 
 **Writing code**

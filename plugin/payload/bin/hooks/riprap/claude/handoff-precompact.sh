@@ -36,14 +36,15 @@ cd "$PROJECT" 2>/dev/null || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
+# handoff_current already falls back to the pre-rename directory, so a handoff
+# living in tmp/handover/ is found and stamped rather than being papered over
+# with a capture that claims nobody wrote one.
+
 # Never write where the result could be committed. riprap adds no ignore rules of
 # its own, so in a repository that never ran /riprap:install there may be nothing
 # covering tmp/ — and a session artifact swept into `git add -A` is the one
 # outcome handoffs.md rules out absolutely.
 handoff_dir_is_ignored || exit 0
-
-DIR="$(handoff_dir)"
-mkdir -p "$DIR" 2>/dev/null || exit 0
 
 STAMP=$(date '+%Y-%m-%d %H:%M')
 CURRENT=""
@@ -56,6 +57,12 @@ if [ -f "$CURRENT" ] && ! handoff_is_capture "$CURRENT"; then
 fi
 
 # No handoff. Record what is observable, and label it honestly.
+#
+# The directory is created here rather than above, because the stamp branch does
+# not need it: creating it unconditionally left an empty tmp/handoff/ behind in
+# every repository whose handoff still lives in the pre-rename directory.
+DIR="$(handoff_dir)"
+mkdir -p "$DIR" 2>/dev/null || exit 0
 OUT="$DIR/handoff-$(date '+%Y-%m-%d')-precompact-capture.md"
 BRANCH=$(handoff_branch)
 {

@@ -19,6 +19,17 @@
 
 HANDOFF_SUBDIR="tmp/handoff"
 
+# Where handoffs lived before this directory was named. Read, never written.
+#
+# The plugin updates on its own schedule and the payload only moves when someone
+# runs /riprap:install, so an adopter mid-task gets the new code pointed at a new
+# directory while their actual handoff sits in the old one. Without this fallback
+# the pre-compaction hook sees "no handoff", writes a capture beside the real one
+# it cannot see, and the next session is told "no handoff was written" — which is
+# false, at the exact moment the session has lost everything else. Removable one
+# release after adopters have had a chance to move.
+HANDOFF_LEGACY_SUBDIR="tmp/handover"
+
 # The line that binds a handoff to the work it describes.
 #
 # Without it "the current handoff" can only mean "the newest file", and a
@@ -82,8 +93,13 @@ handoff_branch_of() {  # $1 = path
 handoff_list() {
   local dir listing f
   dir="$(handoff_dir)"
-  [ -d "$dir" ] || return 1
-  listing=$(ls -t "$dir"/*.md 2>/dev/null) || return 1
+  listing=$(ls -t "$dir"/*.md 2>/dev/null) || listing=""
+  # Fall back to the pre-rename directory only when the current one is empty, so
+  # a project that has moved never sees its old files again.
+  if [ -z "$listing" ]; then
+    dir="${CLAUDE_PROJECT_DIR:-$(pwd)}/$HANDOFF_LEGACY_SUBDIR"
+    listing=$(ls -t "$dir"/*.md 2>/dev/null) || listing=""
+  fi
   [ -n "$listing" ] || return 1
   printf '%s\n' "$listing" | while IFS= read -r f; do
     [ -f "$f" ] || continue
@@ -166,7 +182,7 @@ handoff_newer_change() {  # $1 = handoff path
   } | while IFS= read -r f; do
         case "$f" in
           "") continue ;;
-          "$HANDOFF_SUBDIR"/*) continue ;;   # the handoff cannot make itself stale
+          "$HANDOFF_SUBDIR"/*|"$HANDOFF_LEGACY_SUBDIR"/*) continue ;;  # cannot make itself stale
           '"'*) continue ;;                  # git-quoted path; see above
         esac
         [ -f "$f" ] || continue

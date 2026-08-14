@@ -316,5 +316,57 @@ run_hook handoff-stop.sh "$P" '{}'
 assert_silent "two unmarked handoffs are ambiguous, so neither is claimed"
 rm -rf "$P"
 
+echo
+echo "--- the pre-rename directory, for adopters mid-task ---"
+
+# The plugin updates on its own schedule; the payload waits for /riprap:install.
+# An adopter caught in that window has the new code pointed at tmp/handoff/ and
+# their actual handoff still in tmp/handover/. Before the fallback existed, the
+# pre-compaction hook saw "no handoff", wrote a capture beside the real one it
+# could not see, and the next session was told nobody had written one — false, at
+# the moment the session had lost everything else.
+P=$(new_project)
+mkdir -p "$P/tmp/handover"
+printf '# legacy\n\nGoal: halfway through\n' >"$P/tmp/handover/handover-old.md"
+run_hook handoff-precompact.sh "$P" '{}'
+[ -d "$P/tmp/handoff" ] && bad "wrote a capture beside a handoff in the old directory" \
+  || ok "no capture when a handoff exists in the pre-rename directory"
+case "$(cat "$P/tmp/handover/handover-old.md")" in
+  *"Context was compacted"*) ok "stamps the handoff in the pre-rename directory" ;;
+  *) bad "did not stamp the legacy handoff" ;;
+esac
+
+printf 'x\n' >>"$P/tracked.txt"; touch -t "$NEW" "$P/tracked.txt"
+run_hook handoff-stop.sh "$P" '{}'
+assert_context_says "the stop hook finds a handoff in the old directory" "tmp/handover/handover-old.md"
+
+# ...but never in preference to one in the current directory.
+B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+touch -t "$OLD" "$P/tmp/handoff/$WORK"
+run_hook handoff-stop.sh "$P" '{}'
+assert_context_says "the current directory wins once it has anything in it" "tmp/handoff/$WORK"
+rm -rf "$P"
+
+echo
+echo "--- writing where the result could be committed ---"
+
+# The pre-compaction hook refuses to write into an unignored tmp/. The hook that
+# ASKS for a handoff has to say so too, or the two disagree about whose job the
+# check is and the model is the one that gets it committed.
+P=$(mktemp -d)
+( cd "$P" && git init -q . && git config user.email t@example.invalid && git config user.name Test
+  printf 'one\n' >tracked.txt && git add -A && git commit -qm init ) >/dev/null 2>&1
+run_hook handoff-plan-approved.sh "$P" '{"tool_name":"ExitPlanMode","tool_response":"## Approved Plan:"}'
+assert_context_says "warns when tmp/ is not git-ignored" "not git-ignored"
+printf 'tmp/\n' >"$P/.gitignore"
+( cd "$P" && git add -A && git commit -qm ig ) >/dev/null 2>&1
+run_hook handoff-plan-approved.sh "$P" '{"tool_name":"ExitPlanMode","tool_response":"## Approved Plan:"}'
+c=$(context_of); case "$c" in
+  *"not git-ignored"*) bad "warned about tmp/ when it is ignored" ;;
+  *) ok "no spurious warning once tmp/ is ignored" ;;
+esac
+rm -rf "$P"
+
 printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

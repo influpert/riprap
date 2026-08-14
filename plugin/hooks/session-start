@@ -46,6 +46,16 @@ sole=""
 count=0
 branch="$(git -C "$project" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 listing="$(ls -t "${project}"/tmp/handoff/*.md 2>/dev/null || true)"
+# The pre-rename directory, read only when the current one is empty. The plugin
+# updates on its own schedule while the payload waits for /riprap:install, so an
+# adopter mid-task can have the new code pointed at the new directory and their
+# actual handoff still in the old one — and being told "no handoff was written"
+# when one exists is the worst thing this hook can say.
+legacy=""
+if [ -z "$listing" ]; then
+  listing="$(ls -t "${project}"/tmp/handover/*.md 2>/dev/null || true)"
+  [ -z "$listing" ] || legacy=" It is still in the old \`tmp/handover/\` directory — move it to \`tmp/handoff/\` as part of your next rewrite."
+fi
 
 # Newest file claiming THIS branch, not newest file: a finished handoff from
 # another task stays newest for ever, and announcing it as current work is a lie
@@ -78,7 +88,7 @@ if [ -n "$newest" ]; then
   if head -1 "$newest" 2>/dev/null | grep -q 'NOT A HANDOFF'; then
     handoff_note=$'\n\n---\n\n**No handoff was written before this context was lost.** `'"${rel}"$'` is an automatic capture of git state — it does not say what the work is for, what was agreed, or what done means, because nobody wrote those down. Treat it as raw material: re-establish the goal with the user before acting, then replace it with a real handoff.'
   else
-    handoff_note=$'\n\n---\n\n**There is a handoff for this branch: `'"${rel}"$'`.** Read it once and carry its contents into your working state in the same turn; a read can be its last (handoffs.md). Check it against the tree before acting — where they disagree, the tree is what is true and the handoff is what was intended. If it turns out to describe finished work, say so and start a new one rather than editing it.'
+    handoff_note=$'\n\n---\n\n**There is a handoff for this branch: `'"${rel}"$'`.** Read it once and carry its contents into your working state in the same turn; a read can be its last (handoffs.md). Check it against the tree before acting — where they disagree, the tree is what is true and the handoff is what was intended. If it turns out to describe finished work, say so and start a new one rather than editing it.'"${legacy}"
   fi
 fi
 

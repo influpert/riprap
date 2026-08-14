@@ -28,6 +28,9 @@ worse than none, because it is confidently wrong about where the work stopped.
   It is the only part riprap's hooks can read, and it is what tells them which document belongs
   to the work in front of them. Without it a finished handoff is newest for ever, and the
   session router announces work in progress that ended last week.
+- **Handoffs used to live in `tmp/handover/`.** riprap still reads that directory when
+  `tmp/handoff/` is empty, so a document written before the rename is still found. Move it on
+  your next rewrite; the fallback goes away a release after this one.
 - **Retire one when its work ends** — delete it, or move it under `tmp/handoff/done/`, which
   nothing looks in. A merged branch retires its handoff by itself, because nothing then claims
   the branch you are on.

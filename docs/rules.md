@@ -190,10 +190,11 @@ on the lines they concern beside a summary giving every finding a class and a re
 
 **It owns the review procedure, and the guardrail document points at it.** The angles, the
 dispositions and the tables are defined in the skill; `code-review.md` states the obligation
-to review and stops there. That split is deliberate: a procedure written out in a document
-loaded every session, beside a skill that runs the same procedure, is two definitions that
-drift. The severity classes stay in `interaction-preferences.md`, shared with the plan
-stress-test, so a BLOCKER means one thing everywhere.
+to review and stops there. The split is about performing rather than reading: a review has to
+be run against a branch or somebody else's pull request, and a document cannot be run — while
+writing the procedure in both places would make it two definitions of one rule, drifting. The
+severity classes stay in `interaction-preferences.md`, shared with the plan stress-test, so a
+BLOCKER means one thing everywhere.
 
 ---
 

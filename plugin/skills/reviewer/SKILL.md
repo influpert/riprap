@@ -416,6 +416,18 @@ prevent.
 together. One — not one per angle, and not one per finding. Re-read `headRefOid` first and
 abandon the post if it moved; every inline comment is pinned to that commit.
 
+**This step needs `jq` itself**, not gh's built-in `--jq` filter, and it is the only place
+this skill does. Check for it first — a project that installed the plugin and stopped there
+was told, correctly until now, that `jq` is only needed by the Claude hooks:
+
+```bash
+command -v jq >/dev/null || echo "no jq — go straight to the summary-only fallback"
+```
+
+Without that check the pipe feeds `gh` empty stdin, the post fails, and the fallback below
+publishes a review blaming a bad line anchor for a missing binary. The next person debugs
+anchors.
+
 ```bash
 jq -n --arg sha "$HEAD_SHA" --arg body "$SUMMARY" --argjson comments "$INLINE" \
   '{commit_id: $sha, event: "COMMENT", body: $body, comments: $comments}' |
@@ -440,6 +452,12 @@ The rules that keep this a review, and not a decision made on the author's behal
 - **A finding with no anchorable line goes in the summary**, never on an approximate line.
   Should-this-exist findings live there by nature — their subject is the whole diff. A comment
   on the wrong line is a finding the reader has to disprove before they can dismiss it.
+- **Name the location and the identifier of a secret; never its value.** *"a live-looking API
+  key at `config/deploy.sh:14`"*, and the fix line reads *rotate it, then remove it*. This is
+  the one finding whose evidence must not be quoted: a review body is public, it leaves in
+  notification emails the moment it posts, and it stays in the timeline API after any edit —
+  which is step 4's second rank exactly, damage that survives the fix. The secrets hook cannot
+  save you here; it scans what an edit writes, not what this skill sends to the forge.
 
 Close the review by saying what it is. Where the review and the change come from the same
 session or the same account, **say so in the comment**: *"Written by the same session that

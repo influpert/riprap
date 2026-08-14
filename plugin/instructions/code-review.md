@@ -37,10 +37,14 @@ something a reader can audit in ten seconds.
 **Run `/riprap:reviewer`.** It owns the procedure — which angles exist and how many run, how
 findings are classified and dispositioned, the review table, and the cap on further rounds.
 
-**The method is deliberately not written here.** A procedure spelled out in a document that
-is loaded every session, beside a skill that runs the same procedure, is not a convenience:
-it is a second definition, and the two drift with nothing to catch it. So this file states
-the obligation and the skill states the method, and there is exactly one of each.
+**The method is deliberately not written here, for a reason that is about running it rather
+than about reading it.** A review has to be *performed* — against this branch, or against a
+pull request somebody else wrote — and a document cannot be performed. A skill can. Writing
+the procedure in both places would not make it more available; it would make it two
+definitions of one rule, drifting, with the reader unable to tell which one an agent got.
+
+So this file states the obligation and the skill states the method, and there is exactly one
+of each.
 
 What remains yours, and is not the skill's to do:
 

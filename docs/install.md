@@ -32,14 +32,16 @@ On this page
 - **A git repository** with a clean working tree, for `/riprap:install`. The clean-tree
   requirement is what makes `git checkout --` the undo button, so nothing is backed up to
   `.orig` files that then need cleaning up.
-- **`jq`**, for the Claude hooks. `brew install jq` or `apt-get install jq`.
+- **`jq`**, for the Claude hooks, and for `/riprap:reviewer` when it posts a batched pull
+  request review. `brew install jq` or `apt-get install jq`.
 
 > **Install `jq` before anything else.** The hooks read the tool payload as JSON on stdin,
 > and without it the four blocking hooks — secret hygiene, the destructive-command blocker,
 > the merge gate, tech footprint — **refuse every call they inspect**, with a message telling you to install
 > it. That is deliberate: a guardrail that waved things through because a dependency was
 > missing would be worse than one that stops you. The git hooks and `bin/riprap` do not need
-> `jq`.
+> `jq`. `/riprap:reviewer` does, but only to post inline comments — without it the review
+> still publishes, as a single summary comment.
 {: .callout .callout-warn}
 
 ## What each step does

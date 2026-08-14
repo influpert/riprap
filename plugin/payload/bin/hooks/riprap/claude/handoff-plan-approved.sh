@@ -68,5 +68,17 @@ lost. Then carry on with the implementation.
 /riprap:handoff has the template if you need it."
 fi
 
+# The pre-compaction hook refuses to write into an unignored tmp/, on the grounds
+# that a session artifact swept into `git add -A` is the outcome handoffs.md
+# rules out absolutely. Asking the model to write one there without saying so
+# would make the two hooks disagree about whose job the check is — and the model
+# is the one that would get it committed.
+if ! handoff_dir_is_ignored; then
+  MSG="$MSG
+
+Note: \`tmp/\` is not git-ignored in this repository, so a handoff written there can be
+swept into a commit. Add a \`tmp/.gitignore\` holding \`*\` and \`!.gitignore\` first."
+fi
+
 handoff_emit_context PostToolUse "$MSG"
 exit 0

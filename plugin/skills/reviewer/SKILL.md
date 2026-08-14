@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Review a branch or a pull request across parallel angles, post inline comments and a summary, and close with an explicit merge verdict. Use when the user runs /riprap:reviewer or asks to review a branch, a diff, or a pull request — theirs or someone else's — including "review PR 412", "review this branch before I push", or "take a look at the diff".
+description: Review a branch or a pull request across parallel angles and close with an explicit merge verdict against a named commit, posting inline comments and a summary. Use when the user runs /riprap:reviewer, or asks whether a change should merge or be held — "review PR 412", "review this branch before I push", "is this ready to merge". For a review that only needs findings, with no verdict and no merge gate, Claude Code's own /code-review is the lighter tool.
 ---
 
 # Reviewer
@@ -66,6 +66,27 @@ absolute path.
 
 **Read code-review.md's exceptions before step 2.** A pure revert, a reopened branch and
 generated output each scale the roster down, and they are the only things that do.
+
+### Beside the harness's own review commands
+
+Claude Code ships `/code-review` and `/security-review`, and they overlap this skill enough
+that a reader deserves to be told which to reach for. Where the built-in is the better tool,
+use it — it is faster, it has a tunable effort level, and it can post inline comments too.
+
+**Reach for this skill when the answer has to be a decision.** Three things are its alone:
+
+- **A verdict, against a named commit.** The built-ins return findings and stop. That is the
+  gap this skill exists to close — a review that lists findings without a decision has moved
+  the work rather than done it.
+- **The merge gates.** The `HOLD: human review required` rider, the gated-path check from the
+  file list alone, and the refusal to write anything shaped like a platform approval, all
+  bound to merge-gates.md.
+- **Reporting only.** The built-in can apply its findings to the working tree. This skill never
+  edits, and that is what keeps its findings distinguishable from its changes.
+
+**They are complements, not rivals.** Running the built-in first and this skill second is a
+reasonable way to work: one finds, the other decides. What is not reasonable is assuming
+either one has done the other's job.
 
 ## What this needs to know
 

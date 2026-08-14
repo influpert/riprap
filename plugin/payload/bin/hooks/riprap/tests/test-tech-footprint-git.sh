@@ -167,5 +167,24 @@ rm -rf .git && git init -q -b main . && git config core.hooksPath bin/hooks/ripr
 printf 'print(1)\n' > tool.py && git add -A
 commit_expect "the very first commit is never blocked" 0 "initial commit"
 
+echo "--- an empty staged set does not abort the hook ---"
+# Regression: `for f in "${STAGED[@]}"` with an EMPTY array is an unbound variable
+# under `set -u` on bash 3.2, which is what macOS ships. The hook died before any
+# check ran, and because git refuses a commit on a non-zero hook it looked like a
+# riprap rule with an opinion rather than a crash. Both routes to an empty staged
+# set are covered: --allow-empty, and a commit whose only staged change is a
+# deletion (--diff-filter=ACM drops it, so STAGED comes back empty).
+new_repo emptystage
+# Not commit_expect: that helper does not pass --allow-empty, so git would refuse
+# for its own reason and the assertion would pass without ever reaching the hook.
+git commit -q --allow-empty -m empty >/dev/null 2>&1
+rc=$?
+[ "$rc" = "0" ] && ok "--allow-empty is not a riprap failure (exit=0)" \
+  || no "--allow-empty is not a riprap failure (expected exit=0, got exit=$rc)"
+
+new_repo deletionly
+git rm -q main.go
+commit_expect "a deletion-only commit is not a riprap failure" 0 "delete only"
+
 printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

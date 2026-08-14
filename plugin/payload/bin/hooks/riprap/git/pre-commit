@@ -93,7 +93,20 @@ fi
 FAILED=0
 
 # -- secret hygiene: file-level --
-for f in "${STAGED[@]}"; do
+#
+# The `[@]+` form, not a bare "${STAGED[@]}". Under `set -u`, bash 3.2 — which is
+# what macOS ships as /bin/bash — treats an EMPTY array's expansion as an unbound
+# variable and aborts. Every other array here is either guarded by a count check
+# or already written this way (see is_partial above); this one was neither, so
+# `git commit --allow-empty` died at this line with "STAGED[@]: unbound variable"
+# before a single check had run.
+#
+# It failed CLOSED, which is the only reason it was survivable: git saw a
+# non-zero hook and refused the commit. It still read like a riprap check having
+# an opinion rather than the hook falling over, which is why it sat here. An
+# empty commit is the obvious way in, but so is any commit whose staged set is
+# empty by the time this runs.
+for f in ${STAGED[@]+"${STAGED[@]}"}; do
   if secret_env_file_path "$f"; then
     echo "❌ Refusing to commit a secret-bearing file: $f" >&2
     echo "   Add it to .gitignore. Commit a .example instead." >&2

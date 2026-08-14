@@ -9,7 +9,7 @@ show the plan and wait for confirmation.
 
 **Unattended runs do not wait.** With nobody to confirm, "wait for confirmation" is a
 deadlock, not a gate. An agent running unattended still writes the plan — into the task,
-the PR body, or the handover — and then proceeds, so the reasoning is reviewable after the
+the PR body, or the handoff — and then proceeds, so the reasoning is reviewable after the
 fact even though it was not reviewable before. Pair this with the same carve-out in
 [interaction-preferences.md](interaction-preferences.md); apply neither when a human is
 present.
@@ -80,13 +80,13 @@ who has already stopped thinking about the change.
 - Changed behaviour no test covers? Say what you did to check it, and what you could not check.
 
 If verification is impossible here, say so and name what still needs running. That is a useful
-handover; a confident "done" that nobody ran is not.
+handoff; a confident "done" that nobody ran is not.
 
 ## Clean up after yourself, and stop there
 
 **Remove what you created and no longer need.** Scratch files outside `tmp/`, debug logging,
 commented-out experiments, the branch you merged, the worktree you finished with. `tmp/` is
-session scratch and git-ignored ([handovers.md](handovers.md)), so anything left there is fine;
+session scratch and git-ignored ([handoffs.md](handoffs.md)), so anything left there is fine;
 anything left elsewhere has just become the repository's problem.
 
 **Suggest, do not perform, the cleanup that is not yours.** Merged local branches and stale

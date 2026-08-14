@@ -8,13 +8,13 @@
 # tmp/ is git-ignored and outside every path CI hands to bin/scrub-check, which walks the
 # filesystem rather than git. A build inside docs/ would be scanned, and Jekyll's cache is
 # not text. Never use --destination tmp on its own: Jekyll cleans its destination of
-# anything it did not generate, which would delete tmp/tasks/ and tmp/handover/.
+# anything it did not generate, which would delete tmp/tasks/ and tmp/handoff/.
 
 title: riprap
 tagline: Guardrails for Claude Code, enforced rather than suggested
 description: >-
   Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
-  documents loaded every session, six skills, and hooks that block rather than advise.
+  documents loaded every session, seven skills, and hooks that block rather than advise.
 url: https://riprap.dev
 baseurl: ""
 

@@ -9,7 +9,7 @@
 #   2. The payload carries `.cwd`, same as PreToolUse — useful when a session
 #      ran somewhere other than the project root.
 #
-# Reasonable things to add: release a lock, write a handover note to tmp/, stop a
+# Reasonable things to add: release a lock, write a handoff note to tmp/, stop a
 # dev server this session started. Not: anything slow, anything that prompts.
 set -uo pipefail
 

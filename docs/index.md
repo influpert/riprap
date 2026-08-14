@@ -15,7 +15,7 @@ hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
 description: >-
   Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
-  documents loaded every session, six skills, and hooks that block rather than advise.
+  documents loaded every session, seven skills, and hooks that block rather than advise.
 ---
 
 <div class="provenance" markdown="1">
@@ -36,8 +36,8 @@ good practice. Every rule is here because something broke first, and the inciden
 caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
-<em>from</em>. They are not what it ships. What it ships is 19 guardrail documents, six
-skills and seven hooks — the inventory is on the <a href="reference.md">reference page</a>.</p>
+<em>from</em>. They are not what it ships. What it ships is 19 guardrail documents, seven
+skills and ten hooks — the inventory is on the <a href="reference.md">reference page</a>.</p>
 
 </div>
 
@@ -53,7 +53,7 @@ exists because of a specific failure, and each entry names the mechanism and wha
 - **A destructive-command blocker**, hardened across five separate sandbox escapes: a quoted path containing a space, an escaped quote that opened a fake quoted run, a dash-leading operand, and two more. Each is now a named regression test, paired with a must-not-false-block control.
 - **"Never source a side-effecting script against live state"**, written after a bug repro fired seven real writes against a live system and corrupted an unrelated record. Nothing was permanently lost, but only because a later write happened to overwrite the damage. That was luck, not a control.
 - **A merge gate**, added after a self-reviewed pull request touching a security hook came within one step of merging with a genuine regression in it.
-- **A one-shot-consume warning on handover files**, written after a session destroyed its own state by "verifying" a write it had just made — the read printed the file *and deleted it*. A verification step that consumes the thing it verifies is not a verification step.
+- **A one-shot-consume warning on handoff files**, written after a session destroyed its own state by "verifying" a write it had just made — the read printed the file *and deleted it*. A verification step that consumes the thing it verifies is not a verification step.
 {: .incidents}
 
 ## Install
@@ -66,7 +66,7 @@ riprap is a Claude Code plugin. There is nothing to clone.
 /riprap:install
 ```
 
-The first two commands give you the guardrail documents, the six skills, and the Claude
+The first two commands give you the guardrail documents, the seven skills, and the Claude
 hooks — none of which put a file in your repository, and none of which touch your
 `CLAUDE.md` or `.claude/settings.json`. `/riprap:install` adds the half that has to live
 there: the guardrail scripts, their pattern libraries, the git hooks, and the four stack
@@ -116,6 +116,7 @@ instructions/   19 guardrail documents, indexed by task.
 skills/         /riprap:learn      /riprap:spec
                 /riprap:council    /riprap:branch-cleaner
                 /riprap:release    /riprap:reviewer
+                /riprap:handoff
 hooks/          the Claude hook registrations,
                 and the session router
 ```
@@ -176,7 +177,7 @@ what you believe is enforced. [How a rule is made to hold](guardrails.md).
 
 ## Behavioral rules
 
-Six rules are injected into context at the start of every session — without a line being
+Seven rules are injected into context at the start of every session — without a line being
 added to your `CLAUDE.md`:
 
 | Rule | What it does |
@@ -187,6 +188,7 @@ added to your `CLAUDE.md`:
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |
 | **Prefer the simpler solution** | When two designs both work, ship the one with less code. Add structure at the second occurrence, not in anticipation of one. |
 | **Fix bugs autonomously** | Given a failing test or a red CI run, diagnose and fix it without a round trip. |
+| **Keep the handoff current** | One document per unit of work in `tmp/handoff/`, rewritten as the work moves. Write it before you need it — at compaction there is no turn left. |
 
 Five more are restated in full because they cost the most when forgotten: never weaken code
 to make a test pass; always stress-test a plan before presenting it and again whenever it
@@ -206,7 +208,7 @@ about it:
 - **`docs/`** is durable, checked-in documentation. **`tmp/`** is session scratch and should
   be git-ignored — nothing in it is project documentation.
 - Plans go in `tmp/tasks/<topic>.md` as checkable items, with a review section when the work
-  lands. Session handovers go in `tmp/handover/`.
+  lands. Session handoffs go in `tmp/handoff/`.
 - Reference files by path relative to the repository root, never absolutely.
 
 ## Honest limits

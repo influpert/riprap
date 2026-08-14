@@ -39,6 +39,12 @@ obvious fixes — it is a check against hacks, not an invitation to over-enginee
 task*: diagnose and fix it, don't round-trip for permission. A failure you merely *noticed*
 is a report, not a new task. → [development-workflow.md](development-workflow.md)
 
+**7. Keep the handoff current.** One document per unit of work in `tmp/handoff/`, rewritten
+in place when a plan is approved, when a stage lands, when a task finishes, and whenever you
+stop with work unfinished. It carries the goal, the plan, what is done, what is next, what
+done means, and how to resume. Write it *before* you need it — when the context actually runs
+out there is no turn left in which to summarise. → [handoffs.md](handoffs.md)
+
 ---
 
 ## Critical rules
@@ -111,7 +117,8 @@ beat one 215-line file when either would answer the question.
 - Planning anything a user will see? Mock it up first, in the project's design system → [design.md](design.md) (~250)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
   on the way? → [development-workflow.md](development-workflow.md) (~110)
-- Picking up from a previous session, or ending one? → [handovers.md](handovers.md) (~15)
+- Picking up from a previous session, or ending one? The handoff is one document per unit of
+  work, rewritten in place, and it goes in `tmp/handoff/` → [handoffs.md](handoffs.md) (~90)
 
 **Writing code**
 

@@ -211,7 +211,7 @@ detect the absence, report it, and fall back rather than failing or pretending.
 The fallback is a self-contained HTML mockup in a scratch directory the repository does not
 track — `tmp/`, which `/riprap:install` seeds a `.gitignore` for. In a repository that has
 only the plugin, nothing has been seeded, so **check before writing there**: an unignored
-mockup gets swept into the next `git add -A`. [handovers.md](handovers.md) carries the
+mockup gets swept into the next `git add -A`. [handoffs.md](handoffs.md) carries the
 check and the fix. Link it from the plan or the pull request, with one line naming
 the surface you used and why it was not the intended one.
 

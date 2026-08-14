@@ -5,12 +5,12 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 19 guardrail documents, six skills, seven hook
+  The complete riprap catalogue: 19 guardrail documents, seven skills, ten hook
   registrations, four stack seams, and everything the installer writes into a repository.
 ---
 
-riprap is two halves. The plugin carries **19 guardrail documents**, **six skills** and
-**seven hook registrations**, and puts no file in your repository. `/riprap:install` adds the
+riprap is two halves. The plugin carries **19 guardrail documents**, **seven skills** and
+**ten hook registrations**, and puts no file in your repository. `/riprap:install` adds the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
 the git hooks, and the four stack commands the hooks call.
 
@@ -36,7 +36,7 @@ them and they would rot on every edit of every document.
 - [interaction-preferences.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/interaction-preferences.md) — how to work with the person on the other side of the session: when to argue, where a plan goes, and what to ask before starting.
 - [design.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design.md) — a change with material UI or UX impact gets a mockup before it gets an implementation, drawn inside the project's design system and in its frontend library's own primitives. Copy edits and invisible refactors are explicitly exempt; a new feature gets a full design, not one screen.
 - [development-workflow.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/development-workflow.md) — when to stop and plan, how to scope a bug fix, what to clean up, and what "done" has to mean.
-- [handovers.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/handovers.md) — session handovers always go in `tmp/handover/`, never in `docs/` or the repo root.
+- [handoffs.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/handoffs.md) — session handoffs always go in `tmp/handoff/`, never in `docs/` or the repo root.
 {: .doc-links}
 
 **Writing code**
@@ -89,7 +89,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `git.md` | Branching, committing, merging, and the costly failure modes |
 | `git-hooks.md` | The two hook families, and telling them apart |
 | `guardrail-template.md` | The shape every guardrail document follows |
-| `handovers.md` | Where session handovers go, and why not `docs/` |
+| `handoffs.md` | Where session handoffs go, and why not `docs/` |
 | `interaction-preferences.md` | When to argue, where a plan goes, what to ask first |
 | `mcp-servers.md` | Whether a capability belongs in an MCP server |
 | `merge-gates.md` | Changes that never merge autonomously |
@@ -99,7 +99,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `tech-footprint.md` | Never add a language, runtime or tool without asking |
 | `testing.md` | Writing tests first, reading failures, the four costly mistakes |
 
-## The six skills
+## The seven skills
 
 Namespaced by the harness, so a repository with its own `/learn` keeps it.
 
@@ -114,6 +114,7 @@ plugin updates.
 - **`/riprap:branch-cleaner`** — prunes merged and stale branches and triages quiet pull requests. Reports the whole plan first and never deletes, merges or closes without per-action confirmation.
 - **`/riprap:release`** — cuts a release: green checks, a confirmed version, notes drafted from what actually merged, the tag on the merged commit, and a final check that the release exists. A green pipeline is not a finished release.
 - **`/riprap:reviewer`** — reviews a branch or a pull request, yours or someone else's, across at least six angles including simplicity, maintainability and dependency creep. Posts inline comments on the lines they concern plus a summary carrying every finding, its class and a recommended fix, and closes with an explicit merge verdict against a named commit. It reports and never edits or merges.
+- **`/riprap:handoff`** — writes the document that carries work across a lost context, and resumes from one. Goal, plan, what is done, what is next, what done means, how to resume: one document per unit of work, rewritten in place rather than appended to. Three hooks trigger it, because the moment the context runs out is the one moment there is no turn left in which to write anything.
 {: .doc-links}
 
 Fuller descriptions, and what each one costs you in context, are on
@@ -121,7 +122,7 @@ Fuller descriptions, and what each one costs you in context, are on
 
 ## What is enforced
 
-Seven hooks are registered, four of which can stop a tool call. The table naming each one,
+Ten hooks are registered, four of which can stop a tool call. The table naming each one,
 what triggers it and whether it blocks is on
 [guardrail architecture](guardrails.md#what-is-enforced-out-of-the-box), rather than
 repeated here.
@@ -136,13 +137,13 @@ Only these files, and nothing else in your project is touched.
 | `bin/riprap` | `wire` and `verify` — what a fresh clone and CI run |
 | `bin/hooks/git/{pre-commit,pre-push}` | Your entry points, delegating to riprap's. Written once, never replaced |
 | `bin/hooks/lib/` | Your own pattern libraries. riprap never writes here |
-| `bin/hooks/riprap/claude/` | Seven hook scripts: six wired, plus `lint-example.sh`, an inert template |
+| `bin/hooks/riprap/claude/` | Ten hook scripts: nine wired, plus `lint-example.sh`, an inert template |
 | `bin/hooks/riprap/git/` | riprap's own `pre-commit` and `pre-push`, called by yours |
 | `bin/hooks/riprap/lib/` | Five pattern libraries, shared by both hook families |
 | `bin/hooks/riprap/tests/` | The regression suites, runnable in your own repo |
 | `bin/hooks/riprap/LICENSE` | riprap's licence, carried with the files it covers |
 | `bin/hooks/riprap/VERSION` | What `bin/riprap verify` compares against the plugin |
-| `tmp/.gitignore` | Keeps session artifacts — handovers, scratch mockups — out of commits. Written once, never replaced |
+| `tmp/.gitignore` | Keeps session artifacts — handoffs, scratch mockups — out of commits. Written once, never replaced |
 
 Everything under `bin/hooks/riprap/` and `bin/riprap` is riprap's: refreshed wholesale on
 every install, and files riprap stops shipping are pruned rather than left running. The rest

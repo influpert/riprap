@@ -5,7 +5,7 @@ lede: >-
   The rules injected into every session, how they get there without touching your
   CLAUDE.md, and what they cost you in context.
 description: >-
-  riprap's six behavioural rules and five critical rules, the SessionStart injection that
+  riprap's seven behavioural rules and five critical rules, the SessionStart injection that
   delivers them, the precedence rule when a project disagrees, and the context cost.
 ---
 
@@ -33,15 +33,15 @@ stating because the alternative looks easier:
   actually uninstall.
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:learn`,
-`/riprap:spec`, `/riprap:council`, `/riprap:branch-cleaner` and `/riprap:reviewer`, so a
-repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and
-nothing to collide with.
+`/riprap:spec`, `/riprap:council`, `/riprap:branch-cleaner`, `/riprap:release`,
+`/riprap:reviewer` and `/riprap:handoff`, so a repository with its own `/learn` or
+`/reviewer` keeps it. There is nothing to merge and nothing to collide with.
 
 ## What it costs you in context
 
 riprap is paid for on every turn, so it is careful about what it injects.
 
-What arrives at session start is a **router of roughly 150 lines** — the six rules, a
+What arrives at session start is a **router of roughly 150 lines** — the seven rules, a
 task-to-document map, and five rules restated in full. It is not the 19 guardrail documents
 themselves. Those are read when they are needed and not before, which is why the router
 carries a line count beside each entry: two 80-line files usually beat one 215-line file
@@ -61,7 +61,7 @@ whenever the plugin updates.** A lesson worth keeping goes in the project's own
 `.claude/instructions/`, never into riprap's copy, where the next update erases it. That is
 what `/riprap:learn` is for — it writes into your project, deliberately.
 
-## The six behavioural rules
+## The seven behavioural rules
 
 **1. Plan first.** Enter plan mode for anything non-trivial — three or more steps, or any
 architectural decision. If work goes sideways, stop and re-plan rather than pushing through.
@@ -84,6 +84,13 @@ for obvious fixes — it is a check against hacks, not an invitation to over-eng
 
 **6. Fix bugs autonomously.** Given a bug report, a failing test, or a red CI run: diagnose
 and fix it. Do not round-trip for permission to start.
+
+**7. Keep the handoff current.** One document per unit of work in `tmp/handoff/`, rewritten
+in place when a plan is approved, when a stage lands, when a task finishes, and whenever a
+session stops with work unfinished. It carries the goal, the plan, what is done, what is next,
+what done means, and how to resume. Written *before* it is needed: when the context actually
+runs out there is no turn left in which to summarise, which is why the trigger is never "the
+context is full".
 
 ## The five that cost the most when forgotten
 
@@ -143,12 +150,12 @@ ignores `tmp/` does not need riprap's opinion about it.
   be git-ignored. Nothing in `tmp/` is project documentation.
 - **Plans** go in `tmp/tasks/<topic>.md` as checkable items, with a review section added
   when the work lands.
-- **Session handovers** go in `tmp/handover/`, never in `docs/` or the repository root.
+- **Session handoffs** go in `tmp/handoff/`, never in `docs/` or the repository root.
 - **Reference files by path relative to the repository root**, never absolutely. A relative
   path that resolves differently than expected is the most common cause of an agent editing
   the wrong copy of a file.
 
-## The six skills
+## The seven skills
 
 **`/riprap:learn`** reviews the session and writes what was learned into the *project's*
 `CLAUDE.md` or `.claude/instructions/`. Never into riprap's own documents, which are
@@ -195,6 +202,14 @@ be run against a branch or somebody else's pull request, and a document cannot b
 writing the procedure in both places would make it two definitions of one rule, drifting. The
 severity classes stay in `interaction-preferences.md`, shared with the plan stress-test, so a
 BLOCKER means one thing everywhere.
+
+**`/riprap:handoff`** writes the document that lets a piece of work survive a lost context,
+and resumes from one. Goal, plan, what is done, what is next, what done means, how to resume
+— one document per unit of work, rewritten in place rather than appended to, because a
+handoff nobody updated is worse than none: it is confidently wrong about where the work
+stopped. It is rule 7 made performable, and hooks stand behind it as they do behind no other
+skill, because the moment a context actually runs out is the one moment when there is no turn
+left in which to write anything down.
 
 ---
 

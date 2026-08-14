@@ -78,7 +78,7 @@ prose change clean.
 
 **Two things CI does not check, so a reviewer has to.** A skill may not restate what a
 guardrail document defines — `bin/check-skills` narrows that, and its own header says what
-it cannot see. And the spelled-out counts ("the six skills") carry no digit for the
+it cannot see. And the spelled-out counts ("the seven skills") carry no digit for the
 count checks to catch outside the sweep's window.
 
 ## riprap:learn
@@ -120,3 +120,26 @@ number its author never wrote.
 ## riprap:council
 
 Nothing to record. It reads, argues and plans; it stores no answers and writes no files.
+
+## riprap:handoff
+
+It stores no answers. What it needs recorded here is what a handoff about **this** repository
+has to carry that one about an ordinary repository does not.
+
+**Name the sites a rule has already moved through, and the ones it has not.** A change under
+`plugin/` is rarely one edit: the behavioural and critical rules are stated in four places,
+the skill count in seven more, the hook count in five. A handoff saying "added a rule" has
+recorded the easy half. The expensive state to rediscover is *which sites were already
+moved* — CI names the ones still wrong, but only after a push, and only one class at a time.
+
+**Say whether the payload half was exercised at all.** riprap has never run
+`/riprap:install` against itself, so `bin/hooks/` does not exist here and every payload hook
+is dispatched into silence by `run-payload-hook`. `bin/test` passing says nothing about
+whether one of them fires. If the work touched a payload hook, the handoff records whether it
+was round-tripped through a scratch repository — because "tests green" reads as "verified" to
+the next session, and here it is not.
+
+**Record the worktree, not just the branch.** The plugin loads from the working tree via
+`.claude/settings.json`, whose marketplace path is relative, so which checkout a session sits
+in decides which version of the guardrails it is subject to. A handoff naming only the branch
+sends the next session to the wrong copy of the thing it is editing.

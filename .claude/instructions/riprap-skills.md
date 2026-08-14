@@ -117,6 +117,50 @@ and every markdown file in it is swept by CI for claims about how many skills sh
 feature document that happens to count something reds the build with a message about a
 number its author never wrote.
 
+## riprap:architect
+
+- Where plans land: `tmp/riprap/plan-<slug>.md`
+- Tracker: none — the file is the record
+- Design surface: none. riprap ships no GUI
+- Base branch: `main`
+
+**"No design surface" is not the same as "design.md does not apply here."** That document is
+explicit that terminal output, an error message and generated prose are interfaces, and riprap is
+almost entirely those: hook output a blocked developer reads under time pressure, `bin/riprap
+verify`'s report, and the published site under `docs/`. What is absent is a *surface to draw on*,
+not a user. Plan the wording of anything a person will read, and say so in the plan.
+
+The same constraint `/riprap:spec` has applies here: **nothing generated may land under
+`plugin/`**, which is the published plugin with markdown-only prose directories that CI enforces.
+`docs/` is not a scratch area either — every markdown file in it is swept for claims about how
+many skills ship.
+
+## riprap:implement
+
+- Base branch: `main`
+- Isolation: the current checkout
+- Where plans arrive: `tmp/riprap/plan-<slug>.md`
+- Branch naming: descriptive kebab-case, no type prefix — `add-reviewer-skill`
+- Stack commands: `bin/test`, `bin/lint` — configured
+
+**The isolation answer inverts here, and the reason is the thing that makes this repository
+unusual.** `git.md` makes a worktree the default, and riprap is its own carve-out: `.claude/settings.json`
+registers *this* directory as a marketplace and loads the plugin from *this* working tree. A
+worktree is a different directory, so the session would go on loading the skills and hooks from
+the main checkout while you edited a copy nothing reads — you would be testing the wrong tree and
+every result would look green. Work in the main checkout on a branch, and say that is what you
+did.
+
+**Step 10 always reaches the hold sequence here, and that is correct rather than a defect.**
+`/plugin/**`, `/.claude/**`, `/.claude-plugin/**`, `/bin/**`, `/CLAUDE.md` and
+`/.github/workflows/**` are all CODEOWNERS-gated, which is every path in this repository worth
+changing. Expect the run to end by handing the branch to a human, and do not read that as the
+loop having failed.
+
+**A change under `plugin/` is a change to what every future adopter receives**, so gate 2 and
+gate 3 weigh a finding there against the whole population rather than against this repository.
+There is no staging: the plugin loads live from this working tree.
+
 ## riprap:council
 
 Nothing to record. It reads, argues and plans; it stores no answers and writes no files.

@@ -15,7 +15,7 @@ hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
 description: >-
   Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
-  documents loaded every session, seven skills, and hooks that block rather than advise.
+  documents loaded every session, nine skills, and hooks that block rather than advise.
 ---
 
 <div class="provenance" markdown="1">
@@ -36,7 +36,7 @@ good practice. Every rule is here because something broke first, and the inciden
 caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
-<em>from</em>. They are not what it ships. What it ships is 19 guardrail documents, seven
+<em>from</em>. They are not what it ships. What it ships is 19 guardrail documents, nine
 skills and ten hooks — the inventory is on the <a href="reference.md">reference page</a>.</p>
 
 </div>
@@ -66,7 +66,7 @@ riprap is a Claude Code plugin. There is nothing to clone.
 /riprap:install
 ```
 
-The first two commands give you the guardrail documents, the seven skills, and the Claude
+The first two commands give you the guardrail documents, the nine skills, and the Claude
 hooks — none of which put a file in your repository, and none of which touch your
 `CLAUDE.md` or `.claude/settings.json`. `/riprap:install` adds the half that has to live
 there: the guardrail scripts, their pattern libraries, the git hooks, and the four stack
@@ -114,6 +114,7 @@ instructions/   19 guardrail documents, indexed by task.
                 A router is injected each session;
                 the rest are read on demand.
 skills/         /riprap:learn      /riprap:spec
+                /riprap:architect  /riprap:implement
                 /riprap:council    /riprap:branch-cleaner
                 /riprap:release    /riprap:reviewer
                 /riprap:handoff

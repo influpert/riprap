@@ -33,9 +33,9 @@ stating because the alternative looks easier:
   actually uninstall.
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:learn`,
-`/riprap:spec`, `/riprap:council`, `/riprap:branch-cleaner`, `/riprap:release`,
-`/riprap:reviewer` and `/riprap:handoff`, so a repository with its own `/learn` or
-`/reviewer` keeps it. There is nothing to merge and nothing to collide with.
+`/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:council`,
+`/riprap:branch-cleaner`, `/riprap:release`, `/riprap:reviewer` and `/riprap:handoff`, so a
+repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and nothing to collide with.
 
 ## What it costs you in context
 
@@ -156,7 +156,12 @@ ignores `tmp/` does not need riprap's opinion about it.
   path that resolves differently than expected is the most common cause of an agent editing
   the wrong copy of a file.
 
-## The seven skills
+## The nine skills
+
+Four of these chain: `/riprap:spec` defines a feature, `/riprap:architect` turns it into an
+implementation plan, `/riprap:implement` builds that plan, and `/riprap:reviewer` reviews what
+comes out. Each also runs alone — the stage before it being absent changes where the input
+comes from, never whether the skill works.
 
 **`/riprap:learn`** reviews the session and writes what was learned into the *project's*
 `CLAUDE.md` or `.claude/instructions/`. Never into riprap's own documents, which are
@@ -166,6 +171,27 @@ replaced on update. This is the mechanism behind rule 3.
 UI mockups, phased work items, and acceptance tests. It is planning only — it writes no
 implementation, deliberately, because a specification that starts writing code stops being
 reviewed.
+
+**`/riprap:architect`** turns a settled requirement into an implementation plan, and writes no
+source — it enters plan mode before reading the first file, which makes that constraint the
+harness's to enforce rather than the model's to remember. The failure it is written against
+is a plan that makes its reader re-explore: they open it, find "update the auth module", and
+spend the same forty minutes of greps the plan was meant to have spent once. So it carries what
+that reader would otherwise rediscover — what already exists with line references, what is
+missing, the files, ordered steps and how each is verified — and nothing they would type anyway.
+It stress-tests itself before presenting, per the critical rule, and what survives goes into the
+plan rather than only into the conversation.
+
+**`/riprap:implement`** builds an approved plan and stops three times to be told it is wrong.
+The tests come first and land as their own commit, because a tests-only diff is a specification
+somebody can read; then `/riprap:reviewer` runs over the tests, again over the implementation,
+and again over the pull request, with the findings presented to you before anything is
+incorporated. The three exist because each catches what the others structurally cannot — a wrong
+specification while it is still four assertions, wrong code before anyone else has read it, and
+what only comes into being with the pull request. It asks once how much isolation the work gets,
+so two sessions cannot overwrite each other, and it never merges: the party that wrote the code,
+ran the review and wrote the summary is the party `merge-gates.md` exists to keep away from the
+merge button.
 
 **`/riprap:council`** is a planning council: intake, clarification, parallel research agents,
 a draft, then parallel critic agents against that draft before anything reaches you. It is

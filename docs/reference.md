@@ -5,11 +5,11 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 19 guardrail documents, seven skills, ten hook
+  The complete riprap catalogue: 19 guardrail documents, nine skills, ten hook
   registrations, four stack seams, and everything the installer writes into a repository.
 ---
 
-riprap is two halves. The plugin carries **19 guardrail documents**, **seven skills** and
+riprap is two halves. The plugin carries **19 guardrail documents**, **nine skills** and
 **ten hook registrations**, and puts no file in your repository. `/riprap:install` adds the
 half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
 the git hooks, and the four stack commands the hooks call.
@@ -99,7 +99,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `tech-footprint.md` | Never add a language, runtime or tool without asking |
 | `testing.md` | Writing tests first, reading failures, the four costly mistakes |
 
-## The seven skills
+## The nine skills
 
 Namespaced by the harness, so a repository with its own `/learn` keeps it.
 
@@ -110,6 +110,8 @@ plugin updates.
 
 - **`/riprap:learn`** — reviews the session and writes what was learned into *your* project's instructions, never riprap's, which are replaced on update.
 - **`/riprap:spec`** — interactive feature definition: stakeholder interviews, mockups, phased work items, acceptance tests. Planning only; it writes no implementation.
+- **`/riprap:architect`** — turns a settled requirement into an implementation plan its reader can execute without re-exploring: what already exists with line references, what has to change, the files, the ordered steps and how each is verified. Planning only; it writes no source.
+- **`/riprap:implement`** — builds an approved plan: tests first, then three review passes — over the tests, the implementation and the pull request — each presented to you before anything is incorporated. Drives the checks green and hands the merge back to a person.
 - **`/riprap:council`** — a planning council: parallel research agents, a draft, then parallel critics against it before anything is presented.
 - **`/riprap:branch-cleaner`** — prunes merged and stale branches and triages quiet pull requests. Reports the whole plan first and never deletes, merges or closes without per-action confirmation.
 - **`/riprap:release`** — cuts a release: green checks, a confirmed version, notes drafted from what actually merged, the tag on the merged commit, and a final check that the release exists. A green pipeline is not a finished release.

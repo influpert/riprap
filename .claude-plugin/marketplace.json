@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "riprap",
-      "description": "Baseline engineering guardrails for Claude Code: instruction docs loaded every session, seven skills, and hooks that block rather than advise. Run /riprap:install to add the repo-side half — git hooks and the stack seams they call.",
+      "description": "Baseline engineering guardrails for Claude Code: instruction docs loaded every session, nine skills, and hooks that block rather than advise. Run /riprap:install to add the repo-side half — git hooks and the stack seams they call.",
       "source": "./plugin",
       "homepage": "https://riprap.dev"
     }

@@ -81,7 +81,7 @@ rule exists to prevent, with a note attached.
 
 Unattended, then: solve it inside the existing stack even if the result is longer, or stop
 and hand over — naming the problem, the stack that would have solved it, and what you
-tried instead. A handover saying "this needs a decision" is a working outcome. A committed
+tried instead. A handoff saying "this needs a decision" is a working outcome. A committed
 first Python file is not.
 
 ## Scope carve-outs

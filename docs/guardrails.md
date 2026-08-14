@@ -5,7 +5,7 @@ lede: >-
   What riprap enforces out of the box, and how a rule is built so it cannot quietly stop
   enforcing.
 description: >-
-  The seven hooks riprap registers, which of them can block, and the four-layer structure
+  The ten hooks riprap registers, which of them can block, and the four-layer structure
   behind every rule — including the shared pattern library that stops enforcement drifting.
 redirect_from:
   - /guardrails.html
@@ -19,17 +19,20 @@ but *what will stop me working*. That answer is one table.
 
 ## What is enforced out of the box
 
-Seven hooks are registered. Four of them can stop a tool call; the rest inject context,
-format what you just wrote, and mark the end of a session.
+Ten hooks are registered. Four of them can stop a tool call; the rest inject context,
+format what you just wrote, keep the handoff current, and mark the end of a session.
 
 | Hook | Runs on | What it does | Can block |
 |---|---|---|---|
-| session start | startup, clear, compact | Injects the router — the rules and the task-to-document map | no |
+| session start | startup, resume, clear, compact, fork | Injects the router — the rules and the task-to-document map, plus the path of the current handoff | no |
 | secret hygiene | Bash, Read, Grep, Edit, Write | Refuses a call whose content matches a credential pattern | **yes** |
 | destructive-command blocker | Bash | Refuses a destructive command resolving outside the project directory | **yes** |
 | merge gate | Bash | Refuses an autonomous merge of a security-sensitive change | **yes** |
 | tech footprint | Write | Refuses a file whose language or toolchain nothing in the repository already uses | **yes** |
 | format on write | Edit, Write | Runs `bin/format` on the file just written | no |
+| plan approved | ExitPlanMode | Asks for the handoff to be written, or rewritten, from the plan just approved | no |
+| pre-compaction | before compaction | Stamps the handoff; records git state under a `NOT A HANDOFF` heading when there is none | no |
+| turn ending | Stop | Asks for a handoff that has fallen behind the tree to be brought up to date | no |
 | session end | session end | Teardown hook | no |
 
 Plus two git hooks: `pre-commit` runs `bin/lint` on staged files and then the pattern
@@ -37,7 +40,7 @@ guardrails, and `pre-push` runs `bin/test`. Both get out of the way with a notic
 stack seam they call is still a stub — a template that blocks your first push before you
 have configured anything is a template you delete.
 
-An eighth hook script, `lint-example.sh`, ships **deliberately unregistered**. It is an inert
+One further hook script, `lint-example.sh`, ships **deliberately unregistered**. It is an inert
 template to copy, and wiring a rule that never fires teaches people to ignore the wiring.
 
 The secret scanner is the one worth understanding first, because it runs at the **read**. A

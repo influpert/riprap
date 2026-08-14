@@ -17,12 +17,24 @@
     "reachable from a plain clone.",
     "",
     "lint-example.sh is deliberately absent: it is an inert template, and wiring a",
-    "rule that never fires teaches people to ignore the wiring."
+    "rule that never fires teaches people to ignore the wiring.",
+    "",
+    "The handoff hooks are wired to three different events because no single one",
+    "covers the moment that matters. PreCompact is the only warning that context is",
+    "about to be lost, and it is the one event that cannot say anything to the model:",
+    "it can only block, and blocking a compaction that is already necessary wedges",
+    "the session. So it writes to disk, and SessionStart on `compact` is what points",
+    "the next context at what it wrote.",
+    "",
+    "SessionStart matches `resume` and `fork` as well. Those are not new features —",
+    "they are two of the five documented matcher values, and omitting them meant a",
+    "resumed session received no router at all, which is the single moment a handoff",
+    "is most worth surfacing."
   ],
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|clear|compact",
+        "matcher": "startup|resume|clear|compact|fork",
         "hooks": [
           {
             "type": "command",
@@ -59,6 +71,26 @@
         "matcher": "Edit|Write",
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook format-on-write.sh" }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook handoff-plan-approved.sh" }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook handoff-precompact.sh" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook handoff-stop.sh" }
         ]
       }
     ],

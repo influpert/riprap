@@ -62,6 +62,7 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:spec` | Defining a feature. It writes into `tmp/`; nothing it generates may land under `plugin/`, and `docs/` is the public site, not a scratch area. |
 | `/riprap:council` | Planning something hard, with research and adversarial critique. Stateless. |
 | `/riprap:reviewer` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
+| `/riprap:handoff` | Writing the handoff that carries work across a lost context, or resuming from one. Its answers file says what a handoff about `plugin/` must carry that one about an ordinary repository need not. |
 
 **riprap's answers to its own skills live in [.claude/instructions/riprap-skills.md](.claude/instructions/riprap-skills.md).**
 Two of the skills read that file before asking anything, so it is what stops them
@@ -127,7 +128,7 @@ months.
 that counts.** `plugin/instructions/README.md` is what the model is actually given;
 `docs/rules.md` and the tables in `README.md` and `docs/index.md` only describe it. CI binds
 all four — the two tables must be byte-identical, the counts must match the router, and the
-spelled-out numbers ("the six behavioural rules") must agree. Add or remove a rule and every
+spelled-out numbers ("the seven behavioural rules") must agree. Add or remove a rule and every
 site moves together or the build fails. Without that, a rule that reads differently in two
 places is not a formatting slip: it is two different rules, and a reader has no way to tell
 which one the model got. The spelled-out counts are the half that rots quietest — there is no

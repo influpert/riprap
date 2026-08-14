@@ -21,6 +21,30 @@ DOCS="${PLUGIN_ROOT}/instructions"
 
 router="$(cat "${DOCS}/README.md")"
 
+# The handoff for whatever this session is continuing, if there is one.
+#
+# Named rather than described. A session that has just been resumed, forked, or
+# restarted after compaction has no memory of the path, and hunting for it is the
+# one thing it is least equipped to do — so the path is stated outright.
+#
+# Silent when there is no handoff. This runs on plain startups too, where a line
+# about a document that does not exist is pure cost; writing the first one is the
+# behavioural rule's job, not this hook's.
+handoff_note=""
+project="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+newest="$(ls -t "${project}"/tmp/handoff/*.md 2>/dev/null | head -1 || true)"
+if [ -n "$newest" ]; then
+  # Repo-relative, per the rule the router itself states two screens further
+  # down: an absolute path is the one form that resolves differently for the
+  # next reader than it did for the writer.
+  rel="${newest#"${project}"/}"
+  if head -1 "$newest" 2>/dev/null | grep -q 'NOT A HANDOFF'; then
+    handoff_note=$'\n\n---\n\n**No handoff was written before this context was lost.** `'"${rel}"$'` is an automatic capture of git state — it does not say what the work is for, what was agreed, or what done means, because nobody wrote those down. Treat it as raw material: re-establish the goal with the user before acting, then replace it with a real handoff.'
+  else
+    handoff_note=$'\n\n---\n\n**There is work in progress, and `'"${rel}"$'` is its handoff.** Read it once and carry its contents into your working state in the same turn; a read can be its last (handoffs.md). Check it against the tree before acting — where they disagree, the tree is what is true and the handoff is what was intended.'
+  fi
+fi
+
 # The router links siblings relatively — testing.md, git.md — which resolve
 # against nothing once this text is pasted into a conversation. Rather than
 # rewriting every link, state the directory once and let the model join the two.
@@ -38,7 +62,7 @@ escape_for_json() {
     printf '%s' "$s"
 }
 
-context="$(escape_for_json "${preamble}"$'\n\n'"${router}")"
+context="$(escape_for_json "${preamble}"$'\n\n'"${router}${handoff_note}")"
 
 # Claude Code reads hookSpecificOutput.additionalContext; the SDK standard and
 # some other harnesses read a top-level additionalContext. Emitting both would be

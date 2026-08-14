@@ -108,9 +108,9 @@ work of driving it green is small while that context is warm and large once it i
   where "the user says stop" can never fire, the only reachable exit left would be the merge
   the hold exists to prevent;
 - **your session ends** with it still open. Then write the state into the pull request thread
-  — what is red, what you tried, what you would do next — and not into `tmp/handover/`, which
+  — what is red, what you tried, what you would do next — and not into `tmp/handoff/`, which
   is git-ignored and local and which the next session, on another machine, will never see.
-  The thread is the only handover surface that travels with the pull request.
+  The thread is the only handoff surface that travels with the pull request.
 
 And before merging one that nobody has commented on, say so first —
 [merge-gates.md](merge-gates.md) carries that warning and the paths that never merge

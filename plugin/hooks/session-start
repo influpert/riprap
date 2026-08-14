@@ -30,9 +30,46 @@ router="$(cat "${DOCS}/README.md")"
 # Silent when there is no handoff. This runs on plain startups too, where a line
 # about a document that does not exist is pure cost; writing the first one is the
 # behavioural rule's job, not this hook's.
+#
+# THIS IS A SECOND DEFINITION, and it cannot be helped. The first is
+# plugin/payload/bin/hooks/riprap/lib/handoff-common.sh, which owns `tmp/handoff`
+# and the `<!-- riprap:handoff branch=` marker. This script runs from the plugin
+# and must stay inert in a repository that never ran /riprap:install, so it
+# cannot source a payload file. Change either constant and it changes in both
+# places; ci.yml asserts the two agree, because the failure is silent — the
+# router simply stops mentioning handoffs, which reads exactly like not having
+# one.
 handoff_note=""
 project="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-newest="$(ls -t "${project}"/tmp/handoff/*.md 2>/dev/null | head -1 || true)"
+newest=""
+sole=""
+count=0
+branch="$(git -C "$project" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+listing="$(ls -t "${project}"/tmp/handoff/*.md 2>/dev/null || true)"
+
+# Newest file claiming THIS branch, not newest file: a finished handoff from
+# another task stays newest for ever, and announcing it as current work is a lie
+# the whole session then acts on.
+while IFS= read -r candidate; do
+  [ -f "$candidate" ] || continue
+  count=$((count + 1))
+  [ -n "$sole" ] || sole="$candidate"
+  if [ -z "$newest" ] && [ -n "$branch" ] &&
+     grep -qF "<!-- riprap:handoff branch=${branch} -->" "$candidate" 2>/dev/null; then
+    newest="$candidate"
+  fi
+done <<EOF
+$listing
+EOF
+
+# The layout that predates the marker: one handoff carrying none, which nothing
+# can be confused with. Two or more unmarked ones are ambiguous, and answering
+# anyway is what the marker exists to prevent.
+if [ -z "$newest" ] && [ "$count" -eq 1 ] &&
+   ! grep -q "riprap:handoff branch=" "$sole" 2>/dev/null; then
+  newest="$sole"
+fi
+
 if [ -n "$newest" ]; then
   # Repo-relative, per the rule the router itself states two screens further
   # down: an absolute path is the one form that resolves differently for the
@@ -41,7 +78,7 @@ if [ -n "$newest" ]; then
   if head -1 "$newest" 2>/dev/null | grep -q 'NOT A HANDOFF'; then
     handoff_note=$'\n\n---\n\n**No handoff was written before this context was lost.** `'"${rel}"$'` is an automatic capture of git state — it does not say what the work is for, what was agreed, or what done means, because nobody wrote those down. Treat it as raw material: re-establish the goal with the user before acting, then replace it with a real handoff.'
   else
-    handoff_note=$'\n\n---\n\n**There is work in progress, and `'"${rel}"$'` is its handoff.** Read it once and carry its contents into your working state in the same turn; a read can be its last (handoffs.md). Check it against the tree before acting — where they disagree, the tree is what is true and the handoff is what was intended.'
+    handoff_note=$'\n\n---\n\n**There is a handoff for this branch: `'"${rel}"$'`.** Read it once and carry its contents into your working state in the same turn; a read can be its last (handoffs.md). Check it against the tree before acting — where they disagree, the tree is what is true and the handoff is what was intended. If it turns out to describe finished work, say so and start a new one rather than editing it.'
   fi
 fi
 

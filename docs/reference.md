@@ -139,7 +139,7 @@ Only these files, and nothing else in your project is touched.
 | `bin/hooks/lib/` | Your own pattern libraries. riprap never writes here |
 | `bin/hooks/riprap/claude/` | Ten hook scripts: nine wired, plus `lint-example.sh`, an inert template |
 | `bin/hooks/riprap/git/` | riprap's own `pre-commit` and `pre-push`, called by yours |
-| `bin/hooks/riprap/lib/` | Five pattern libraries, shared by both hook families |
+| `bin/hooks/riprap/lib/` | Six libraries: five pattern libraries shared by both hook families, plus the handoff helpers the Claude hooks share with each other |
 | `bin/hooks/riprap/tests/` | The regression suites, runnable in your own repo |
 | `bin/hooks/riprap/LICENSE` | riprap's licence, carried with the files it covers |
 | `bin/hooks/riprap/VERSION` | What `bin/riprap verify` compares against the plugin |

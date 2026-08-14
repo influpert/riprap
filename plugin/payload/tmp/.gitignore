@@ -1,4 +1,4 @@
-# tmp/ is for session artifacts — handovers, scratch mockups, throwaway output.
+# tmp/ is for session artifacts — handoffs, scratch mockups, throwaway output.
 # They stay local: never in a commit, never in a pull request.
 #
 # Ignore everything in here...

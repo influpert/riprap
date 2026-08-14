@@ -127,10 +127,19 @@ It stores no answers. What it needs recorded here is what a handoff about **this
 has to carry that one about an ordinary repository does not.
 
 **Name the sites a rule has already moved through, and the ones it has not.** A change under
-`plugin/` is rarely one edit: the behavioural and critical rules are stated in four places,
-the skill count in seven more, the hook count in five. A handoff saying "added a rule" has
-recorded the easy half. The expensive state to rediscover is *which sites were already
-moved* — CI names the ones still wrong, but only after a push, and only one class at a time.
+`plugin/` is rarely one edit. The behavioural and critical rules are stated in four places;
+the skill count and the hook count are each stated across `README.md`, `docs/`,
+`plugin/commands/install.md`, `docs/_config.yml` and `.claude-plugin/marketplace.json`.
+**Flatten newlines before grepping** — those counts are hard-wrapped mid-phrase, which is how
+one of them stayed wrong through a whole review. CI binds the skill count and the rule counts;
+it binds the hook count nowhere.
+
+Do not write the number of sites down. An earlier draft of this paragraph did, got both
+figures wrong on the commit that introduced them, and so became a third copy of exactly the
+hazard it is warning about — in the one file the count sweeps do not scan, which two skills
+read before anything else. A handoff saying "added a rule" has recorded the easy half; the
+expensive state to rediscover is *which sites were already moved*, and CI names the ones still
+wrong only after a push, one class at a time.
 
 **Say whether the payload half was exercised at all.** riprap has never run
 `/riprap:install` against itself, so `bin/hooks/` does not exist here and every payload hook

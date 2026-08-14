@@ -534,15 +534,42 @@ jobs:
           mkdir -p /tmp/bare && cd /tmp/bare && git init -q
           cd "$GITHUB_WORKSPACE"
           fail=0
-          for n in block-destructive-outside-cwd.sh block-unreviewed-merge.sh \
-                   lint-secrets.sh format-on-write.sh session-end.sh \
-                   lint-tech-footprint.sh; do
+          # Driven from hooks.json rather than a hand-kept list. The list version
+          # covered six of nine registrations the day three hooks were added, and
+          # a hook missing from it is exactly the founding incident in reverse:
+          # not "enforced but unwired", but "wired and never checked for the one
+          # property that keeps every unrelated repository working".
+          for n in $(jq -r '[.hooks[][].hooks[].command]
+                            | map(capture("run-payload-hook (?<n>[a-z0-9-]+\\.sh)").n)
+                            | .[]' plugin/hooks/hooks.json | sort -u); do
             out=$(echo '{}' | CLAUDE_PROJECT_DIR=/tmp/bare \
                   plugin/hooks/run-payload-hook "$n" 2>&1) || {
               echo "❌ $n exited non-zero with no payload"; fail=1; continue; }
             [ -z "$out" ] || { echo "❌ $n printed output with no payload: $out"; fail=1; }
           done
           [ "$fail" -eq 0 ] && echo "✅ inert without the payload"
+          exit "$fail"
+
+      - name: session-start agrees with the handoff library it cannot source
+        run: |
+          # plugin/hooks/session-start reads tmp/handoff and the branch marker
+          # directly, because it runs from the plugin and must stay inert in a
+          # repository that never ran /riprap:install — so it cannot source the
+          # payload library that owns both constants. That makes this the one
+          # drift nothing else would catch, and the failure is silent: the
+          # router just stops mentioning handoffs, which reads exactly like
+          # having none.
+          fail=0
+          lib=plugin/payload/bin/hooks/riprap/lib/handoff-common.sh
+          sub=$(sed -n 's/^HANDOFF_SUBDIR="\(.*\)"$/\1/p' "$lib")
+          mark=$(sed -n 's/^HANDOFF_MARKER_OPEN="\(.*\)"$/\1/p' "$lib")
+          [ -n "$sub" ]  || { echo "❌ $lib no longer defines HANDOFF_SUBDIR"; fail=1; }
+          [ -n "$mark" ] || { echo "❌ $lib no longer defines HANDOFF_MARKER_OPEN"; fail=1; }
+          grep -qF "$sub"  plugin/hooks/session-start || {
+            echo "❌ session-start does not use the library's handoff directory ($sub)"; fail=1; }
+          grep -qF "$mark" plugin/hooks/session-start || {
+            echo "❌ session-start does not use the library's branch marker ($mark)"; fail=1; }
+          [ "$fail" -eq 0 ] && echo "✅ session-start and handoff-common.sh agree"
           exit "$fail"
 
       - name: SessionStart emits valid JSON

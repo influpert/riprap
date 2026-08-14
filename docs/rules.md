@@ -86,8 +86,9 @@ for obvious fixes — it is a check against hacks, not an invitation to over-eng
 and fix it. Do not round-trip for permission to start.
 
 **7. Keep the handoff current.** One document per unit of work in `tmp/handoff/`, rewritten
-in place when a plan is approved, when a stage lands, when a task finishes, and whenever a
-session stops with work unfinished. It carries the goal, the plan, what is done, what is next,
+in place when a plan is approved, when a stage lands, when a task finishes, before a long
+unattended stretch or an announced compaction, and whenever a session stops with work
+unfinished. It carries the goal, the plan, what is done, what is next,
 what done means, and how to resume. Written *before* it is needed: when the context actually
 runs out there is no turn left in which to summarise, which is why the trigger is never "the
 context is full".

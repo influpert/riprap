@@ -12,7 +12,7 @@
 # definition of done exist only in the session.
 #
 # See riprap's handoffs guardrail (riprap.dev/reference).
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handoff-common.sh
@@ -30,23 +30,30 @@ INPUT=$(cat 2>/dev/null || true)
 TOOL=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)
 [ "$TOOL" = "ExitPlanMode" ] || exit 0
 
-# A plan can be presented and rejected. Only an approved one is a trigger, and
-# the approved case is the one whose result carries the plan itself, marked.
+# A plan can be presented and rejected, and only an approved one is a trigger.
 #
-# Recursive descent rather than reaching for a named field: the shape of
-# tool_response is the harness's to change, and it is a string in some versions
-# and a structure in others. Every string anywhere inside it is searched, so a
-# field being renamed or nested one level deeper does not silently retire this
-# hook — which is the failure mode that matters, because a hook that stops firing
-# looks exactly like a hook that had nothing to say.
+# Detected by REJECTION rather than by approval, which is the opposite of the
+# obvious way round and the only one that works. ExitPlanMode builds its result
+# on three approved paths and only one of them carries a "## Approved Plan:"
+# marker: the other two are a plan approved for an agent ("There is nothing else
+# needed from you now") and an approved empty plan ("You can now proceed").
+# Matching the marker therefore fires on one approval in three and stays silent
+# for the rest — and a hook that stops firing looks exactly like a hook that had
+# nothing to say. Matching the rejection instead degrades toward firing.
+#
+# Recursive descent rather than a named field: the shape of tool_response is the
+# harness's to change, and it is a string in some versions and a structure in
+# others. Every string anywhere inside it is searched.
 RESULT=$(printf '%s' "$INPUT" | jq -r '[.tool_response // empty | .. | strings] | join(" ")' 2>/dev/null || true)
 case "$RESULT" in
-  *"Approved Plan"*) ;;
-  *) exit 0 ;;
+  ""|*"stay in plan mode"*) exit 0 ;;
 esac
 
-CURRENT=""
-if CURRENT=$(handoff_current) && [ -n "$CURRENT" ] && ! handoff_is_capture "$CURRENT"; then
+PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+if CURRENT=$(handoff_current) && [ -f "$CURRENT" ] && ! handoff_is_capture "$CURRENT"; then
+  # Repo-relative, like the other two emitters: an absolute path is the one form
+  # that resolves differently for the next reader than it did for the writer.
+  CURRENT="${CURRENT#"$PROJECT"/}"
   MSG="A plan was just approved, so the handoff for this work is now out of date.
 
 Rewrite ${CURRENT} in place — do not open a second file for the same work — so it

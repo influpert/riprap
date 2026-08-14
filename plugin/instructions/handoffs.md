@@ -24,6 +24,13 @@ worse than none, because it is confidently wrong about where the work stopped.
 - Handoffs are session artifacts, not project documentation. They stay local: never in a
   commit, never in a pull request.
 - Name them `handoff-<YYYY-MM-DD>-<topic>.md`.
+- **Give each one a branch marker on its second line**, `<!-- riprap:handoff branch=<name> -->`.
+  It is the only part riprap's hooks can read, and it is what tells them which document belongs
+  to the work in front of them. Without it a finished handoff is newest for ever, and the
+  session router announces work in progress that ended last week.
+- **Retire one when its work ends** — delete it, or move it under `tmp/handoff/done/`, which
+  nothing looks in. A merged branch retires its handoff by itself, because nothing then claims
+  the branch you are on.
 - `docs/` is for durable, checked-in project documentation only (plan, contracts, runbooks).
 - Plans go in `tmp/tasks/<topic>.md` as checkable items, with a review section added when the
   work lands. A plan says what was intended; a handoff says that plus where it actually got to.
@@ -77,6 +84,11 @@ Two rules follow, and both are cheap:
 - **Write it and move on.** A write that fails reports a failure; silence means it landed.
 - **On resume, read it once and carry the content forward** into the working state you are
   building. Treat the file as though the read may have been its last.
+- **One append is riprap's, not yours.** When a context is compacted with a handoff already in
+  place, the pre-compaction hook appends a single `> Context was compacted at …` line. It is a
+  marker, not a section: everything above it predates the summary the session is now working
+  from, so re-check it against the tree, and drop the line on the next rewrite. The rule
+  against appending governs what a *session* writes.
 
 ## When the handoff is the wrong surface
 

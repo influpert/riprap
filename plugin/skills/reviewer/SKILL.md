@@ -229,6 +229,13 @@ Every reviewer prompt carries these, whatever its angle:
 - **A recommended fix on every finding.** This skill never applies it, so the fix *is* the
   deliverable — a finding without one hands the reader the problem and keeps the solution.
   Concrete enough to act on: which line, changed to what. "Consider refactoring" is not a fix.
+- **The location and the identifier of a secret, and never its value.** *"a live-looking API
+  key at `config/deploy.sh:14`"*, with the fix reading *rotate it, then remove it*. This binds
+  the sub-agent that writes the finding, because by step 6 the value is already in the text and
+  the post is one call away — and that post is public, leaves in notification email the moment
+  it lands, and survives any later edit in the timeline API. Step 4 ranks that second overall:
+  damage that outlives the fix. The secrets hook cannot help here; it scans what an edit
+  writes, not what this skill sends to the forge.
 - **A cap on findings, and an instruction to say when it is hit.** The cap forces ranking;
   it is not a licence to go quiet. A reviewer that had more to say must end by saying so.
 - **An explicit nothing-found sentinel** — a required sentence such as *"No correctness
@@ -442,22 +449,22 @@ recommended fix. `$SUMMARY` is the table, the verdict, and the rider if any.
 The rules that keep this a review, and not a decision made on the author's behalf:
 
 - **Every post carries `event: COMMENT`.** That single field is what separates a review from a
-  verdict, and it is the only value this skill ever sends. `APPROVE` is the fabricated approval
-  merge-gates.md forbids outright. `REQUEST_CHANGES` is an authoring act, and where the review
-  and the branch share one account the forge refuses it — *"Can not request changes on your own
-  pull request"* — which looks identical to a network failure and gets retried as one.
+  verdict, and it is the only value this skill ever sends. merge-gates.md forbids `APPROVE`
+  outright — it is the fabricated approval. It equally forbids `REQUEST_CHANGES`, an authoring
+  act; and where the review and the branch share one account the forge refuses that one anyway
+  — *"Can not request changes on your own pull request"* — which looks identical to a network
+  failure and gets retried as one.
 - **The post is atomic**, so one bad anchor strands the whole review. If it fails, fall back to
-  a summary-only `gh pr comment` and say in the body that anchoring failed. A half-posted
-  review is worse than an unanchored one: the reader cannot tell which findings are missing.
+  a summary-only `gh pr comment` — and say in the body **which** cause: a rejected anchor, or
+  no `jq`. Those need different fixes, and a body blaming the wrong one sends the next person
+  to debug line numbers over a missing binary. A half-posted review is worse than an unanchored
+  one: the reader cannot tell which findings are missing.
 - **A finding with no anchorable line goes in the summary**, never on an approximate line.
   Should-this-exist findings live there by nature — their subject is the whole diff. A comment
   on the wrong line is a finding the reader has to disprove before they can dismiss it.
-- **Name the location and the identifier of a secret; never its value.** *"a live-looking API
-  key at `config/deploy.sh:14`"*, and the fix line reads *rotate it, then remove it*. This is
-  the one finding whose evidence must not be quoted: a review body is public, it leaves in
-  notification emails the moment it posts, and it stays in the timeline API after any edit —
-  which is step 4's second rank exactly, damage that survives the fix. The secrets hook cannot
-  save you here; it scans what an edit writes, not what this skill sends to the forge.
+- **Re-read the summary for a quoted secret before it goes.** Step 2 binds the reviewers to a
+  location and an identifier rather than a value; this is the last point at which a value that
+  slipped through can still be taken out, because the post cannot be recalled.
 
 Close the review by saying what it is. Where the review and the change come from the same
 session or the same account, **say so in the comment**: *"Written by the same session that

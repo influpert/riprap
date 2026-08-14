@@ -41,4 +41,17 @@ test ! -x plugin/payload/bin/hooks/riprap/LICENSE
 echo "✅ three identical licence copies, notice present"
 
 echo
+echo "--- Skills defer to the guardrails rather than restating them ---"
+# Both modes, deliberately. --self-test is what distinguishes these assertions
+# from a set of greps that were typed alongside the prose they check: it fires
+# each one against a fixture built to break it and checks it failed for its own
+# reason. Wire only the real mode and the half that keeps the other half honest
+# never runs, and rots invisibly.
+#
+# Last in the file because this one is about prose. A failure here must not stand
+# between a reader and a licence copy that has drifted.
+bin/check-skills --self-test
+bin/check-skills
+
+echo
 echo "✅ bin/test passed"

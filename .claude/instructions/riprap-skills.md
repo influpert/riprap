@@ -5,7 +5,7 @@ can be wrong about its own project in ways no other repository would notice — 
 answers are written down here rather than worked out again each run, and the corrections
 below are stated where the skills actually read.
 
-Two of the skills ask a fixed set of questions and record the answers in a file exactly
+Three of the skills ask a fixed set of questions and record the answers in a file exactly
 like this one. The rest read `.claude/instructions/` as ordinary project context, which is
 why the corrections live here too and not only in `CLAUDE.md`: a rule constraining a skill
 should not sit in the file that skill is licensed to rewrite and told to keep short.
@@ -49,6 +49,37 @@ Two things it does **not** do, which matter to an agent reading this:
 Literal names only — a stored pattern protects nothing, because the filters match whole
 lines exactly. If a family of long-lived branches ever appears here, list the names it has
 that day and re-ask when the list changes.
+
+## riprap:reviewer
+
+- Base branch: `main`
+- Forge: `gh`, and the GitHub MCP tools when the session has them — try both before
+  reporting "could not check"
+- Where a review lands: one batched pull request review — inline comments on the lines they
+  concern, plus the summary and verdict in its body — or the reviewer's table handed over for
+  the body when no pull request is open yet
+- Extra blast-radius paths: `plugin/**`, `.claude/**`, `.claude-plugin/**`, `bin/**`,
+  `.github/workflows/**` — every path CODEOWNERS gates, which is this repository having
+  already answered the question once
+
+**A change under `plugin/` is a change to what every future adopter receives**, and that
+is what makes reviewing here different. There is no staging: the plugin loads live from
+this working tree, so a paragraph added to `plugin/instructions/` is in every
+contributor's next session immediately, and it ships to every adopter at the next release.
+Weigh a finding there against the whole population, not against this repository.
+
+**The four-places rule is a source of real BLOCKERs, and they do not look like bugs.** The
+behavioural and critical rules are stated in the router, in `docs/rules.md`, and in tables
+copied verbatim into `README.md` and `docs/index.md`. A change that moves one site and not
+the other three leaves two different rules with no way for a reader to tell which one the
+model was given. CI binds the tables and the counts; it cannot bind prose that drifts
+apart while both copies still parse. Read every site a rule is stated in before calling a
+prose change clean.
+
+**Two things CI does not check, so a reviewer has to.** A skill may not restate what a
+guardrail document defines — `bin/check-skills` narrows that, and its own header says what
+it cannot see. And the spelled-out counts ("the six skills") carry no digit for the
+count checks to catch outside the sweep's window.
 
 ## riprap:learn
 

@@ -33,8 +33,9 @@ stating because the alternative looks easier:
   actually uninstall.
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:learn`,
-`/riprap:spec`, `/riprap:council` and `/riprap:branch-cleaner`, so a repository with its own
-`/learn` keeps it. There is nothing to merge and nothing to collide with.
+`/riprap:spec`, `/riprap:council`, `/riprap:branch-cleaner` and `/riprap:reviewer`, so a
+repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and
+nothing to collide with.
 
 ## What it costs you in context
 
@@ -110,9 +111,9 @@ lands on every future clone, every CI image, and every upgrade — and it is one
 practice, because reversing it means rewriting code that works.
 
 **Never open a pull request on a diff nobody reviewed, and never abandon one you opened.**
-Before it opens: parallel review sub-agents over the diff, one angle each, every BLOCKER and
-MAJOR fixed first, and every finding published in the body with a disposition — implemented,
-deferred or ignored — and the reason behind it. A finding that was made and then dropped in
+Before it opens: `/riprap:reviewer` runs over the diff, every BLOCKER and MAJOR is fixed
+first, and every finding is published in the body with a disposition — implemented, deferred
+or ignored — and the reason behind it. A finding that was made and then dropped in
 silence is indistinguishable from a finding nobody made, so the reviewer repeats the search
 you already did. After it opens: a red CI run on your own pull request is the task rather
 than a report, every review comment gets a change or an answer, and a conflict gets resolved
@@ -147,7 +148,7 @@ ignores `tmp/` does not need riprap's opinion about it.
   path that resolves differently than expected is the most common cause of an agent editing
   the wrong copy of a file.
 
-## The five skills
+## The six skills
 
 **`/riprap:learn`** reviews the session and writes what was learned into the *project's*
 `CLAUDE.md` or `.claude/instructions/`. Never into riprap's own documents, which are
@@ -176,6 +177,23 @@ from a commit log that squash-merging has made meaningless, and puts the tag on 
 that merged. Its last step verifies the release exists, because the failure it is written
 against is a model watching a pipeline go green and reporting a release complete that was
 never published.
+
+**`/riprap:reviewer`** reviews a branch before a pull request exists, or a pull request
+after one does, and closes with an explicit merge verdict against a named commit. It
+reports: it never edits the branch, never merges, and never writes anything shaped like an
+approval. The failure it is written against is a review that lists findings and stops —
+leaving the reader to work out whether the thing ships, which is the one question they
+asked and the only part that needed the reviewer's context. It dispatches at least six
+reviewers in parallel — correctness, simplicity, maintainability and dependency creep among
+them, plus the devil's advocate that can come back with *don't* — and posts inline comments
+on the lines they concern beside a summary giving every finding a class and a recommended fix.
+
+**It owns the review procedure, and the guardrail document points at it.** The angles, the
+dispositions and the tables are defined in the skill; `code-review.md` states the obligation
+to review and stops there. That split is deliberate: a procedure written out in a document
+loaded every session, beside a skill that runs the same procedure, is two definitions that
+drift. The severity classes stay in `interaction-preferences.md`, shared with the plan
+stress-test, so a BLOCKER means one thing everywhere.
 
 ---
 

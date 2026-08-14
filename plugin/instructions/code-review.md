@@ -1,8 +1,8 @@
 # Code review: before the pull request opens, and until it closes
 
-**Before you open a pull request, dispatch parallel review sub-agents over the diff — one
-angle each — fix everything they classify BLOCKER or MAJOR, and publish every finding in the
-pull request body with a disposition and the reason behind it.**
+**Before you open a pull request, run `/riprap:reviewer` over the diff — fix everything it
+classifies BLOCKER or MAJOR, and publish every finding in the pull request body with a
+disposition and the reason behind it.**
 
 **And a pull request is not finished when it opens.** Watch it until CI is green, every
 review comment is answered, and it merges cleanly — see [After it is open](#after-it-is-open).
@@ -17,8 +17,8 @@ proposed for merge.
 **The diff's author is the worst available judge of it.** By the time a branch is ready to
 open, its author has read every line into the shape they intended it to have, and re-reading
 recovers the intent rather than the text. A reviewer who has not written it sees what is
-actually there. Sub-agents are the cheapest way to get that second reading before a human
-spends theirs.
+actually there, and getting that second reading before a human spends theirs is what the
+skill is for.
 
 **A pull request opened without a review has moved the cost, not paid it.** The work has to
 be read by someone. Opening first means it is read by the person with the least context, at
@@ -34,122 +34,25 @@ something a reader can audit in ten seconds.
 
 ## How
 
-### 1. Review in parallel, one angle per agent
+**Run `/riprap:reviewer`.** It owns the procedure — which angles exist and how many run, how
+findings are classified and dispositioned, the review table, and the cap on further rounds.
 
-Give each sub-agent a single angle and the diff against trunk. **Three at minimum, one of
-which is always the last row of the table below**, and scale up from there with blast radius
-— a one-file fix does not need seven, a migration does.
+**The method is deliberately not written here.** A procedure spelled out in a document that
+is loaded every session, beside a skill that runs the same procedure, is not a convenience:
+it is a second definition, and the two drift with nothing to catch it. So this file states
+the obligation and the skill states the method, and there is exactly one of each.
 
-**Why three, when the plan stress-test demands five:** a plan is reviewed against futures that
-have not happened, so its angles are the only thing standing in for the world, and five is a
-floor on imagination. A diff is text that exists and can be read, so the reviewers are
-checking rather than predicting. What does not scale down is the floor itself — below three
-the angles stop being distinct and you have one reviewer with a longer prompt.
+What remains yours, and is not the skill's to do:
 
-```bash
-git diff "$TRUNK"...HEAD --stat        # what to divide up, without reading the diff yourself
-```
+- **Fix every BLOCKER and MAJOR before opening.** The skill reports; it never edits.
+- **Publish every finding in the pull request body with a disposition and a reason** —
+  including the ones you rejected. The skill produces that table and hands it over; putting it
+  in the body is the part it cannot do for you.
+- **Everything under [After it is open](#after-it-is-open).** The skill stops at the verdict.
 
-**Let the sub-agents read the diff; do not read it into your own context first.** Each one
-spends its own window on the lines it is reviewing, which is the entire reason this is
-parallel work ([git.md](git.md) covers why a full `git diff` in the main context is
-expensive).
-
-| Angle | The reviewer's question |
-|---|---|
-| Correctness & edge cases | What input breaks this? Empty, absent, duplicated, out of order, at the boundary? |
-| Contract & compatibility | What breaks for a caller, a config file, or an installed copy that predates this change? |
-| Security & secrets | What does this let through that it should not, and does anything sensitive reach a log, a fixture, or a tracked file? |
-| Tests | Does a test fail if the change is reverted? If not, the change is untested whatever the suite says. |
-| Codebase fit & reuse | Does something here already do this? Is this a new pattern where an existing one fits? |
-| Docs & operability | What does the next reader need that is not in the diff — a runbook line, a comment, a changed default? |
-| Scope | What is in this diff that the task did not ask for? Unrelated changes are how a review stops being possible. |
-| **Should this exist** | Is the whole change wrong — better reverted, better not made, better replaced by three lines somewhere else? |
-
-**The last row is mandatory and does not count towards the three.** Every other angle asks
-how to do this well and so presupposes doing it; that one is the only reviewer that can come
-back with *"don't"*, which makes it the only one that can catch a diff that is excellent at
-something not worth shipping. It is the devil's advocate from the plan stress-test, arriving
-one stage later, and for the same reason it is not left on the menu: an angle that valuable
-gets picked exactly when it is least needed.
-
-### 2. Classify what comes back
-
-**BLOCKER, MAJOR, MINOR, NON-ISSUE — using the table in
-[interaction-preferences.md](interaction-preferences.md) rather than a second scheme**, so a
-BLOCKER means the same thing whether it was raised against a plan or against a diff. There is
-one definition, and it is not here.
-
-### 3. Fix, then record every finding with a disposition
-
-The class says how bad it is. The disposition says what you did about it, and each one owes a
-reason:
-
-| Disposition | Means | The reason must say |
-|---|---|---|
-| **Implemented** | Fixed on this branch | What changed, and where — the commit or the file |
-| **Deferred** | Real, not fixed here | Why it is outside this branch's scope, **and where it now lives**. A deferral with no tracking link is a drop with better manners. |
-| **Ignored** | Examined and rejected | What makes it not a problem here — the condition that cannot occur, the caller that does not exist, the guarantee upstream |
-
-The two axes are not free to combine. Most pairs are nonsense — a NON-ISSUE that was Deferred
-claims in one column that it was dismissed and in the other that it is real and still owed —
-so the legal cells are named rather than left to be worked out:
-
-| Class | May be dispositioned |
-|---|---|
-| **BLOCKER** | Implemented. The one exception is a BLOCKER that survives the second round below, which is Deferred, on a draft. |
-| **MAJOR** | Implemented — or Deferred with a tracking link when it is genuinely outside this branch's scope. Never Ignored: if it turned out not to be a problem it was never MAJOR, and the honest move is to reclassify it and say what changed your mind. |
-| **MINOR** | Any of the three. **Prefer Deferred for anything the task did not ask for** — a review is not a licence to grow the diff, and fixes to code near the change are exactly how a small pull request stops being separable ([development-workflow.md](development-workflow.md)). |
-| **NON-ISSUE** | Ignored. That is what the class means. If you fixed it anyway it was a MINOR. |
-
-**Every finding is published, including the NON-ISSUEs.** Those are the cheapest lines in the
-table and often the most useful: they are the only record that the question was asked.
-
-**The class is self-assigned, and that is the soft spot in the whole scheme.** Nothing checks
-it, so the cheapest route through this rule is not to skip the review — it is to review
-honestly and then classify downward, because NON-ISSUE/Ignored costs one line, no fix, no
-tracking link and no second round. The argument against exempting a diff by size applies
-unchanged one storey down: *"not really a problem"* is the verdict a finding returns about
-itself once fixing it has become inconvenient. If the reason you would write for Ignored does
-not name a specific condition that cannot occur, the finding was not a NON-ISSUE.
-
-### 4. Publish it in the pull request body
-
-```markdown
-## Review
-
-Five reviewers over `main...HEAD`, by angle: correctness, contracts, security, tests,
-should-this-exist.
-
-| # | Class | Finding | Disposition | Why |
-|---|---|---|---|---|
-| 1 | BLOCKER | `sync-widgets` writes before checking the tree is clean | Implemented | Moved the check above the first write (<sha>) |
-| 2 | MAJOR | No test covers the pruning path | Implemented | Added the retired-file case to the integration job |
-| 3 | MINOR | `widget verify` prints two near-identical warnings | Deferred | Cosmetic, and it touches an output format other checks grep — <issue> |
-| 4 | NON-ISSUE | Race between `sync` and `verify` | Ignored | Both run under the same lock; concurrent invocation is not reachable |
-```
-
-**Invent the names in your examples; never borrow a real path.** The table above describes a
-repository that does not exist, deliberately. A worked example naming a file this project
-actually ships reads, to the next agent that greps for that filename, as a recorded defect in
-it — and a fabricated BLOCKER against a real path costs somebody an afternoon disproving it.
-
-### One further round, and no more
-
-After fixing the BLOCKERs and MAJORs, re-review — but only the files the fixes touched, and
-only once. Beyond that it does not terminate: a fix is itself a change, so a rule that
-re-reviews every change would re-review for ever. This is the same bound, for the same
-reason, that caps the plan stress-test at one revision in
-[interaction-preferences.md](interaction-preferences.md); if one of them ever changes, both
-do, or the two halves of one mechanism start specifying different limits.
-
-**If the second round still returns a BLOCKER, the change is not converging.** Open it as a
-**draft**, with the BLOCKER carried in the table as Deferred and the disagreement stated in
-the body — not as a pull request proposing a merge. That is the only case in which a BLOCKER
-reaches a published branch, and the draft state is what keeps the exception honest: a draft
-asks for help, a ready pull request asks for a merge, and the whole point of the rule is that
-the second request has not been earned. Spawning a third round instead buys nothing; two
-rounds that disagree is a signal for a human, not for more agents.
+**Classification is [interaction-preferences.md](interaction-preferences.md)'s**, not this
+file's and not the skill's, so a BLOCKER means the same thing whether it was raised against a
+plan or against a diff.
 
 ## After it is open
 
@@ -219,10 +122,10 @@ The genuine carve-outs:
 
 - **A branch reopened after review feedback** gets its *changed part* reviewed, not the whole
   diff again. The findings table gains rows; it is not rewritten.
-- **A pure revert of a single commit** needs one reviewer, confirming the revert is clean and
-  nothing landed on top of it since. The content was reviewed when it went in, and the only
-  new question a revert raises is whether it is *pure* — which is the one thing that reviewer
-  is there to answer.
+- **A pure revert of a single commit** is reviewed for one question: is the revert clean, and
+  did anything land on top of it since. The content was reviewed when it went in, so this is
+  the only new question a revert raises — and the skill scales its roster down to it rather
+  than running the full set.
 - **Generated output** — a rebuilt manifest, a lockfile, a version bump — is reviewed as
   "was the generator run correctly", not line by line. Reviewing generated lines reviews the
   wrong artifact: the defect, if there is one, is in the generator or in the inputs, and a

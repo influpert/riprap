@@ -56,7 +56,7 @@ them and they would rot on every edit of every document.
 **Committing and merging**
 
 - [git.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git.md) — worktrees, branching, when to commit, and merging rules, plus the failure modes that cost the most to undo.
-- [code-review.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-review.md) — review the diff with parallel sub-agents before the pull request opens, publish every finding in the body with a disposition and a reason, and stay with the pull request until it merges.
+- [code-review.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-review.md) — run `/riprap:reviewer` over the diff before the pull request opens, publish every finding in the body with a disposition and a reason, and stay with the pull request until it merges.
 - [git-hooks.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git-hooks.md) — two hook families live under `bin/hooks/`. Telling them apart is the whole document.
 - [merge-gates.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/merge-gates.md) — some changes never merge autonomously, however clean the review and however green the CI.
 - [ci-hygiene.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/ci-hygiene.md) — how to re-run CI without corrupting the result or burning the budget.

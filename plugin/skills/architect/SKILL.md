@@ -14,8 +14,8 @@ answer is already known. Every run of this skill ends in an artifact that a sess
 memory of this one can execute.
 
 **This skill plans. It never writes source.** Not one file, not a stub, not "while I was in
-there". It writes exactly two things: plan mode's own plan file, and the artifact named in step
-8. That is not a limitation to work around — it is what keeps the review surface intact. An
+there". What it does write is listed in step 1, and none of it is source. That is not a
+limitation to work around — it is what keeps the review surface intact. An
 architect that implements as it goes has produced a diff *and* a document describing it, and
 nobody can now tell which of the two was reviewed.
 
@@ -24,22 +24,16 @@ it is decides only *where the requirements come from* — never how hard it look
 
 ## Stance
 
-Mechanical, not aspirational. Each of these fails silently, so each is stated as a rule.
+Dispositions rather than procedure — the steps carry the procedure, and Guidelines carries the
+rules. These three decide whether the artifact is worth anything, and each fails silently.
 
-- **Read before you assert.** Every line of step 4 is a claim about this repository, and each one
-  carries a path. A plan that says a helper exists when it does not costs its reader the
-  exploration the plan was meant to save, *plus* the time they spent trusting it.
-- **No unresolved fork survives into the plan.** interaction-preferences.md lists the words that
-  give one away. A fork shipped inside an approved plan gets resolved later by whoever walks into
-  it, without the context that would have resolved it correctly, and under the authority of a
-  document somebody signed off.
-- **Name what you did not check.** *"Did not read the migration history"* is information. Silence
-  reads as *checked*.
-- **Push back proportionally** — see interaction-preferences.md. When the requested approach is
-  worse, say so with the ledger. Folding on contact turns the plan into a transcript of the last
-  thing said.
 - **Write for someone with none of your context.** The reader has this file and the repository.
-  Everything else you know is lost when this session ends.
+  Everything else you know is lost when this session ends — which is what separates a plan from
+  a note to yourself.
+- **Name what you did not check.** *"Did not read the migration history"* is information. Silence
+  reads as *checked*, and the reader budgets accordingly.
+- **Push back proportionally** — see interaction-preferences.md. Folding on contact turns the
+  plan into a transcript of the last thing said.
 
 ## What this owns, and what it defers
 
@@ -61,7 +55,7 @@ path.
 | Document | What it owns |
 |---|---|
 | development-workflow.md | when a change needs a plan at all, the three things any plan states, and the pattern sweep a bug fix owes |
-| interaction-preferences.md | the plan stress-test and its roster, how findings are classified, how many questions a change earns, the shape each takes, and why plan mode is the review surface |
+| interaction-preferences.md | the plan stress-test and its roster, how findings are classified, how many questions a change earns, the shape each takes, the push-back ledger and the verdict it ends in, and why plan mode is the review surface |
 | design.md | when a change needs a mockup, which surface it goes on, the design-system search order, the states a design covers, and what to do when the tool is unreachable |
 | design-principles.md | how much structure is worth building, and when an abstraction earns its place |
 | tech-footprint.md | what counts as a new technology, and why the unattended answer is no |
@@ -147,10 +141,17 @@ second is the one that gets forgotten:
 - interaction-preferences.md owns why plan mode is entered *before* composing rather than after.
   Entering afterwards wraps a review surface around a decision already made.
 
-**Two writes happen outside plan mode, and both are deliberate.** If settling the design in step
-3 needs a write, do it before `EnterPlanMode` or after `ExitPlanMode` — and say which. The
-durable artifact is written in step 8, after approval; plan mode's own file is the review
-surface, and the two carry the same content.
+**Three things get written, and none of them is source.** Plan mode's own file, which is the
+review surface. The durable artifact in step 8, after approval, carrying the same content. And —
+only when step 3 needs it — design.md's fallback mockup, when the design tool is unreachable and
+the change has a user-facing surface.
+
+**That third one needs plan mode to be left and re-entered, so do it explicitly.** You cannot
+know a mockup is needed before reading, and this step requires plan mode before the first read,
+so "write it beforehand" is not a reachable branch. Call `ExitPlanMode` naming the mockup as the
+only thing it covers, write it, call `EnterPlanMode` again before step 6, and record in the plan
+that you did. A mockup skipped because the sequencing looked impossible is the outcome design.md
+says must not happen quietly.
 
 Unattended, interaction-preferences.md and development-workflow.md both carve out a run with
 nobody to confirm. Both still require the plan to be written down and its reasoning recorded.
@@ -211,9 +212,10 @@ The section that earns the artifact. One row per requirement: **what already exi
 
 - **The complexity gate decides how many questions** — interaction-preferences.md owns the count
   and the shape. Below the gate, asking *is* the failure mode. Never ask what you could read.
-- **Reach a verdict.** Steelman each option, give the ledger, state the choice, and name the
-  condition that would flip it. *"Both are reasonable"* is not a verdict; it is what an
-  unresolved fork looks like when it wants to pass for a decision.
+- **Reach a verdict.** interaction-preferences.md owns the shape one takes and the bar it clears;
+  run it as written. What matters here is only that the plan ships with the verdict rather than
+  the fork — an unresolved fork inside an approved plan gets settled later by whoever walks into
+  it, without the context that would have settled it correctly.
 - **New technology is decided here**, at plan time, which tech-footprint.md says is the only
   cheap moment. Unattended, that document's carve-out inverts and the answer is no.
 - **Hand to `/riprap:council` only when a fork survives exploration and needs research rather

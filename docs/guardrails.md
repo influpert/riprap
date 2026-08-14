@@ -24,7 +24,7 @@ format what you just wrote, keep the handoff current, and mark the end of a sess
 
 | Hook | Runs on | What it does | Can block |
 |---|---|---|---|
-| session start | startup, resume, clear, compact, fork | Injects the router — the rules and the task-to-document map, plus the path of the current handoff | no |
+| session start | startup, resume, clear, compact, fork | Injects the router — the rules and the task-to-document map, plus the path of the current handoff. On `resume` and `fork` the context already holds it, so those get a pointer instead | no |
 | secret hygiene | Bash, Read, Grep, Edit, Write | Refuses a call whose content matches a credential pattern | **yes** |
 | destructive-command blocker | Bash | Refuses a destructive command resolving outside the project directory | **yes** |
 | merge gate | Bash | Refuses an autonomous merge of a security-sensitive change | **yes** |

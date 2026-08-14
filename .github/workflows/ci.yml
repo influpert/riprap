@@ -577,6 +577,44 @@ jobs:
           CLAUDE_PLUGIN_ROOT="$PWD/plugin" plugin/hooks/session-start \
             | jq -e '.hookSpecificOutput.additionalContext | length > 500' > /dev/null
 
+      # session-start is the one hook that runs from the plugin rather than the
+      # payload, so the payload's own test suite structurally cannot reach it —
+      # it lives under bin/hooks/riprap/tests/ and only ever calls ../claude.
+      # These are its only tests.
+      - name: SessionStart sends the router once, and a pointer thereafter
+        run: |
+          fail=0
+          ctx() {  # $1 = source value, or empty for no stdin at all
+            if [ -z "${1:-}" ]; then
+              CLAUDE_PLUGIN_ROOT="$PWD/plugin" plugin/hooks/session-start </dev/null
+            else
+              printf '{"source":"%s"}' "$1" \
+                | CLAUDE_PLUGIN_ROOT="$PWD/plugin" plugin/hooks/session-start
+            fi | jq -r '.hookSpecificOutput.additionalContext'
+          }
+
+          # A fresh context gets the whole router. Three of the five entry points
+          # are fresh, and so is the no-stdin case — which is the one that must
+          # never regress, because every fallback path lands there.
+          for s in startup clear compact ""; do
+            n=$(ctx "$s" | wc -c)
+            [ "$n" -gt 4000 ] || { echo "❌ source='$s' emitted only $n bytes; the router is missing"; fail=1; }
+          done
+
+          # A continued context gets a pointer instead. Bounded on BOTH sides:
+          # too long means the router is still being sent, and empty means the
+          # session was left with no guardrails at all — which is the failure
+          # this repository already shipped once, when `resume` matched no hook.
+          for s in resume fork; do
+            out=$(ctx "$s"); n=$(printf '%s' "$out" | wc -c)
+            [ "$n" -lt 1000 ] || { echo "❌ source='$s' still emitted $n bytes; the router is being resent"; fail=1; }
+            [ "$n" -gt 50 ]   || { echo "❌ source='$s' emitted almost nothing; a continued session must still be pointed at the rules"; fail=1; }
+            case "$out" in *README.md*) ;; *) echo "❌ source='$s' does not name the router"; fail=1 ;; esac
+          done
+
+          [ "$fail" -eq 0 ] && echo "✅ router on a fresh context, pointer on a continued one"
+          exit "$fail"
+
   # Proves the thing riprap actually promises: that installing it works.
   install:
     runs-on: ubuntu-latest

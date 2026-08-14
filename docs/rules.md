@@ -41,6 +41,11 @@ repository with its own `/learn` or `/reviewer` keeps it. There is nothing to me
 
 riprap is paid for on every turn, so it is careful about what it injects.
 
+It is not paid on every entry, either. A session that is **resumed or forked** continues a
+context that already holds the router, so those two get three lines naming where the rules are
+rather than the rules again — deliberately not silence, because if that premise about the
+harness were ever wrong, emitting nothing would leave the session with no guardrails at all.
+
 What arrives at session start is a **router of roughly 150 lines** — the seven rules, a
 task-to-document map, and five rules restated in full. It is not the 19 guardrail documents
 themselves. Those are read when they are needed and not before, which is why the router

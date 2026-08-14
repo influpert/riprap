@@ -170,6 +170,25 @@ verify_claude_hooks() {
      grep -qE '"riprap(@[^"]+)?"[[:space:]]*:[[:space:]]*false' "$SETTINGS"; then
     fail "❌ $SETTINGS disables the riprap plugin, so none of these hooks run."
   fi
+
+  # The pre-compaction hook refuses to write into a tmp/ that git does not
+  # ignore, because a session artifact swept into `git add -A` is worse than a
+  # missing capture. That refusal is correct, and it is also completely silent:
+  # it happens at compaction, with no model present to report to, and the result
+  # is indistinguishable from a compaction that never came. This is the only
+  # surface that can say so on demand.
+  #
+  # A note, not a failure. riprap creates no ignore rules of its own, so a
+  # project is entitled to this state, and exiting 1 over it would make `verify`
+  # red for a condition riprap itself declines to fix. What is not acceptable is
+  # a guardrail that quietly stopped guarding — which is what this whole function
+  # exists to refuse.
+  if [ -x "$HOOK_DIR/handoff-precompact.sh" ] &&
+     ! git check-ignore -q "tmp/handoff/probe.md" 2>/dev/null; then
+    note "ℹ️  tmp/ is not git-ignored, so the pre-compaction handoff capture is disabled."
+    note "   It will not write, and nothing will say so at the time it does not."
+    note "   Fix: a tmp/.gitignore holding '*' on one line and '!.gitignore' on the next."
+  fi
 }
 
 # --- stack seams -------------------------------------------------------------

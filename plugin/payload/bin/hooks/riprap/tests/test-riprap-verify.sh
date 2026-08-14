@@ -62,4 +62,74 @@ match "a plugin whose name merely ends in riprap -> silent" 1 \
 match "no plugins block at all -> silent" 1 \
   '{"permissions":{"allow":["Bash(git status:*)"]}}'
 
+echo
+echo "--- the pre-compaction capture reports when it is disabled ---"
+#
+# A real run, not a pattern match: what is being asserted is that `verify` SAYS
+# something, and that it does not turn red saying it. The hook's refusal to write
+# into an unignored tmp/ happens at compaction with no model present, so this is
+# the only surface that can report it — and reporting it as a failure would make
+# verify red for a state riprap itself declines to fix.
+VT=$(mktemp -d)
+PAYLOAD=$(cd "$SCRIPT_DIR/../../../.." && pwd)
+(
+  cd "$VT" || exit 1
+  git init -q .
+  git config user.email t@example.invalid
+  git config user.name Test
+  mkdir -p bin/hooks/riprap tmp
+  cp -R "$PAYLOAD"/bin/hooks/riprap/claude "$PAYLOAD"/bin/hooks/riprap/git \
+        "$PAYLOAD"/bin/hooks/riprap/lib bin/hooks/riprap/
+  cp "$PAYLOAD"/bin/riprap bin/riprap
+  chmod +x bin/riprap
+  for s in test lint format setup; do printf '#!/usr/bin/env bash\nexit 0\n' >"bin/$s"; chmod +x "bin/$s"; done
+  # Wired the way an installed project actually is: the adopter's own hook
+  # delegating to riprap's, with core.hooksPath pointing at the adopter's
+  # directory. Pointing it straight at riprap's own leaves verify reporting a
+  # broken delegation — which made the exit code 1 whatever else was true, and
+  # so made the advisory-vs-failure assertion below unable to fail. Mutation
+  # testing caught that: turning the note into a fail() changed nothing.
+  mkdir -p bin/hooks/git
+  printf '#!/usr/bin/env bash\nset -eu\nR="$(git rev-parse --show-toplevel)"\n"$R"/bin/hooks/riprap/git/pre-commit "$@" || exit $?\n' >bin/hooks/git/pre-commit
+  chmod +x bin/hooks/git/pre-commit
+  git config core.hooksPath bin/hooks/git
+  printf 'x\n' >f.txt && git add -A && git commit -qm init
+) >/dev/null 2>&1
+
+run_verify() { ( cd "$VT" && ./bin/riprap verify 2>&1 ); }
+verify_rc()  { ( cd "$VT" && ./bin/riprap verify >/dev/null 2>&1; echo $? ); }
+
+# Capture, then match — never `run_verify | grep -q`. This file sets `pipefail`,
+# and `verify` exits 1 whenever ANYTHING it checks is unwired, so a pipeline into
+# grep takes its status from the failed producer and reads as "no match" however
+# well the match went. That cost an hour here: the negative case passed for the
+# wrong reason and the positive case failed while the text was plainly present.
+says() { case "$1" in *"not git-ignored"*) return 0 ;; *) return 1 ;; esac; }
+
+printf '*\n!.gitignore\n' >"$VT/tmp/.gitignore"
+rc_ignored=$(verify_rc)
+if says "$(run_verify)"; then
+  FAIL=$((FAIL + 1)); printf 'FAIL: reported an unignored tmp/ when it IS ignored\n'
+else
+  PASS=$((PASS + 1)); printf 'PASS: silent when tmp/ is ignored\n'
+fi
+
+rm -f "$VT/tmp/.gitignore"
+rc_unignored=$(verify_rc)
+if says "$(run_verify)"; then
+  PASS=$((PASS + 1)); printf 'PASS: reports the disabled capture when tmp/ is not ignored\n'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL: said nothing about an unignored tmp/\n'
+fi
+
+# The exit code must not MOVE. Asserting a bare 0 would couple this to whatever
+# else the fixture happens to have configured; what matters is that the note adds
+# no failure of its own.
+if [ "$rc_ignored" = "$rc_unignored" ]; then
+  PASS=$((PASS + 1)); printf 'PASS: the report is advisory — it does not change the exit code\n'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL: an unignored tmp/ moved the exit code %s -> %s\n' "$rc_ignored" "$rc_unignored"
+fi
+rm -rf "$VT"
+
 summary

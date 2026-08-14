@@ -92,10 +92,46 @@ if [ -n "$newest" ]; then
   fi
 fi
 
+# What started this session. `resume` and `fork` continue a context that already
+# carries an earlier copy of the router, so sending it again pays ~150 lines to
+# say what has already been said — on two of the five entry paths.
+#
+# Read defensively, because this hook must work everywhere:
+#
+#   - Never from a terminal. `cat` on a tty blocks for ever, and this runs before
+#     anything else in the session. `[ -t 0 ]` is the guard.
+#   - Only with jq. Parsing JSON with sed is how a hook starts believing a
+#     `"source"` that appeared inside somebody's prompt text, and jq is NOT a
+#     dependency of this half — the payload hooks may demand it, but the router
+#     has to reach the model on a machine that has never installed it.
+#
+# Both fall back to the empty string, which takes the full-router branch. The
+# optimisation is best-effort by construction; the safe answer is the old one.
+source=""
+if [ ! -t 0 ] && command -v jq >/dev/null 2>&1; then
+  source="$(cat 2>/dev/null | jq -r '.source // empty' 2>/dev/null || true)"
+fi
+
 # The router links siblings relatively — testing.md, git.md — which resolve
 # against nothing once this text is pasted into a conversation. Rather than
 # rewriting every link, state the directory once and let the model join the two.
 preamble="riprap's guardrail documents live in ${DOCS}/ — a relative link below such as \`testing.md\` means \`${DOCS}/testing.md\`. Read them with the Read tool as needed."
+
+# On a continued context, a pointer instead of the whole thing.
+#
+# Deliberately not silence. The premise — that a resumed or forked context still
+# holds the original injection — is a claim about the harness, and if it is ever
+# wrong then emitting nothing leaves the session with no guardrails at all. That
+# is the failure this repository just spent a release fixing in the other
+# direction, when `resume` matched no hook whatsoever. Three lines that name the
+# router cost almost nothing and cannot produce that outcome.
+case "$source" in
+  resume|fork)
+    [ "$source" = "fork" ] && started="forked" || started="resumed"
+    preamble="riprap's guardrails were injected into this context before it was ${started}, and have not changed. The documents are in ${DOCS}/ — re-read the router at ${DOCS}/README.md if any of it has fallen out of context."
+    router=""
+    ;;
+esac
 
 # Escape for JSON embedding. Each substitution is one C-level pass, which matters
 # because this runs on every session start.
@@ -109,7 +145,11 @@ escape_for_json() {
     printf '%s' "$s"
 }
 
-context="$(escape_for_json "${preamble}"$'\n\n'"${router}${handoff_note}")"
+if [ -n "$router" ]; then
+  context="$(escape_for_json "${preamble}"$'\n\n'"${router}${handoff_note}")"
+else
+  context="$(escape_for_json "${preamble}${handoff_note}")"
+fi
 
 # Claude Code reads hookSpecificOutput.additionalContext; the SDK standard and
 # some other harnesses read a top-level additionalContext. Emitting both would be

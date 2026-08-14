@@ -67,7 +67,7 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:handoff` | Writing the handoff that carries work across a lost context, or resuming from one. Its answers file says what a handoff about `plugin/` must carry that one about an ordinary repository need not. |
 
 **riprap's answers to its own skills live in [.claude/instructions/riprap-skills.md](.claude/instructions/riprap-skills.md).**
-Five of them read that file before asking anything, so it is what stops them
+The skills that store answers read that file before asking anything, so it is what stops them
 re-interviewing this repository every run. It also carries the corrections for `learn` and
 `spec` — they are there rather than here because a skill is licensed to rewrite this file
 and told to keep it short, and a rule constraining a skill should not sit somewhere that

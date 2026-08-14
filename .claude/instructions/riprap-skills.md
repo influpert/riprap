@@ -139,7 +139,7 @@ many skills ship.
 
 - Base branch: `main`
 - Isolation: the current checkout
-- Where plans arrive: `tmp/riprap/plan-<slug>.md`
+- Where plans land: `tmp/riprap/plan-<slug>.md`
 - Branch naming: descriptive kebab-case, no type prefix — `add-reviewer-skill`
 - Stack commands: `bin/test`, `bin/lint` — configured
 

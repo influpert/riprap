@@ -158,7 +158,7 @@ ignores `tmp/` does not need riprap's opinion about it.
 
 ## The nine skills
 
-Four of these chain: `/riprap:spec` defines a feature, `/riprap:architect` turns it into an
+These chain: `/riprap:spec` defines a feature, `/riprap:architect` turns it into an
 implementation plan, `/riprap:implement` builds that plan, and `/riprap:reviewer` reviews what
 comes out. Each also runs alone — the stage before it being absent changes where the input
 comes from, never whether the skill works.

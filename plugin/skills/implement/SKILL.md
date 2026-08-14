@@ -28,24 +28,17 @@ wrote the summary is the party merge-gates.md exists to keep away from the merge
 
 ## Stance
 
-Mechanical, not aspirational. Each of these fails silently, so each is stated as a rule.
+Dispositions rather than procedure — the steps carry the procedure, and Guidelines carries the
+rules. These are the three postures that decide whether the rest works, and each fails silently.
 
-- **The plan is the contract.** Building something better than the plan is building something
-  nobody reviewed. A deviation is a message, never a commit.
-- **The tests are the first code, and they land as their own commit.** testing.md owns the order
-  and the reason; the commit boundary is what makes the first gate possible at all.
 - **Receiving a review is not compliance.** A finding you believe is wrong earns a stated reason
   and a round of argument — see interaction-preferences.md — not a silent fix and not silent
   non-compliance. Restate it before you rule on it.
-- **Never widen the diff.** What you notice gets reported, not repaired
-  (development-workflow.md). A pull request that fixes four things nobody asked for cannot be
-  reviewed as a unit or reverted in part.
-- **A file in `git status` that the plan does not name is a question, not a hunk.**
-- **Verified or not claimed.** Quote the command and its output. *"Should work"* and *"works"*
-  are different claims and only one of them is checkable.
 - **A gate you passed without presenting is a gate you skipped.** Present the findings even when
   you agree with every one. The record of what was checked is the deliverable, and it is the part
   that outlives you.
+- **The plan is the contract.** Building something better than the plan is building something
+  nobody reviewed. A deviation is a message, never a commit.
 
 ## What this owns, and what it defers
 
@@ -124,17 +117,22 @@ gh pr list --state merged --limit 20 --json headRefName --jq '.[].headRefName' 2
 # them exits 127 as well, which is the same code as "no such file". Neither is a
 # test result, and quoting one as though it were is the claim this answer prevents.
 ls bin/test bin/lint bin/format bin/setup 2>/dev/null
-grep -l 'riprap:stub' bin/* 2>/dev/null
+grep -l '^# riprap:stub$' bin/test bin/lint bin/format bin/setup 2>/dev/null
 ```
 
-**Isolation is the answer that stops two sessions overwriting each other**, and it is asked
-rather than assumed because the right level depends on how the project is worked:
+The stub marker is anchored and the four seams are named, because an unanchored `bin/*` also
+matches the installer — which mentions the marker in order to check for it, and is not a seam.
 
-| Level | What it is | When it is right |
-|---|---|---|
-| **The current checkout** | work where you are | git.md's carve-outs — the user asked for it, the change lives a single commit, or the project has an absolute path baked into its tooling that a second checkout breaks |
-| **A worktree per task** | a checkout of its own, cut from trunk | git.md's stated default. The main checkout stays usable, and a worktree cut from trunk cannot inherit a dirty base |
-| **A container per task** | a disposable environment per task | the only level that isolates *installed dependencies* rather than only files — concurrent work on different branches of the same lockfile |
+**Isolation is the answer that stops two sessions overwriting each other**, and it is asked
+rather than assumed. git.md owns the default and every carve-out from it — read them there, and
+record which one this project chose. One level sits outside that document because it answers a
+question worktrees cannot:
+
+| Level | What it isolates |
+|---|---|
+| **The current checkout** | nothing. git.md's carve-outs say when that is nevertheless right |
+| **A worktree per task** | files. git.md's default |
+| **A container per task** | files *and installed dependencies* — what concurrent work on different branches of one lockfile actually needs |
 
 **A container is a new technology wherever the project has no container tooling already**, so
 tech-footprint.md's gate is asked before that option is offered as a live one, and unattended
@@ -154,7 +152,7 @@ That last one is not a failure case. This skill has to work in a project where n
 
 - Base branch: `main`
 - Isolation: a worktree per task
-- Where plans arrive: `tmp/riprap/plan-<slug>.md`
+- Where plans land: `tmp/riprap/plan-<slug>.md`
 - Branch naming: `feat/<slug>`, `fix/<slug>`
 - Stack commands: `bin/test`, `bin/lint` — configured
 ```
@@ -187,10 +185,15 @@ gates there would contradict the document this skill defers to.
 and opens a pull request for work that already exists:
 
 ```bash
-gh pr list --state open --search "<slug>" --json number,title,headRefName,isDraft
+gh pr list --state open --json number,title,headRefName,isDraft \
+  --jq '[.[] | select(.headRefName | contains("<slug>"))]'
 ```
 
-If one is open and not a draft, say so and stop rather than re-implement.
+Filter on the branch name rather than `--search`, which tokenises the slug and matches on any
+word in it: searching `add-reviewer-skill` in this repository returns three unrelated pull
+requests that share `add` or `skill`, and misses a real duplicate whose title is prose. If one
+carries this slug in its branch name and is not a draft, say so and stop rather than
+re-implement.
 
 **Three sufficiency questions, each with a stop attached**, because a plan that fails one
 produces a branch that fails at gate 2 with the whole implementation already written:
@@ -221,10 +224,10 @@ git.md's reason is that a workspace the user does not know about is a directory 
 work in a place they never look. This skill will be mid-loop for an hour across three
 checkpoints, which is exactly the span over which that gets forgotten.
 
-**Run the project's setup command in the new workspace.** A fresh worktree or container has no
-dependencies, so the first test run fails on a missing module — testing.md's canonical
-red-for-the-wrong-reason, arriving before you have written anything. An unprepared workspace
-turns gate 1 into a review of an error message.
+**Prepare the workspace before you write anything.** git.md carries the cost of a fresh
+worktree, the command that fixes it, and what you do *not* have to redo. Skip it and the first
+test run is red on a missing module — testing.md's canonical red-for-the-wrong-reason, arriving
+before you have written a line — and gate 1 becomes a review of an error message.
 
 ### 3. Write the tests, and watch them fail
 
@@ -237,8 +240,8 @@ implementation. That is the whole basis of gate 1 — a tests-only diff is a spe
 can read, and once implementation lands beside it nobody can tell which assertion was written to
 describe the plan and which to describe the code.
 
-Name every behaviour left unasserted, and why. Silence reads as covered, and gate 1 cannot find
-what is not there to look at.
+Where a behaviour has no available harness, testing.md's carve-out says what to write down. Do it
+in the tests-only commit, because gate 1 can only find what is in the diff to look at.
 
 ### 4. Gate 1 — have the tests reviewed
 
@@ -263,6 +266,12 @@ nonsense on a branch with no implementation:
 Then the checkpoint below. **Gate 1's menu carries three options, not four:** "proceed with
 blocking findings outstanding" is not offered, because testing.md forbids exactly that. The user
 can still overrule, and then it is an explicit disagreement with that document, recorded as one.
+
+**Test fixes from this gate are committed on their own too**, before step 5 — amend the
+tests-only commit or add a second one, and watch each changed assertion fail again for the reason
+you meant. An implementation commit that also carries test edits destroys step 3's boundary
+retroactively: gate 2's diff then mixes assertions written to describe the plan with assertions
+written after seeing the code, which is the confusion that boundary exists to prevent.
 
 **Do not touch a file between dispatching a review and receiving its verdict.** The reviewer pins
 a commit; a verdict against a head that moved is worthless and looks current.
@@ -328,13 +337,19 @@ git.md sanctions.
 **Before the pull request, the branch must contain only this work:**
 
 ```bash
-git diff --stat "$(git merge-base "$BASE" HEAD)"..HEAD
+BASE="origin/$(the base branch from the stored answers)"
+MB=$(git merge-base "$BASE" HEAD) || { echo "no merge-base with $BASE — stop"; exit 1; }
+git diff --stat "$MB"..HEAD
 ```
 
-The merge-base form, because `git log base...branch` is a symmetric difference that reports
-everything merged to trunk since you branched as though it were yours. Once the pull request
-exists, `gh pr diff` is the source of truth instead and git.md is explicit that a commit visible
-in `git log` but absent from it is not contamination.
+**Set `BASE` from the stored answer and check the merge base resolved.** With it unset the
+command degrades to `HEAD..HEAD`, which prints nothing and exits 0 — and an empty stat is
+exactly what a clean branch looks like, so the one check standing between an unaudited branch
+and a push would report success by failing.
+
+The merge-base form, because both `git log` range forms report other people's merged commits as
+yours — git.md's Detection section has the precise reason and the rule that falls out of it.
+Once the pull request exists, `gh pr diff` is the source of truth instead.
 
 Then push. If a force is ever needed, `--force-with-lease` and never the plain form.
 
@@ -352,8 +367,9 @@ this skill's:
    also where `tmp/riprap/decisions-<slug>.md` graduates — the overrules recorded there become
    rows here, rather than standing as a second record.
 4. **The design link**, where design.md called for one. Where the built screen diverges from the
-   mockup, **say so explicitly**: that document is clear that an undeclared divergence is what
-   reviewers block on, while a declared one is a decision.
+   mockup, that document's re-mock rule applies and it has two branches, not one: update the
+   mockup, or declare it stale in the body and say why. A stale mockup nobody flagged is worse
+   than none.
 5. **What was noticed and not fixed**, and what the plan deferred, in project-standards.md's form.
 6. Where the change and its review came from one session, **say that in the body.**
    merge-gates.md is explicit that a findings table is not a review and does not supply the
@@ -382,8 +398,10 @@ Then the checkpoint.
 **Four things are confirmed, in this order.** Any one missing and the answer is not *merge later*
 — it is that this loop ends here and the user is told what is outstanding:
 
-1. `/riprap:reviewer` returned a clean verdict **against the current head**. Re-read the head and
-   confirm the verdict names that commit.
+1. `/riprap:reviewer` returned a clean verdict **against the current head** — or every surviving
+   finding above the lowest tier is recorded in the body's disposition column as dismissed by the
+   user, with their reason. Re-read the head and confirm the verdict names that commit. A verdict
+   that is neither of those ends the loop here.
 2. merge-gates.md's **three hard gates**: only this work in the diff, read with `gh pr diff`; no
    outstanding change request; every check green.
 3. **No gated path among the changed files.** Where there is one, run that document's hold

@@ -70,12 +70,12 @@ no** — this is the one gate that does not proceed-and-record.
 → [tech-footprint.md](tech-footprint.md)
 
 **Never open a pull request on a diff nobody reviewed, and never abandon one you opened.**
-Before opening: parallel review subagents over the diff, one angle each; every BLOCKER and
-MAJOR fixed first; every finding published in the body with a disposition — implemented,
-deferred or ignored — and the reason. A finding dropped in silence is indistinguishable from
-one nobody made, and the reviewer repeats the search you already did. After opening: stay in
-the loop until it merges — CI red is yours to fix, every review comment gets a change or an
-answer, conflicts get resolved rather than reported.
+Before opening: run `/riprap:reviewer` over the diff; every BLOCKER and MAJOR fixed first;
+every finding published in the body with a disposition — implemented, deferred or ignored —
+and the reason. A finding dropped in silence is indistinguishable from one nobody made, and
+the reviewer repeats the search you already did. After opening: stay in the loop until it
+merges — CI red is yours to fix, every review comment gets a change or an answer, conflicts
+get resolved rather than reported.
 → [code-review.md](code-review.md)
 
 ---

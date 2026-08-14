@@ -1,0 +1,852 @@
+#!/usr/bin/env bash
+# bin/check-skills — the invariants that keep a shipped skill from forking a guardrail.
+#
+# CLAUDE.md's central rule about this repository is that a procedure written out
+# beside a document that already defines it is not a convenience, it is a second
+# definition — and .github/workflows/ci.yml admits, in the comment above its own
+# skills step, that "no check can prove prose has stopped forking one". True. What
+# a check can do is narrow the gap, and narrowing it is all this file claims.
+#
+# This is a DIFFERENT set of invariants from ci.yml's "Skills are namespaced and
+# self-describing" step, which owns name/directory agreement, the bare-slash
+# invocation and the settings-block ban. One overlap is deliberate and marked at
+# A7. Neither file should grow into the other's half.
+#
+# WHAT A GREP OVER PROSE CANNOT DO, stated here because four critics found it
+# independently and the fixes below are only partial:
+#
+#   A presence check cannot tell asserting a rule from forbidding it or quoting
+#   it. "Never write HOLD: human review required" satisfies a grep for that
+#   string. Every must-appear assertion below therefore carries a negation guard,
+#   and every must-not-appear assertion carries a negation exemption — opposite
+#   directions, for the same reason. Neither is airtight: prose has more ways to
+#   mean the opposite than a guard can enumerate.
+#
+# Run --self-test to watch every assertion fire on a fixture built to break it,
+# AND to check it fired for its own reason rather than tripping a neighbour. That
+# mode exists because these assertions would otherwise only ever have been seen
+# red for one reason — the file not existing yet — which testing.md names as the
+# canonical red-for-the-wrong-reason.
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel) || {
+  # `cd "$(git rev-parse ...)"` alone is not enough: cd's status is not the
+  # substitution's, and `cd ""` is a successful no-op. The script then runs in
+  # the wrong directory and reports six confident diagnostics about documents it
+  # never found, none of which say "you are not in a git repository".
+  echo "❌ not a git repository" >&2; exit 1; }
+cd "$root"
+
+INSTRUCTIONS=plugin/instructions
+ANSWERS=.claude/instructions/riprap-skills.md
+
+# Skills that must exist. Without this the reviewer contract below sits behind a
+# path test that silently skips — the exact fail-open A7 condemns in ci.yml,
+# reproduced in the file condemning it. Verified: a five-line skill parked at
+# plugin/skills/review/ that approves and force-merges scored a clean pass.
+REQUIRED_SKILLS="reviewer"
+
+# Guardrail documents the reviewer must NAME. A1 proves a named document
+# resolves; it cannot prove one was named, and a skill deferring to nothing
+# scores a perfect A1 while restating everything.
+#
+# tech-footprint.md and design-principles.md joined the list when the dependency
+# creep and simplicity angles did. An angle whose owning document is not named is
+# an angle the reviewer re-argues from memory — and tech-footprint.md's rule has
+# a carve-out that INVERTS when unattended, which is exactly the kind of thing a
+# remembered version loses.
+REVIEWER_MUST_DEFER="code-review.md interaction-preferences.md merge-gates.md git.md tech-footprint.md design-principles.md"
+
+# Bare .md names a skill may mention that are NOT guardrail documents, so must
+# not be resolved against plugin/instructions/. Every entry needs a reason, as
+# bin/scrub-check's allowlist does: an unexplained exemption is indistinguishable
+# from an oversight. A mention carrying a path (docs/rules.md) is handled by the
+# path rule in A1 and needs no entry here.
+#
+#   CLAUDE.md         the adopting project's own file, at ITS root, not riprap's
+#   riprap-skills.md  the adopter's stored answers, under .claude/instructions/
+#   SKILL.md          a skill referring to itself
+#
+# README.md is deliberately NOT here, and A1b is what caught the attempt:
+# plugin/instructions/README.md is the session router, so a bare mention resolves
+# on its own, and an entry would only blind A1 to the one document every session
+# is actually given.
+NOT_A_GUARDRAIL_DOC=" CLAUDE.md riprap-skills.md SKILL.md "
+
+# Header rows the guardrail documents own. Tab-separated: source doc, then the
+# string. Tab because the data itself is full of pipes — a pipe-delimited table
+# describing pipe-delimited tables splits in the wrong places and then greps for
+# the empty string, which matches every line and reports every skill as broken.
+#
+# code-review.md's rows are NOT here any more. The review procedure — the angles,
+# the dispositions, both tables — moved into the reviewer skill, which now owns
+# it; code-review.md states the obligation and points at the skill. So these
+# strings are the skill's to carry, and the direction of the check inverts:
+# see moved_rows() below.
+forbidden_rows() {
+  cat <<'ROWS'
+interaction-preferences.md	| Class | Meaning | Effect on the plan |
+interaction-preferences.md	| Angle | The critic's question |
+ROWS
+}
+
+# The other direction. When a rule moves out of a document and into a skill, the
+# failure is not that the skill has it — that is the point — but that the
+# document KEPT it. Two live copies drift, and the copy loaded every session wins
+# by default while the copy anyone edits is the other one.
+#
+# Each row is the document it must no longer appear in, then the string. Same tab
+# separation, for the same reason.
+moved_rows() {
+  cat <<'ROWS'
+code-review.md	| Angle | The reviewer's question |
+code-review.md	| Disposition | Means | The reason must say |
+code-review.md	| Class | May be dispositioned |
+code-review.md	| # | Class | Finding | Disposition | Why |
+ROWS
+}
+
+# Ways an agent can actually merge or approve. The first list was three strings
+# and a reviewer using `gh api ... /merge` walked past all of them; LGTM and
+# APPROVED are the language merge-gates.md forbids, which no command grep sees.
+#
+# event=APPROVE and event=REQUEST_CHANGES are the REST equivalents, and they
+# reach the same place `gh pr review` does while matching none of the above. The
+# skill posts to pulls/N/reviews legitimately — that endpoint does not match
+# `pulls/.*/merge`, so only the event decides whether a call is a review or a
+# verdict on the author's behalf. Written to catch the JSON and flag forms both.
+NEVER_INSTRUCT="gh pr merge|gh pr review --approve|gh pr review -a|--admin|--auto|pulls/.*/merge|LGTM|APPROVED|event.{0,4}(APPROVE|REQUEST_CHANGES)"
+
+# Editing a branch under review. "Never merges" had three assertions and "never
+# edits" — the harder half of the same hard rule — had none.
+NEVER_EDITS="git commit|git push|git apply|git cherry-pick"
+
+# A line that forbids a thing is not a line that instructs it, and a line that
+# forbids a rule does not state it. One expression, used in both directions.
+NEGATED='[Nn]ever|[Dd]o not|[Dd]on.t|[Ii]nstead of|rather than'
+
+# ---------------------------------------------------------------------------
+# Assertions. Each prints its own ❌ lines and returns non-zero; none mutates a
+# shared counter, which is what lets --self-test call them against a fixture.
+#
+# Shapes used throughout, all load-bearing:
+#   must-match      grep -q ... || { echo; bad=1; }   — a BARE grep -q inside a
+#                                                       function called as
+#                                                       `f || fail=1` does NOT
+#                                                       abort (set -e is
+#                                                       suspended for the whole
+#                                                       body); it silently skips
+#                                                       to the next line
+#   must-not-match  if grep -qE ...; then ... fi
+#   counting        n=$(grep -c ... || true); n=${n:-0}
+# and grep -F wherever a pattern contains a pipe: `grep -E '| Angle |'` is an
+# empty alternation, which errors (exit 2) on BSD grep and matches every line on
+# GNU grep — green locally, red in CI, on a correct tree.
+#
+# An unreadable or empty file used to pass every assertion in silence. Both are
+# now hard failures at the call site, and each function that shells out checks
+# that the tool actually ran.
+# ---------------------------------------------------------------------------
+
+# A1. Every guardrail document a skill names actually ships.
+check_doc_mentions_resolve() {
+  local label=$1 file=$2 bad=0 m
+  # Must open on an alphanumeric. A leading `*` matched the bare `.md` inside a
+  # placeholder like `.github/releases/<tag>.md`, and then reported the release
+  # skill for naming a document called ".md".
+  for m in $(grep -ohE '[A-Za-z0-9][A-Za-z0-9._/-]*\.md' "$file" | sed 's|^\./||' | sort -u); do
+    case "$m" in
+      # An explicit path is a claim about a location, and only one location is
+      # this check's business. docs/rules.md and .github/releases/v0.5.0.md are
+      # real riprap documents a skill may legitimately cite; resolving them by
+      # basename against plugin/instructions/ reported them as dangling.
+      */*) case "$m" in
+             "$INSTRUCTIONS"/*) [ -f "$m" ] || {
+               echo "❌ $label names $m, which does not exist"; bad=1; } ;;
+           esac ;;
+      *) case "$NOT_A_GUARDRAIL_DOC" in *" $m "*) continue ;; esac
+         [ -f "$INSTRUCTIONS/$m" ] || {
+           echo "❌ $label names $m, which is not in $INSTRUCTIONS/"
+           echo "   A deferral that does not resolve sends the model nowhere and reads as green."
+           bad=1; } ;;
+    esac
+  done
+  return "$bad"
+}
+
+# A1b. The allowlist cannot be used to silence A1.
+#
+# Adding merge-gates.md to NOT_A_GUARDRAIL_DOC keeps everything green and
+# permanently blinds A1 to the document most worth watching. That is the cheapest
+# route past this check, so it is closed here rather than left to review.
+check_allowlist_is_honest() {
+  local bad=0 m
+  for m in $NOT_A_GUARDRAIL_DOC; do
+    [ -f "$INSTRUCTIONS/$m" ] && {
+      echo "❌ NOT_A_GUARDRAIL_DOC exempts $m, which IS a guardrail document"
+      echo "   That entry disables A1 for it. Remove the entry, not the check."
+      bad=1; }
+  done
+  return "$bad"
+}
+
+# A2. The classification vocabulary never appears away from its definition.
+#
+# This replaces a blacklist of table headers, which any paraphrase walks past —
+# and paraphrase is what a model produces by default, having just read the table.
+# What a fork cannot do is carry the pointer, so the pointer is what gets
+# required.
+#
+# Two rules, because one was not enough. The ALL-CAPS tokens are riprap's class
+# names and unambiguous, so a bare occurrence needs a pointer within two lines —
+# two because these documents are hard-wrapped and a citation routinely lands on
+# the next line, and ci.yml records that a check firing on a legitimate rewrap
+# "fails hardest at the moment it is meant to be useful".
+#
+# The second rule exists because the first is case-sensitive and the fork that
+# matters is prose: a model rewriting the table writes "Blocker" and "Major".
+# Blanket -i would fire on ordinary English, so instead it takes a CLUSTER —
+# three or more DISTINCT class words within six lines, in any case. Only two of
+# the four are ordinary English, so three distinct means at least one of
+# "blocker" or "non-issue" is present. That shape is a class table however it is
+# capitalised.
+check_class_vocabulary() {
+  local label=$1 file=$2 out
+  out=$(awk -v w=2 -v cw=6 '
+    { line[NR] = $0; last = NR; lc = tolower($0); if ($0 ~ /^\|/) tbl[NR] = 1 }
+    /interaction-preferences\.md|code-review\.md/ { ptr[NR] = 1 }
+    # Word-guarded so MAJORITY and MINORITY do not count as class names.
+    $0 ~ /(^|[^A-Z])(BLOCKER|MAJOR|MINOR|NON-ISSUE)([^A-Z]|$)/ { voc[NR] = 1 }
+    lc ~ /blocker/    { has[NR "|b"] = 1; any[NR] = 1 }
+    lc ~ /major/      { has[NR "|j"] = 1; any[NR] = 1 }
+    lc ~ /minor/      { has[NR "|n"] = 1; any[NR] = 1 }
+    lc ~ /non-issue/  { has[NR "|x"] = 1; any[NR] = 1 }
+    # A markdown table is ONE passage, not N independent lines. The rule being
+    # checked is "the passage cites its definition"; measuring it in physical
+    # lines made a three-row mapping table uncitable, because no caption can sit
+    # within two lines of both its first and its last row. So a run of table
+    # rows expands to its full extent before the window is applied — the
+    # citation may sit in the caption, in a cell, or in the sentence beneath.
+    function span_lo(n,   i) { i = n; while ((i - 1) in tbl) i--; return i }
+    function span_hi(n,   i) { i = n; while ((i + 1) in tbl) i++; return i }
+    function pointer_near(n, span,   i, lo, hi) {
+      lo = (n in tbl) ? span_lo(n) : n
+      hi = (n in tbl) ? span_hi(n) : n
+      for (i = lo - span; i <= hi + span; i++) if (i in ptr) return 1
+      return 0
+    }
+    END {
+      for (n = 1; n <= last; n++) {
+        if (!(n in voc)) continue
+        if (pointer_near(n, w)) continue
+        printf "   line %d: %s\n", n, line[n]
+        found = 1
+      }
+      if (found) exit 0
+      for (n = 1; n <= last; n++) {
+        if (!(n in any)) continue
+        distinct = 0
+        split("b j n x", k, " ")
+        for (t = 1; t <= 4; t++) {
+          for (i = n; i < n + cw; i++) if ((i "|" k[t]) in has) { distinct++; break }
+        }
+        if (distinct < 3) continue
+        if (pointer_near(n, w + cw)) continue
+        printf "   lines %d-%d: %d class words, any case, with no pointer\n", n, n + cw - 1, distinct
+        printf "   %s\n", line[n]
+        exit 0
+      }
+    }' "$file") || {
+    echo "❌ $label: awk failed reading the file"; return 1; }
+  [ -z "$out" ] || {
+    echo "❌ $label uses the classification vocabulary with no pointer to the document that defines it:"
+    echo "$out"
+    echo "   Cite interaction-preferences.md or code-review.md nearby, or delete the passage."
+    return 1; }
+  return 0
+}
+
+# A3. The exact header rows those documents own are not pasted into a skill.
+#
+# Narrow on purpose — it catches the verbatim copy, which is the commonest shape
+# because the way a skill gets written is a model opening the document and
+# copying. The second half is what stops it rotting: each string is asserted
+# still present in ITS SOURCE first, so rewording a column heading reds this
+# check loudly instead of hollowing it into a grep that can never match.
+check_no_pasted_tables() {
+  local label=$1 file=$2 bad=0 src str
+  while IFS=$(printf '\t') read -r src str; do
+    [ -n "${src:-}" ] || continue
+    [ -n "${str:-}" ] || {
+      # A tab silently turned into spaces — an editor with expandtab, a
+      # whitespace-normalising paste — would otherwise drop the row in silence,
+      # hollowing the check out through the door beside the rot guard.
+      echo "❌ forbidden_rows(): malformed row, no tab: $src"; bad=1; continue; }
+    grep -qF -- "$str" "$INSTRUCTIONS/$src" || {
+      echo "❌ $INSTRUCTIONS/$src no longer contains: $str"
+      echo "   It was reworded, so this check has gone blind. Update forbidden_rows()."
+      bad=1; continue; }
+    if grep -qF -- "$str" "$file"; then
+      echo "❌ $label pastes a table $src owns: $str"
+      echo "   Cite the document instead. One definition per rule."
+      bad=1
+    fi
+  done <<EOF
+$(forbidden_rows)
+EOF
+  return "$bad"
+}
+
+# A9. What moved out stayed out — and arrived.
+#
+# Two halves, and the second is the rot guard. Asserting only that
+# code-review.md lost the tables passes forever once they are gone, including
+# after someone reworks the skill and the strings stop meaning anything. So the
+# owning skill is asserted to HAVE each row first: reword it there and this reds
+# loudly, pointing at moved_rows(), instead of hollowing into a grep for a string
+# nothing contains.
+check_moved_out() {
+  local owner=$1 bad=0 src str
+  while IFS=$(printf '\t') read -r src str; do
+    [ -n "${src:-}" ] || continue
+    [ -n "${str:-}" ] || {
+      echo "❌ moved_rows(): malformed row, no tab: $src"; bad=1; continue; }
+    grep -qF -- "$str" "$owner" || {
+      echo "❌ $owner no longer contains: $str"
+      echo "   It owns this now. Reworded? Update moved_rows(). Dropped? The rule has no home."
+      bad=1; continue; }
+    if grep -qF -- "$str" "$INSTRUCTIONS/$src"; then
+      echo "❌ $INSTRUCTIONS/$src still contains a row that moved to $owner: $str"
+      echo "   Two live copies. The session-loaded one wins by default; the other is the one"
+      echo "   anyone edits. Delete it from the document — the skill owns the procedure."
+      bad=1
+    fi
+  done <<EOF
+$(moved_rows)
+EOF
+  return "$bad"
+}
+
+# A8. The reviewer names the documents that own what it does not define.
+check_defers_to() {
+  local label=$1 file=$2 bad=0 must
+  for must in $REVIEWER_MUST_DEFER; do
+    grep -qF -- "$must" "$file" || {
+      echo "❌ $label never names $must, which owns rules it must not restate"; bad=1; }
+  done
+  return "$bad"
+}
+
+# A4-A6. The reviewer skill's own contract — the parts no other document defines,
+# and which therefore have nowhere else to be checked.
+check_reviewer_contract() {
+  local label=$1 file=$2 bad=0 n want never
+
+  # A4. Exactly one verdict line, at column 0, outside any fenced block.
+  #
+  # Every weaker form was defeated in testing. `grep -F` alone passes on a copy
+  # that exists only inside a "never write this" example. Counting `^VERDICT: <the
+  # canonical menu>$` passes a file whose real instruction is a DIFFERENT verdict
+  # line at column 0, because the pattern cannot see it and the count stays 1. So
+  # every line beginning VERDICT: is counted, fences are excluded, and the one
+  # that survives must be the canonical menu.
+  n=$(awk '
+    /^```/ { fence = !fence; next }
+    !fence && /^VERDICT:/ { c++ }
+    END { print c + 0 }' "$file") || { echo "❌ $label: awk failed"; return 1; }
+  if [ "$n" -ne 1 ]; then
+    echo "❌ $label has $n unfenced verdict lines at column 0; expected exactly 1"
+    bad=1
+  else
+    awk '
+      /^```/ { fence = !fence; next }
+      !fence && /^VERDICT:/ { print }' "$file" |
+      grep -qxF 'VERDICT: merge | merge after the blockers below | do not merge' || {
+        echo "❌ $label's verdict line is not the canonical menu"
+        echo "   Wanted: VERDICT: merge | merge after the blockers below | do not merge"
+        bad=1; }
+  fi
+
+  # A5. And the rules the menu is worthless without. A4 pins a string and not one
+  # bit of meaning: a skill can carry the exact line and still tell the model to
+  # default to merge.
+  #
+  # Each is negation-guarded. Verified: a three-line file reading "Never treat
+  # BLOCKER and MAJOR alike. Never write HOLD: human review required. Never open
+  # as a draft." satisfied all three plain greps.
+  #
+  #   BLOCKER and MAJOR — the source this was extracted from has two buckets,
+  #     blockers and non-blocking follow-ups, and riprap puts MAJOR on the
+  #     blocking side in three separate places. Losing that files a MAJOR under
+  #     "track it later" and returns merge on a branch code-review.md says is not
+  #     ready to open.
+  #   hold only a change you would otherwise merge — merge-gates.md is explicit
+  #     that a hold on a broken PR is wrong ("send it back to the author
+  #     instead"), and that a hold never starts on a draft. An unconditional
+  #     rider produces exactly those two forbidden states.
+  #   open as a draft — code-review.md's single exception in which a BLOCKER
+  #     reaches a published branch.
+  #
+  # The second group is the delivery half, added when the skill took ownership of
+  # the procedure. Each is a rule whose absence is invisible in a review of the
+  # prose, because the skill still reads correctly without it:
+  #
+  #   event: COMMENT — the ONLY safe review event. APPROVE is the fabricated
+  #     approval merge-gates.md forbids; REQUEST_CHANGES is an authoring act that
+  #     additionally fails on a shared account, indistinguishably from a network
+  #     error. A6 forbids the two bad ones; nothing else requires the good one.
+  #   Recommended fix — the column that makes a reviewer's table a reviewer's.
+  #     Drop it and the skill silently reverts to the author-side table, which
+  #     asks what was DONE about a finding by a skill that never edits.
+  #   summary-only — the fallback when anchoring fails. The post is atomic, so
+  #     without this a 422 strands every finding and the run looks clean.
+  #   Five at minimum — the floor. A5 previously had no assertion about the
+  #     roster at all, so a one-reviewer skill scored a perfect contract.
+  #   dependency creep — the angle backed by a critical rule whose unattended
+  #     answer inverts to no. It is the newest and so the likeliest to be lost.
+  for want in \
+    'BLOCKER and MAJOR' \
+    'HOLD: human review required' \
+    'hold only a change you would otherwise merge' \
+    'open as a draft' \
+    'event: COMMENT' \
+    'Recommended fix' \
+    'summary-only' \
+    'Five at minimum' \
+    'dependency creep'
+  do
+    if ! grep -qF -- "$want" "$file"; then
+      echo "❌ $label is missing the verdict rule: $want"; bad=1
+    elif ! grep -F -- "$want" "$file" | grep -qvE "$NEGATED"; then
+      echo "❌ $label only ever mentions \"$want\" to forbid it"
+      echo "   A rule stated as its own prohibition is not stated."
+      bad=1
+    fi
+  done
+
+  # A6. The negative halves of "never merges" and "never edits". A promise on its
+  # own passes on a file that instructs the act three paragraphs later — and a
+  # posted VERDICT: merge from the account that authored the change is the
+  # fabricated approval merge-gates.md forbids.
+  #
+  # Exempted where the line negates: a skill quoting merge-gates.md's own
+  # "--admin bypass is forbidden" was rejected by the first version of this
+  # check, whose only remedy was to delete the prohibition from the skill. A
+  # guardrail that fires on the legitimate case is one that gets switched off.
+  for never in "$NEVER_INSTRUCT" "$NEVER_EDITS"; do
+    if grep -hE "$never" "$file" | grep -qvE "$NEGATED"; then
+      echo "❌ $label instructs an act it forbids itself — it reviews, it does not merge or edit:"
+      grep -hE "$never" "$file" | grep -vE "$NEGATED" | sed 's/^/     /'
+      bad=1
+    fi
+  done
+
+  return "$bad"
+}
+
+# A7. The stored-answers protocol, unconditionally.
+#
+# ci.yml already checks that a skill reading riprap-skills.md has a section in it
+# — but it opens with `grep -q 'riprap-skills\.md' || continue`, so a skill that
+# DROPS the protocol is skipped by the check meant to catch it. It fails open.
+# The section check below therefore overlaps ci.yml deliberately; the
+# unconditional half is what is new, and it is the half that matters.
+check_stored_answers() {
+  local label=$1 file=$2 section=$3 answers=${4:-$ANSWERS} bad=0 n
+  local dropped=0
+
+  grep -qF 'riprap-skills.md' "$file" || {
+    echo "❌ $label no longer reads $answers; the stored-answers protocol was dropped"
+    echo "   Nothing else looks: ci.yml skips any skill that does not mention the file."
+    bad=1; dropped=1; }
+
+  [ -f "$answers" ] || { echo "❌ $answers is missing"; return 1; }
+
+  grep -q "^## $section\$" "$answers" || {
+    echo "❌ $answers has no '## $section' section"; return 1; }
+
+  # awk, not `sed -n '/^## x$/,/^## /p'`: the sed range restarts on a second
+  # copy of the header, so a merge conflict resolved by keeping both sides counts
+  # two answers twice and reports four.
+  n=$(awk -v s="## $section" '
+    $0 == s && !seen { f = 1; seen = 1; next }
+    f && /^## / { f = 0 }
+    f && /^- / { c++ }
+    END { print c + 0 }' "$answers") || { echo "❌ $answers: awk failed"; return 1; }
+  [ "$n" -ge 4 ] || {
+    echo "❌ $answers '$section' records $n answers; the skill asks four"
+    echo "   A fact left out of the list is dropped by the next rewrite with nothing saying so."
+    bad=1; }
+
+  [ "$dropped" -eq 0 ] || bad=1
+  return "$bad"
+}
+
+# ---------------------------------------------------------------------------
+# --self-test: every assertion, against a fixture built to break it — and
+# checked for firing on its OWN reason.
+#
+# The first version asserted only a non-zero exit. Mutation testing found that
+# A4 and A5 could each be deleted in full with the self-test still green, because
+# one over-determined fixture tripped every sub-assertion at once and any of them
+# satisfied the exit status. Every `fires` case now names the message it expects.
+# ---------------------------------------------------------------------------
+
+# A minimal reviewer that passes the contract. Every A4/A5/A6 fixture is this,
+# broken in exactly one place, so a failure can only be attributed one way.
+good_reviewer() {
+  cat <<'EOF'
+# Reviewer
+
+Classify per interaction-preferences.md; code-review.md says why a diff is
+reviewed at all. Gated paths are in merge-gates.md, and git.md covers what the
+diff even is. Simplicity defers to design-principles.md, and the dependency
+creep angle to tech-footprint.md.
+
+Five at minimum, and dependency creep is always among them.
+
+VERDICT: merge | merge after the blockers below | do not merge
+
+Blockers — BLOCKER and MAJOR, both fixed before this merges.
+On a gated path the verdict also carries HOLD: human review required;
+hold only a change you would otherwise merge.
+A BLOCKER surviving a second pass means open as a draft instead.
+
+Post one review with event: COMMENT, carrying a Recommended fix on every
+finding. If anchoring fails, fall back to a summary-only comment.
+
+Stored answers live in riprap-skills.md.
+EOF
+}
+
+self_test() {
+  local st=0
+  # Not local: the EXIT trap fires after this function has returned, and a local
+  # is out of scope by then — which under `set -u` aborts the script with
+  # "tmp: unbound variable" after every assertion has already passed.
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+
+  # Fires when the assertion rejects its fixture AND says why. Checking the
+  # message is what distinguishes "this assertion worked" from "some other
+  # assertion in the same function worked" and from "the function crashed".
+  fires() {
+    local name=$1 expect=$2; shift 2
+    local out
+    if out=$("$@" 2>&1); then
+      echo "❌ self-test: $name did NOT fire on a fixture built to break it"
+      st=1; return
+    fi
+    case "$out" in
+      *"$expect"*) echo "   ✓ $name" ;;
+      *) echo "❌ self-test: $name failed, but not for its own reason"
+         echo "     expected to see: $expect"
+         echo "$out" | sed 's/^/     /'
+         st=1 ;;
+    esac
+  }
+  passes() {
+    local name=$1; shift
+    if "$@" >/dev/null 2>&1; then
+      echo "   ✓ $name — clean fixture passes"
+    else
+      echo "❌ self-test: $name fired on a CLEAN fixture"
+      "$@" 2>&1 | sed 's/^/     /' || true
+      st=1
+    fi
+  }
+
+  # --- A1 -------------------------------------------------------------------
+  echo 'Follow merge-getes.md before merging.' >"$tmp/a1-dangling.md"
+  fires "A1 dangling doc mention" "which is not in" \
+    check_doc_mentions_resolve fx "$tmp/a1-dangling.md"
+
+  cat >"$tmp/a1-ok.md" <<'EOF'
+Classify per interaction-preferences.md, hold per merge-gates.md.
+The public list is docs/rules.md; answers live in riprap-skills.md, and
+CLAUDE.md points at it. Notes go in .github/releases/v0.5.0.md, or in
+.github/releases/<tag>.md where <tag> is the version being cut.
+EOF
+  passes "A1 paths and non-docs" check_doc_mentions_resolve fx "$tmp/a1-ok.md"
+  passes "A1b allowlist is honest" check_allowlist_is_honest
+
+  # --- A2 -------------------------------------------------------------------
+  # The paraphrase. No pipe anywhere, so a table blacklist sees nothing; this is
+  # a complete second definition, and its MAJOR line inverts code-review.md's
+  # "never Ignored".
+  cat >"$tmp/a2-caps.md" <<'EOF'
+Classify every finding:
+
+- BLOCKER — the change is wrong or unsafe as written.
+- MAJOR — a real problem; fix it, or note it and move on.
+- MINOR — worth doing, not worth blocking.
+- NON-ISSUE — considered and dismissed.
+EOF
+  fires "A2 unpointed vocabulary" "with no pointer" \
+    check_class_vocabulary fx "$tmp/a2-caps.md"
+
+  # The same table in sentence case walked past the first version entirely.
+  cat >"$tmp/a2-lower.md" <<'EOF'
+Classify each finding:
+
+- Blocker: stop.
+- Major: fix it, or note it as a follow-up and merge anyway.
+- Minor: style.
+- Non-issue: fine.
+EOF
+  fires "A2 lower-case class table" "any case, with no pointer" \
+    check_class_vocabulary fx "$tmp/a2-lower.md"
+
+  cat >"$tmp/a2-wrapped.md" <<'EOF'
+Findings come back classified BLOCKER, MAJOR, MINOR and NON-ISSUE, using the
+table in interaction-preferences.md rather than a second scheme.
+EOF
+  passes "A2 hard-wrapped citation" check_class_vocabulary fx "$tmp/a2-wrapped.md"
+
+  printf 'The MAJORITY of reviews are clean.\n' >"$tmp/a2-majority.md"
+  passes "A2 MAJORITY is not a class" check_class_vocabulary fx "$tmp/a2-majority.md"
+
+  # A table cited once, from beneath. No caption can sit within two physical
+  # lines of both the first and the last row of a three-row table.
+  cat >"$tmp/a2-table.md" <<'EOF'
+| What is outstanding | Verdict |
+|---|---|
+| a BLOCKER | do not merge |
+| a MAJOR, and no BLOCKER | merge after the blockers below |
+| nothing above MINOR | merge |
+
+The classes are interaction-preferences.md's.
+EOF
+  passes "A2 table cited from beneath" check_class_vocabulary fx "$tmp/a2-table.md"
+
+  # And the table must not become a hole: uncited, it is still a fork.
+  cat >"$tmp/a2-table-bad.md" <<'EOF'
+| Class | What to do |
+|---|---|
+| a BLOCKER | stop |
+| a MAJOR | note it as a follow-up |
+| a MINOR | ignore |
+EOF
+  fires "A2 uncited table" "with no pointer" \
+    check_class_vocabulary fx "$tmp/a2-table-bad.md"
+
+  # --- A3 -------------------------------------------------------------------
+  # An interaction-preferences.md row, deliberately. code-review.md's rows are no
+  # longer forbidden — they moved into the reviewer skill, which owns them now —
+  # so a fixture built from one would assert the opposite of the current rule and
+  # pass for the wrong reason. A9 covers that direction.
+  printf '%s\n' "Classify it:" "| Class | Meaning | Effect on the plan |" >"$tmp/a3-pasted.md"
+  fires "A3 pasted table header" "pastes a table" \
+    check_no_pasted_tables fx "$tmp/a3-pasted.md"
+
+  printf 'Classify per interaction-preferences.md rather than restating it.\n' >"$tmp/a3-ok.md"
+  passes "A3 citation only" check_no_pasted_tables fx "$tmp/a3-ok.md"
+
+  # --- A8 -------------------------------------------------------------------
+  printf 'Review it. Use your judgement.\n' >"$tmp/a8-none.md"
+  fires "A8 defers to nothing" "never names code-review.md" \
+    check_defers_to fx "$tmp/a8-none.md"
+  good_reviewer >"$tmp/good.md"
+  passes "A8 names every owning document" check_defers_to fx "$tmp/good.md"
+
+  good_reviewer | sed 's/ and the dependency$//;s/^creep angle to tech-footprint.md.$//' >"$tmp/a8-notech.md"
+  fires "A8 dependency angle with no owning document" "never names tech-footprint.md" \
+    check_defers_to fx "$tmp/a8-notech.md"
+
+  # --- A9 -------------------------------------------------------------------
+  # The real tree, both directions at once: every moved row is in the skill and
+  # in neither guardrail document. Running this against the repo rather than a
+  # fixture is the point — A9 exists to catch a half-finished move, and only the
+  # real files can be half-finished.
+  passes "A9 moved rows left the document and arrived in the skill" \
+    check_moved_out plugin/skills/reviewer/SKILL.md
+
+  # A skill that never received them: the move was announced and not made.
+  printf 'Review it, then post a comment.\n' >"$tmp/a9-missing.md"
+  fires "A9 owning skill never received the moved rows" "It owns this now" \
+    check_moved_out "$tmp/a9-missing.md"
+
+  # --- A4/A5/A6, one fixture per sub-assertion ------------------------------
+  passes "A4-A6 canonical reviewer" check_reviewer_contract fx "$tmp/good.md"
+
+  good_reviewer | sed 's/^VERDICT:/    VERDICT:/' >"$tmp/a4-indented.md"
+  fires "A4 verdict indented out of column 0" "expected exactly 1" \
+    check_reviewer_contract fx "$tmp/a4-indented.md"
+
+  # The verdict present only inside a "never write this" fence, with the real
+  # instruction a different menu at column 0. The first version counted 1 and
+  # passed this.
+  { good_reviewer | sed 's/^VERDICT: merge.*/```\nVERDICT: merge | merge after the blockers below | do not merge\n```\nVERDICT: approve | probably fine | unsure/'; } >"$tmp/a4-fenced.md"
+  fires "A4 canonical menu only inside a fence" "not the canonical menu" \
+    check_reviewer_contract fx "$tmp/a4-fenced.md"
+
+  good_reviewer | sed 's/BLOCKER and MAJOR/BLOCKER/' >"$tmp/a5-major.md"
+  fires "A5 MAJOR demoted off the blocking side" "missing the verdict rule: BLOCKER and MAJOR" \
+    check_reviewer_contract fx "$tmp/a5-major.md"
+
+  good_reviewer | sed 's/^hold only a change.*/hold only a change you would otherwise merge./;s/^On a gated path.*/Never write HOLD: human review required./' >"$tmp/a5-neg.md"
+  fires "A5 HOLD stated only as a prohibition" "only ever mentions" \
+    check_reviewer_contract fx "$tmp/a5-neg.md"
+
+  good_reviewer | sed 's/hold only a change you would otherwise merge/hold whatever you like/' >"$tmp/a5-uncond.md"
+  fires "A5 unconditional hold" "hold only a change you would otherwise merge" \
+    check_reviewer_contract fx "$tmp/a5-uncond.md"
+
+  good_reviewer | sed 's/open as a draft/open it/' >"$tmp/a5-draft.md"
+  fires "A5 draft outcome dropped" "missing the verdict rule: open as a draft" \
+    check_reviewer_contract fx "$tmp/a5-draft.md"
+
+  # The delivery half. One fixture per rule, each the clean reviewer broken in
+  # exactly one place, so a failure can only be attributed one way.
+  good_reviewer | sed 's/event: COMMENT/event: APPROVE/' >"$tmp/a5-event.md"
+  fires "A5 review event is not COMMENT" "missing the verdict rule: event: COMMENT" \
+    check_reviewer_contract fx "$tmp/a5-event.md"
+
+  good_reviewer | sed 's/Recommended fix/note/' >"$tmp/a5-fix.md"
+  fires "A5 recommended-fix column dropped" "missing the verdict rule: Recommended fix" \
+    check_reviewer_contract fx "$tmp/a5-fix.md"
+
+  good_reviewer | sed 's/summary-only comment/second attempt/' >"$tmp/a5-fallback.md"
+  fires "A5 anchoring fallback dropped" "missing the verdict rule: summary-only" \
+    check_reviewer_contract fx "$tmp/a5-fallback.md"
+
+  good_reviewer | sed 's/^Five at minimum.*/One reviewer is enough for a small diff./' >"$tmp/a5-floor.md"
+  fires "A5 roster floor dropped" "missing the verdict rule: Five at minimum" \
+    check_reviewer_contract fx "$tmp/a5-floor.md"
+
+  good_reviewer | sed 's/dependency creep is always among them/correctness is always among them/' >"$tmp/a5-dep.md"
+  fires "A5 dependency creep angle dropped" "missing the verdict rule: dependency creep" \
+    check_reviewer_contract fx "$tmp/a5-dep.md"
+
+  # The REST route to an approval. `gh pr review --approve` was already caught;
+  # the same act expressed as a JSON field matched none of the old alternation.
+  { good_reviewer; echo 'Then post it again with event=APPROVE to sign off.'; } >"$tmp/a6-event.md"
+  fires "A6 approval via the reviews endpoint" "it does not merge or edit" \
+    check_reviewer_contract fx "$tmp/a6-event.md"
+
+  { good_reviewer; echo 'Use -f event=REQUEST_CHANGES when blockers remain.'; } >"$tmp/a6-reqchg.md"
+  fires "A6 request-changes via the reviews endpoint" "it does not merge or edit" \
+    check_reviewer_contract fx "$tmp/a6-reqchg.md"
+
+  { good_reviewer; echo 'Then run gh pr merge --squash.'; } >"$tmp/a6-merge.md"
+  fires "A6 skill instructs a merge" "it does not merge or edit" \
+    check_reviewer_contract fx "$tmp/a6-merge.md"
+
+  # The merge surface an agent actually has. `gh api` matched none of the first
+  # version's three strings.
+  { good_reviewer; echo 'Then gh api -X PUT "repos/$O/$R/pulls/$N/merge" -f merge_method=squash.'; } >"$tmp/a6-api.md"
+  fires "A6 merge via gh api" "it does not merge or edit" \
+    check_reviewer_contract fx "$tmp/a6-api.md"
+
+  { good_reviewer; echo 'Leave a comment reading LGTM.'; } >"$tmp/a6-lgtm.md"
+  fires "A6 approval language" "it does not merge or edit" \
+    check_reviewer_contract fx "$tmp/a6-lgtm.md"
+
+  { good_reviewer; echo 'Commit the fix yourself with git commit.'; } >"$tmp/a6-edit.md"
+  fires "A6 skill edits the branch" "it does not merge or edit" \
+    check_reviewer_contract fx "$tmp/a6-edit.md"
+
+  # And the case the first version got wrong in the other direction: a skill
+  # that writes its own prohibition down was rejected, and the only way to
+  # satisfy the check was to delete the prohibition.
+  { good_reviewer; echo 'Never run gh pr merge, and never bypass with --admin.'; } >"$tmp/a6-forbids.md"
+  passes "A6 skill forbidding the act" check_reviewer_contract fx "$tmp/a6-forbids.md"
+
+  # --- A7 -------------------------------------------------------------------
+  # The answers file is a parameter so this does not depend on repo state it
+  # does not control. It used to read the real one, so A7's headline grep could
+  # be deleted with the self-test still green.
+  cat >"$tmp/answers-ok.md" <<'EOF'
+## riprap:reviewer
+
+- Base branch: `main`
+- Forge: `gh`
+- Where a review lands: a pull request comment
+- Extra blast-radius paths: none
+EOF
+  printf 'Read the stored answers in riprap-skills.md first.\n' >"$tmp/a7-ok.md"
+  passes "A7 protocol present" \
+    check_stored_answers fx "$tmp/a7-ok.md" riprap:reviewer "$tmp/answers-ok.md"
+
+  printf 'Work the answers out fresh each run.\n' >"$tmp/a7-dropped.md"
+  fires "A7 stored-answers protocol dropped" "the stored-answers protocol was dropped" \
+    check_stored_answers fx "$tmp/a7-dropped.md" riprap:reviewer "$tmp/answers-ok.md"
+
+  # Two copies of the header, four bullets between them — the shape a merge
+  # conflict resolved by keeping both sides produces. A sed range counts four.
+  cat >"$tmp/answers-dup.md" <<'EOF'
+## riprap:reviewer
+
+- Base branch: `main`
+- Forge: `gh`
+
+## other
+
+## riprap:reviewer
+
+- Where a review lands: a comment
+- Extra blast-radius paths: none
+EOF
+  fires "A7 duplicated section counted once" "records 2 answers" \
+    check_stored_answers fx "$tmp/a7-ok.md" riprap:reviewer "$tmp/answers-dup.md"
+
+  echo
+  if [ "$st" -eq 0 ]; then
+    echo "✅ self-test passed: every assertion fires on its own fixture, for its own reason"
+  fi
+  return "$st"
+}
+
+# ---------------------------------------------------------------------------
+
+if [ "${1:-}" = "--self-test" ]; then
+  self_test
+  exit $?
+fi
+
+fail=0
+count=0
+
+check_allowlist_is_honest || fail=1
+
+# Counted from the loop itself, not from a separate `find`. The two enumerate
+# different sets — find does not follow symlinks and the trailing-slash glob
+# does — so a guard counting one while the loop iterates the other cannot
+# establish what it claims to.
+for d in plugin/skills/*/; do
+  name=$(basename "$d")
+  f="$d/SKILL.md"
+  [ "$name" = "*" ] && break            # the glob matched nothing
+  [ -f "$f" ] || { echo "❌ $name has no SKILL.md"; fail=1; continue; }
+  [ -s "$f" ] || { echo "❌ $name/SKILL.md is empty"; fail=1; continue; }
+  [ -r "$f" ] || { echo "❌ $name/SKILL.md is not readable"; fail=1; continue; }
+  count=$((count + 1))
+
+  check_doc_mentions_resolve "$name" "$f" || fail=1
+  check_class_vocabulary     "$name" "$f" || fail=1
+  check_no_pasted_tables     "$name" "$f" || fail=1
+done
+
+[ "$count" -ge 1 ] || { echo "❌ plugin/skills/ contains no skills"; exit 1; }
+
+# A skill that must exist, checked before its contract, so a rename or a bad
+# merge reds this file instead of silently retiring every assertion below.
+for name in $REQUIRED_SKILLS; do
+  [ -f "plugin/skills/$name/SKILL.md" ] || {
+    echo "❌ plugin/skills/$name/SKILL.md is missing; its contract is unenforced"
+    fail=1; continue; }
+  check_defers_to         "$name" "plugin/skills/$name/SKILL.md" || fail=1
+  check_reviewer_contract "$name" "plugin/skills/$name/SKILL.md" || fail=1
+  check_stored_answers    "$name" "plugin/skills/$name/SKILL.md" "riprap:$name" || fail=1
+  check_moved_out         "plugin/skills/$name/SKILL.md" || fail=1
+done
+
+if [ "$fail" -eq 0 ]; then
+  # Deliberately narrow. The claim a reader takes away is the one printed here,
+  # not the header comment, so it says what actually ran.
+  echo "✅ $count skills: every .md they name resolves, the class vocabulary carries a"
+  echo "   pointer, no header row a guardrail still owns is pasted, and what moved into"
+  echo "   the reviewer is gone from the document it left. Prose that restates a rule in"
+  echo "   its own words is not detectable here — see the header."
+fi
+exit "$fail"

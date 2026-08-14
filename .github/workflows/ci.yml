@@ -389,6 +389,12 @@ jobs:
           [ "$fail" -eq 0 ] && echo "✅ hook registration matches the payload"
           exit "$fail"
 
+      # This step owns name/directory agreement, the bare-slash invocation and the
+      # settings-block ban. A skill's OTHER invariants — that a document it defers
+      # to exists, that it does not restate one — live in bin/check-skills, which
+      # bin/test runs. Two files, two different sets, deliberately: neither should
+      # grow into the other's half, and a new skill invariant belongs in whichever
+      # already owns its neighbours.
       - name: Skills are namespaced and self-describing
         run: |
           fail=0

@@ -61,6 +61,7 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:learn` | Recording what a session taught. **Read the note in the answers file first** — this skill's central rule inverts here. |
 | `/riprap:spec` | Defining a feature. It writes into `tmp/`; nothing it generates may land under `plugin/`, and `docs/` is the public site, not a scratch area. |
 | `/riprap:council` | Planning something hard, with research and adversarial critique. Stateless. |
+| `/riprap:reviewer` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
 
 **riprap's answers to its own skills live in [.claude/instructions/riprap-skills.md](.claude/instructions/riprap-skills.md).**
 Two of the skills read that file before asking anything, so it is what stops them

@@ -172,7 +172,9 @@ kind of bug only a round trip finds.
 ```bash
 bin/release 0.5.0 --start   # drafts the notes, branches, bumps, pushes, opens the PR
 $EDITOR .github/releases/v0.5.0.md   # the draft is a scaffold; the body is yours to write
+git commit -am "Write the v0.5.0 notes" && git push   # --start pushed the scaffold, not your prose
 # merge it, then:
+git checkout main && git pull
 bin/release 0.5.0 --finish  # tags the merged commit, pushes, watches the publish, verifies
 ```
 
@@ -204,11 +206,19 @@ refuses unless `HEAD` is contained in the default branch — so the split is enf
 than remembered.
 
 `bin/release` also refuses a version that does not move forwards, and reads the tag list
-from `origin` rather than the local cache. If `gh` is installed it reports the CI status of
-the commit before tagging and asks before tagging a red one. That check is **advisory on
-purpose** — a release should not become impossible when GitHub is unreachable — which puts
-the weight on you: **CI does not run on tags**, so the run on the merge commit is the only
-evidence a release ever gets.
+from `origin` — over git, or over `gh` — rather than the local cache. **If neither route
+answers it refuses outright**, in every mode: the local cache is the one source git will
+not correct without `--force`, and it feeds the two checks that cannot be taken back.
+
+**How hard the CI check bites depends on the mode, and the difference is the push.** The
+long form keeps the old leniency: it reports the status, asks before tagging a red one, and
+proceeds when it cannot tell — which is safe because it pushes nothing, so its tag stays
+local and deletable. `--finish` is about to publish, so it refuses without `gh` and `jq`,
+refuses on red, and refuses on a status it could not read at all, rather than asking a
+question no one may be there to answer.
+
+Either way the weight is still on you: **CI does not run on tags**, so the run on the merge
+commit is the only evidence a release ever gets.
 
 `.github/workflows/release.yml` re-checks the tagged tree's version against the tag and
 refuses to publish a disagreement. A v0.5.0 release built from a tree saying 0.4.0 installs

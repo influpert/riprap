@@ -178,13 +178,27 @@ verify_claude_hooks() {
   # is indistinguishable from a compaction that never came. This is the only
   # surface that can say so on demand.
   #
-  # A note, not a failure. riprap creates no ignore rules of its own, so a
-  # project is entitled to this state, and exiting 1 over it would make `verify`
-  # red for a condition riprap itself declines to fix. What is not acceptable is
-  # a guardrail that quietly stopped guarding — which is what this whole function
-  # exists to refuse.
+  # The library is SOURCED rather than the probe rewritten here. Two reasons, and
+  # the first is a bug this had:
+  #
+  #   - `bin/riprap` has already cd'd to the git toplevel, while the hook probes
+  #     ${CLAUDE_PROJECT_DIR}/tmp/handoff — and CLAUDE_PROJECT_DIR is the launch
+  #     directory, not the repository root. Anyone running `claude` from a
+  #     package subdirectory got "all clear" from a check whose entire purpose is
+  #     to refuse that reading.
+  #   - It would have been a third hardcoded copy of `tmp/handoff`. That constant
+  #     has already been renamed once, and ci.yml has a step existing only to bind
+  #     the one copy that genuinely cannot source this file.
+  #
+  # A note, not a failure. riprap creates no ignore rules of its own, so a project
+  # is entitled to this state, and exiting 1 over it would be red for something
+  # riprap declines to fix. Guarded on being in a work tree at all, because
+  # `git check-ignore` exits 128 outside one and 127 with no git — and `!` turns
+  # both of those into "not ignored", which is advice that fixes nothing.
   if [ -x "$HOOK_DIR/handoff-precompact.sh" ] &&
-     ! git check-ignore -q "tmp/handoff/probe.md" 2>/dev/null; then
+     [ -r "$HOOK_DIR/../lib/handoff-common.sh" ] &&
+     git rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+     ! ( . "$HOOK_DIR/../lib/handoff-common.sh" && handoff_dir_is_ignored ); then
     note "ℹ️  tmp/ is not git-ignored, so the pre-compaction handoff capture is disabled."
     note "   It will not write, and nothing will say so at the time it does not."
     note "   Fix: a tmp/.gitignore holding '*' on one line and '!.gitignore' on the next."

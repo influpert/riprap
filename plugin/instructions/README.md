@@ -1,6 +1,6 @@
 # riprap — engineering guardrails
 
-This is the baseline. It is loaded every session, so it stays a router: the rules live in
+This is the baseline. It is loaded on every fresh session, so it stays a router: the rules live in
 the files listed below, and this index is written so that reading it is usually enough.
 
 **Where a project doc and a riprap doc disagree, the project doc wins.** riprap carries

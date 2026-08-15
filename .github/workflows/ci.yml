@@ -584,35 +584,90 @@ jobs:
       - name: SessionStart sends the router once, and a pointer thereafter
         run: |
           fail=0
-          ctx() {  # $1 = source value, or empty for no stdin at all
+          # `a relative link below such as` appears once in the fresh preamble and
+          # nowhere in the router, so it is an exact discriminator. Asserting on
+          # it rather than on a byte count: the pointer embeds an absolute path
+          # twice and concatenates the handoff note, so a size bound is a proxy
+          # that a deeper workspace path or a present handoff can push past —
+          # reporting "the router is being resent" when it is not.
+          FRESH_MARKER="a relative link below such as"
+
+          ctx() {  # $1 = source value, or empty for empty stdin
             if [ -z "${1:-}" ]; then
               CLAUDE_PLUGIN_ROOT="$PWD/plugin" plugin/hooks/session-start </dev/null
             else
-              printf '{"source":"%s"}' "$1" \
+              printf '{"source":"%s","transcript_path":"%s"}' "$1" "${2:-}" \
                 | CLAUDE_PLUGIN_ROOT="$PWD/plugin" plugin/hooks/session-start
             fi | jq -r '.hookSpecificOutput.additionalContext'
           }
+          is_fresh() { case "$1" in *"$FRESH_MARKER"*) return 0 ;; *) return 1 ;; esac; }
 
-          # A fresh context gets the whole router. Three of the five entry points
-          # are fresh, and so is the no-stdin case — which is the one that must
-          # never regress, because every fallback path lands there.
+          # Fresh contexts get the router. Three of the five sources are fresh,
+          # and so is empty stdin — the branch every fallback lands on.
           for s in startup clear compact ""; do
-            n=$(ctx "$s" | wc -c)
-            [ "$n" -gt 4000 ] || { echo "❌ source='$s' emitted only $n bytes; the router is missing"; fail=1; }
+            is_fresh "$(ctx "$s")" || { echo "❌ source='$s' did not get the full router"; fail=1; }
           done
 
-          # A continued context gets a pointer instead. Bounded on BOTH sides:
-          # too long means the router is still being sent, and empty means the
-          # session was left with no guardrails at all — which is the failure
-          # this repository already shipped once, when `resume` matched no hook.
+          # A continued context gets the pointer ONLY when the earlier injection
+          # is actually present in the replayed transcript. Everything else — no
+          # transcript, unreadable, or a transcript from before the rules moved —
+          # must fall back, because the alternative is telling a model its
+          # guardrails are loaded when they are not.
+          echo "unrelated" > /tmp/tr-nomatch.jsonl
+          printf "riprap's guardrail documents live in %s/plugin/instructions/\n" "$PWD" > /tmp/tr-match.jsonl
           for s in resume fork; do
-            out=$(ctx "$s"); n=$(printf '%s' "$out" | wc -c)
-            [ "$n" -lt 1000 ] || { echo "❌ source='$s' still emitted $n bytes; the router is being resent"; fail=1; }
-            [ "$n" -gt 50 ]   || { echo "❌ source='$s' emitted almost nothing; a continued session must still be pointed at the rules"; fail=1; }
-            case "$out" in *README.md*) ;; *) echo "❌ source='$s' does not name the router"; fail=1 ;; esac
+            is_fresh "$(ctx "$s")"                        || { echo "❌ '$s' with no transcript must get the router"; fail=1; }
+            is_fresh "$(ctx "$s" /tmp/nonexistent.jsonl)" || { echo "❌ '$s' with an unreadable transcript must get the router"; fail=1; }
+            is_fresh "$(ctx "$s" /tmp/tr-nomatch.jsonl)"  || { echo "❌ '$s' with no prior injection must get the router"; fail=1; }
+
+            out=$(ctx "$s" /tmp/tr-match.jsonl)
+            is_fresh "$out" && { echo "❌ '$s' with a matching transcript still sent the router"; fail=1; }
+            [ "$(printf '%s' "$out" | wc -c | tr -d ' ')" -gt 50 ] \
+              || { echo "❌ '$s' emitted almost nothing; a continued session must still be pointed at the rules"; fail=1; }
+            case "$out" in *README.md*) ;; *) echo "❌ '$s' does not name the router"; fail=1 ;; esac
           done
 
-          [ "$fail" -eq 0 ] && echo "✅ router on a fresh context, pointer on a continued one"
+          # The handoff path has to survive on the pointer branch too — it is the
+          # branch where it matters most, since a resumed session has no memory of it.
+          mkdir -p tmp/handoff && printf '# h\n' > tmp/handoff/ci.md
+          case "$(ctx resume /tmp/tr-match.jsonl)" in
+            *tmp/handoff/ci.md*) ;;
+            *) echo "❌ the pointer branch dropped the handoff path"; fail=1 ;;
+          esac
+          rm -rf tmp/handoff
+
+          # The three ways this hook must fail SAFE. Each is asserted in a comment
+          # in the hook and, until this step, by nothing else. A hung SessionStart
+          # is worse than any duplicated text: the session gets no guardrails.
+          # Both of these test a HANG, so both need an external bound — without
+          # one a regression makes this step run until the runner is killed,
+          # which reads as infrastructure trouble rather than as this assertion.
+          # `timeout` is coreutils and present on the runner; it is absent on
+          # macOS, so a developer running this by hand is told it was SKIPPED
+          # rather than left to believe it passed.
+          if command -v timeout >/dev/null 2>&1; then
+            timeout 10 script -qec "CLAUDE_PLUGIN_ROOT=$PWD/plugin plugin/hooks/session-start" /dev/null >/dev/null 2>&1
+            [ $? -ne 124 ] || { echo "❌ blocked on a terminal; the [ -t 0 ] guard is gone"; fail=1; }
+
+            n=$(timeout 10 sh -c "exec 0<&-; exec env CLAUDE_PLUGIN_ROOT=$PWD/plugin plugin/hooks/session-start" 2>/dev/null | wc -c | tr -d ' ')
+            [ "$n" -gt 100 ] || { echo "❌ closed stdin produced $n bytes; the read is not bounded"; fail=1; }
+          else
+            echo "⏭️  no timeout(1): skipped the tty and closed-stdin hang checks"
+          fi
+
+          nojq=$(mktemp -d)
+          # Everything the hook needs BEFORE it reaches jq, or this tests a
+          # broken PATH rather than a missing jq — including bash and env, which
+          # the `#!/usr/bin/env bash` shebang resolves through.
+          for b in bash sh env cat grep sed ls git head tr wc dirname basename pwd; do
+            ln -s "$(command -v $b)" "$nojq/$b" 2>/dev/null || true
+          done
+          out=$(printf '{"source":"resume","transcript_path":"/tmp/tr-match.jsonl"}' \
+                | env PATH="$nojq" CLAUDE_PLUGIN_ROOT="$PWD/plugin" plugin/hooks/session-start)
+          case "$out" in *"$FRESH_MARKER"*) ;; *) echo "❌ without jq the hook must fall back to the full router"; fail=1 ;; esac
+          rm -rf "$nojq" /tmp/tr-match.jsonl /tmp/tr-nomatch.jsonl
+
+          [ "$fail" -eq 0 ] && echo "✅ router when fresh or unproven, pointer only on a confirmed context"
           exit "$fail"
 
   # Proves the thing riprap actually promises: that installing it works.

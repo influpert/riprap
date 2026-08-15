@@ -15,7 +15,7 @@ hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
 description: >-
   Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
-  documents loaded every session, nine skills, and hooks that block rather than advise.
+  documents loaded on every fresh session, nine skills, and hooks that block rather than advise.
 ---
 
 <div class="provenance" markdown="1">
@@ -178,7 +178,7 @@ what you believe is enforced. [How a rule is made to hold](guardrails.md).
 
 ## Behavioral rules
 
-Seven rules are injected into context at the start of every session — without a line being
+Seven rules are injected into context at the start of every fresh session — without a line being
 added to your `CLAUDE.md`:
 
 | Rule | What it does |

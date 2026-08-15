@@ -36,11 +36,18 @@ usage() {
   cat >&2 <<'USAGE'
 bin/release <x.y.z>          bump both version files and commit; run again on the
                              merged commit to tag it
+bin/release <x.y.z> --start  draft the notes, branch, bump, push, open the pull
+                             request — everything up to the merge
+bin/release <x.y.z> --finish tag the merged commit, push it, watch the publish,
+                             and verify — everything after
 bin/release --verify         report every v* tag on origin with no release behind it
 bin/release --verify <x.y.z> check one release: tag, release, versions, body
 
 Write .github/releases/v<x.y.z>.md first — the release workflow publishes that
-file as the body and refuses without it.
+file as the body and refuses without it. --start drafts it for you to edit.
+
+The two gates are unchanged either way: a human merges the pull request, and a
+human types the command that pushes the tag.
 USAGE
   exit 2
 }
@@ -98,9 +105,22 @@ is_greater() {
 # [0-9][0-9]* rather than [0-9]+: \+ is a GNU sed extension and this runs on BSD too.
 remote_versions() {
   local out
-  out="$(git ls-remote --refs --tags origin 2>/dev/null)" || return 1
+  if out="$(git ls-remote --refs --tags origin 2>/dev/null)"; then
+    printf '%s\n' "$out" |
+      sed -n 's|.*refs/tags/v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V
+    return 0
+  fi
+
+  # Then gh, which reaches the forge over HTTPS with its own credential. The two fail
+  # independently and for unrelated reasons: an SSH remote in an environment with no
+  # key fails every `git ls-remote` while gh answers fine, and a lapsed gh token fails
+  # every API call while ssh works. Observed, not theoretical — cutting 0.6.0 in an
+  # agent session hit exactly the first case, and the fallback of the day was the local
+  # tag cache, which is the one source that can be silently stale.
+  have_gh || return 1
+  out="$(gh api --paginate "repos/{owner}/{repo}/tags" --jq '.[].name' 2>/dev/null)" || return 1
   printf '%s\n' "$out" |
-    sed -n 's|.*refs/tags/v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V
+    sed -n 's|^v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V
 }
 
 # Ask origin first. refs/remotes/origin/HEAD is not set by `git remote add`, and not by
@@ -121,6 +141,56 @@ default_branch() {
 }
 
 have_gh() { command -v gh >/dev/null 2>&1; }
+
+# ── --start: draft the notes ─────────────────────────────────────────────────
+
+# A scaffold, never a finished body. It lists what merged since the previous tag and
+# leaves the prose to a person, because the one thing notes are for — telling a reader
+# whether to upgrade — is the one thing this cannot generate. What it removes is the
+# blank page and the trip to the pull request list, which is where the time actually
+# went.
+#
+# Left deliberately obvious that it is unfinished: the TODO line at the top is what a
+# reviewer sees if it ships unedited, and it is easier to notice than a plausible
+# machine-written paragraph would be.
+draft_notes() {
+  local out="$1" prev prev_date
+  mkdir -p "$NOTES_DIR"
+
+  prev="$(printf '%s\n' "$REMOTE_VERSIONS" | tail -1)"
+  prev_date=""
+  if [ -n "$prev" ] && have_gh; then
+    prev_date="$(gh api "repos/{owner}/{repo}/releases/tags/v$prev" --jq .published_at 2>/dev/null || true)"
+  fi
+
+  {
+    echo "TODO: rewrite this. Every line below is a pull request title, which is what the"
+    echo "author called the change — not what a reader needs to decide whether to upgrade."
+    echo
+    if [ -n "$prev" ]; then
+      echo "Merged since v$prev:"
+    else
+      echo "Merged:"
+    fi
+    echo
+    if have_gh && [ -n "$prev_date" ]; then
+      gh pr list --state merged --limit 100 --json number,title,mergedAt \
+        --jq --arg d "$prev_date" '.[] | select(.mergedAt > $d) | "- \(.title) (#\(.number))"' 2>/dev/null ||
+        echo "- (could not read the pull request list; fill this in by hand)"
+    elif [ -n "$prev" ]; then
+      # No gh, or no release object behind the previous tag. The commit log between the
+      # tags is the honest fallback: it names what the branch gained, which is the same
+      # question the pull request list answers less noisily.
+      git log --oneline "v$prev..HEAD" 2>/dev/null | sed 's/^[0-9a-f]* /- /' ||
+        echo "- (could not read the log; fill this in by hand)"
+    else
+      echo "- (no previous tag to diff against; fill this in by hand)"
+    fi
+  } >"$out"
+
+  echo "📝 drafted $out from what merged. Edit it before this merges —"
+  echo "   the workflow publishes it verbatim as the release body."
+}
 
 # Trailing whitespace and CRLF differ between what was committed and what the forge
 # stores and hands back. Comparing raw text reports a body mismatch for a release
@@ -361,10 +431,45 @@ if [ "$1" = "--verify" ]; then
   exit $?
 fi
 
-[ $# -eq 1 ] || usage
 case "$1" in -h | --help) usage ;; esac
 
 VERSION="$1"
+shift
+
+# --start and --finish do not change what a release is; they carry the acts nobody
+# was making a decision about. Everything they add is either mechanical (branch,
+# push, open the pull request, fetch, watch) or already mandatory (draft the notes,
+# verify afterwards). The two gates stay exactly where they were: a human merges the
+# pull request, and a human types the command that pushes the tag.
+MODE=plain
+if [ $# -gt 0 ]; then
+  case "$1" in
+    --start) MODE=start; shift ;;
+    --finish) MODE=finish; shift ;;
+    *) usage ;;
+  esac
+fi
+[ $# -eq 0 ] || usage
+
+# --finish needs gh, and refuses without it rather than pushing blind.
+#
+# Everything --finish adds over the plain path is a question for the forge: are the
+# checks green, did the publish workflow succeed, does the release exist. Without gh
+# it can answer none of them and would push anyway — which is strictly worse than the
+# plain path, because that one at least leaves the tag local and deletable. "Could not
+# check" is not "checked and fine", least of all on the act that cannot be undone.
+if [ "$MODE" = finish ] && ! have_gh; then
+  echo "❌ --finish needs the gh CLI, and it is not on PATH." >&2
+  echo "   It exists to check the things only the forge knows — that CI is green, that" >&2
+  echo "   the publish succeeded, that the release is really there. Without gh it would" >&2
+  echo "   push the tag having verified none of them." >&2
+  echo >&2
+  echo "   Install gh, or tag by hand and keep the steps visible:" >&2
+  echo "     bin/release $VERSION      # tags, pushes nothing" >&2
+  echo "     git push origin v$VERSION" >&2
+  exit 1
+fi
+
 TAG="v$VERSION"
 
 # Three components, digits only, and no leading v — the argument is the version,
@@ -372,7 +477,9 @@ TAG="v$VERSION"
 # and a guess about which one the notes file is called. The tag drives the
 # published version, so a typo here is a release nobody can install.
 if ! is_version "$VERSION"; then
-  echo "❌ not a version: $1 (expected x.y.z, no leading v, no leading zeros)" >&2
+  # "$VERSION", not "$1": the mode flag is shifted off above, so $1 is gone by here.
+  # Under `set -u` that is an abort with a bash diagnostic instead of this message.
+  echo "❌ not a version: $VERSION (expected x.y.z, no leading v, no leading zeros)" >&2
   exit 2
 fi
 
@@ -380,18 +487,30 @@ for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
   [ -f "$f" ] || { echo "❌ missing $f" >&2; exit 1; }
 done
 
-# Tags from origin, degrading visibly rather than silently. Falling back to the
-# local cache without saying so would let a tag someone else pushed an hour ago pass
-# the "already exists" check unnoticed, and the first sign of that is two releases
-# claiming one version.
-if REMOTE_VERSIONS="$(remote_versions)"; then
-  TAG_SOURCE="origin"
-else
-  echo "⚠️  could not read tags from origin — falling back to the local tag cache," >&2
-  echo "   which does not see a tag pushed since your last fetch." >&2
-  REMOTE_VERSIONS="$(git tag --list 'v*' | sed -n 's|^v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V)"
-  TAG_SOURCE="local cache"
+# Tags from origin — over git, or over gh, and if neither answers then not at all.
+#
+# This used to fall back to the local tag cache with a warning. That is the one
+# source git will not correct on its own: a plain `git fetch --tags` declines to move
+# an existing ref without --force, so a tag someone pushed an hour ago is invisible in
+# it, and both checks fed from here are checks that cannot be taken back — re-cutting
+# a published version, or moving one backwards. A warning is not a gate: it scrolls
+# past, and the release proceeds on the stale answer either way.
+#
+# So it refuses. An honest stop beats a confident wrong answer about the one number
+# that is spent forever once it ships.
+if ! REMOTE_VERSIONS="$(remote_versions)"; then
+  echo "❌ could not read the tag list from origin, over git or gh." >&2
+  echo "   Not falling back to the local tag cache: git will not move an existing tag" >&2
+  echo "   ref without --force, so a tag pushed since your last fetch is invisible in it," >&2
+  echo "   and this feeds the two checks that cannot be undone — re-cutting a published" >&2
+  echo "   version, and moving one backwards." >&2
+  echo >&2
+  echo "   Fix the remote or authenticate gh, then run this again:" >&2
+  echo "     git ls-remote --tags origin >/dev/null && echo ok" >&2
+  echo "     gh auth status" >&2
+  exit 1
 fi
+TAG_SOURCE="origin"
 
 if printf '%s\n' "$REMOTE_VERSIONS" | grep -qxF "$VERSION"; then
   echo "❌ $TAG already exists on $TAG_SOURCE. A published version does not get re-cut." >&2
@@ -426,9 +545,14 @@ fi
 # the tag is pushed and public, and the fix is a second tag or a deleted one.
 NOTES="$NOTES_DIR/$TAG.md"
 if [ ! -s "$NOTES" ]; then
-  echo "❌ no release notes at $NOTES" >&2
-  echo "   The release workflow publishes that file as the body and refuses without it." >&2
-  exit 1
+  if [ "$MODE" = start ]; then
+    draft_notes "$NOTES"
+  else
+    echo "❌ no release notes at $NOTES" >&2
+    echo "   The release workflow publishes that file as the body and refuses without it." >&2
+    echo "   \`bin/release $VERSION --start\` drafts one from what merged." >&2
+    exit 1
+  fi
 fi
 
 # Tracked changes only, which is the set that matters: the commit below stages the
@@ -467,6 +591,24 @@ if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
     fi
   done
 
+  # --start makes the branch rather than asking for one, but only from the default
+  # branch: anywhere else, the branch in hand is somebody's work in progress and the
+  # bump would ride along with whatever else is on it.
+  if [ "$MODE" = start ] && { [ "$BRANCH" = "$DEFAULT" ] || [ "$BRANCH" = "HEAD" ]; }; then
+    if [ "$BRANCH" = "HEAD" ] && ! git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT" 2>/dev/null; then
+      echo "❌ HEAD is detached at a commit that is not on origin/$DEFAULT." >&2
+      echo "   Check out $DEFAULT first; a release is cut from what shipped, not from a" >&2
+      echo "   commit nothing points at." >&2
+      exit 1
+    fi
+    git checkout -q -b "ship-$VERSION" || {
+      echo "❌ could not create branch ship-$VERSION — does it already exist?" >&2
+      echo "   git branch -D ship-$VERSION, or check it out and re-run." >&2
+      exit 1; }
+    BRANCH="ship-$VERSION"
+    echo "🌱 branched $BRANCH off $DEFAULT"
+  fi
+
   # Detached HEAD makes the guidance below unrunnable — BRANCH is the literal string
   # "HEAD", `git push -u origin HEAD` is rejected as not a full refname, and the next
   # printed line would orphan the commit just made. Refuse before writing anything.
@@ -474,6 +616,18 @@ if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
     echo "❌ HEAD is detached. Check out a branch first — the bump has to become a" >&2
     echo "   pull request, and a commit made here belongs to no branch to open one from." >&2
     exit 1
+  fi
+
+  # The notes go in their own commit, before the bump, so the pull request reads in the
+  # order the release happened and a reviewer can see the prose apart from the numbers.
+  if [ "$MODE" = start ] && ! git diff --quiet -- "$NOTES" 2>/dev/null ||
+     { [ "$MODE" = start ] && [ -n "$(git ls-files --others --exclude-standard -- "$NOTES")" ]; }; then
+    git add -- "$NOTES"
+    git commit -q -m "Write the $TAG release notes" \
+      -m "The release workflow publishes this file as the body and refuses a tag
+without one, so it lands before the bump rather than after the tag." ||
+      { echo "❌ could not commit $NOTES — see above." >&2; exit 1; }
+    echo "✅ committed $NOTES"
   fi
 
   set_version "$PLUGIN_JSON" "$VERSION"
@@ -496,7 +650,8 @@ refuses a tag whose tree claims a different version than the tag does."; then
   fi
   echo "✅ $plugin_was → $VERSION in both files, committed on $BRANCH"
 
-  cat <<NEXT
+  if [ "$MODE" != start ]; then
+    cat <<NEXT
 
 No tag yet, and that is deliberate: the tag has to end up on the commit that
 merged, not on this one. Get the bump merged, then run this again on the merged
@@ -507,7 +662,55 @@ commit and it will only tag.
   git checkout $DEFAULT && git pull
   bin/release $VERSION
 NEXT
+    exit 0
+  fi
+
+  # ── --start: push, and open the pull request ──
+  #
+  # Still no tag. What this removes is four keystrokes, not the gate: the pull request
+  # is exactly the one a person would have opened, and it is a person who merges it.
+  git push -q -u origin "$BRANCH" || {
+    echo "❌ could not push $BRANCH. The commits are made; push and open the PR by hand." >&2
+    exit 1; }
+  echo "⬆️  pushed $BRANCH"
+
+  if ! have_gh; then
+    echo "ℹ️  no gh, so the pull request is yours to open:"
+    echo "     https://github.com/<owner>/<repo>/compare/$DEFAULT...$BRANCH"
+  elif PR_URL="$(gh pr create --base "$DEFAULT" --head "$BRANCH" --title "Ship $VERSION" \
+      --body "Cuts \`$TAG\`. Two commits: the release notes, then the version bump.
+
+The body the workflow publishes is [\`$NOTES\`]($NOTES) — read it as the release, not as a diff.
+
+Not tagged yet, deliberately: the version files are CODEOWNERS-gated, so the bump merges as a pull request, and the tag belongs on the commit that merge produces. After this merges:
+
+\`\`\`
+bin/release $VERSION --finish
+\`\`\`
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)" 2>/dev/null)"; then
+    echo "🔗 $PR_URL"
+  else
+    echo "ℹ️  gh could not open the pull request (already open, or unauthenticated)."
+    echo "   Open it by hand against $DEFAULT from $BRANCH."
+  fi
+
+  cat <<NEXT
+
+Then, once it is merged and green:
+
+  bin/release $VERSION --finish
+NEXT
   exit 0
+fi
+
+# Both files already say $VERSION. --start has nothing left to do, and saying so
+# beats silently falling through into the tag path — which is the one act it is not
+# allowed to take.
+if [ "$MODE" = start ]; then
+  echo "❌ both version files already say $VERSION, so there is nothing to start." >&2
+  echo "   If the bump has merged, the next act is: bin/release $VERSION --finish" >&2
+  exit 1
 fi
 
 # ── Second run: both files already say $VERSION, so tag. ──
@@ -569,13 +772,60 @@ if [ "$CI_RC" -eq 1 ]; then
     printf 'Tag anyway? [y/N] ' >&2
     read -r reply || reply=n
     case "$reply" in [yY]*) ;; *) echo "Nothing tagged."; exit 1 ;; esac
+  elif [ "$MODE" = finish ]; then
+    # No terminal and no answer, so the prompt is not a gate — and --finish pushes,
+    # which is the act that cannot be taken back. Plain mode may carry on past this
+    # (its tag is local, and a local tag deletes cleanly); --finish may not.
+    echo "❌ checks are not green on $(git rev-parse --short HEAD), and there is no" >&2
+    echo "   terminal to confirm from. --finish pushes the tag, and a published tag is" >&2
+    echo "   never withdrawn — so this refuses rather than asking a question nobody can" >&2
+    echo "   answer. Fix the checks, or tag by hand with: bin/release $VERSION" >&2
+    exit 1
   else
     echo "⚠️  not a terminal, so nothing to confirm with — tagging anyway." >&2
+    echo "   Nothing is pushed, so this tag is still local and deletable." >&2
   fi
 fi
 
 git tag -a "$TAG" -m "$TAG" HEAD
 echo "✅ tagged $TAG at $(git rev-parse --short HEAD) on $BRANCH"
+
+if [ "$MODE" = finish ]; then
+  # The push is still a thing a person typed — they typed --finish, having read the
+  # checks above. What it removes is the gap between the push and the verify, which is
+  # where releases were being declared done on a workflow nobody watched.
+  echo
+  echo "⬆️  pushing $TAG — this publishes, and cannot be undone."
+  git push -q origin "$TAG" || {
+    echo "❌ could not push $TAG. It is tagged locally; push it yourself:" >&2
+    echo "     git push origin $TAG" >&2
+    exit 1; }
+  echo "✅ pushed $TAG"
+
+  # Watch the publish to a conclusion before verifying. A verify run straight after
+  # the push finds no release and reports it as never published — which is wrong, and
+  # is read as an instruction to publish again.
+  if have_gh; then
+    echo "⏳ waiting for the publish workflow…"
+    for _ in $(seq 1 60); do
+      sleep 5
+      state="$(gh api "repos/{owner}/{repo}/actions/runs?event=push&per_page=10" \
+        --jq --arg t "$TAG" '[.workflow_runs[] | select(.head_branch == $t)] | first | .status + ":" + (.conclusion // "")' 2>/dev/null || true)"
+      case "$state" in
+        completed:success) echo "✅ publish workflow succeeded"; break ;;
+        completed:*) echo "❌ publish workflow finished: ${state#completed:}" >&2
+                     echo "   Read the run before doing anything else. Publishing by hand" >&2
+                     echo "   leaves its next attempt colliding with your release object." >&2
+                     exit 1 ;;
+      esac
+    done
+  fi
+
+  echo
+  echo "── verify ──"
+  do_verify "$VERSION"
+  exit $?
+fi
 
 cat <<NEXT
 

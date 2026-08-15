@@ -170,7 +170,21 @@ kind of bug only a round trip finds.
 ## Cutting a release
 
 ```bash
-$EDITOR .github/releases/v0.5.0.md   # the published body; the workflow refuses without it
+bin/release 0.5.0 --start   # drafts the notes, branches, bumps, pushes, opens the PR
+$EDITOR .github/releases/v0.5.0.md   # the draft is a scaffold; the body is yours to write
+# merge it, then:
+bin/release 0.5.0 --finish  # tags the merged commit, pushes, watches the publish, verifies
+```
+
+**Two acts, and both gates are still human.** A person merges the pull request, and a
+person types `--finish` — which is the command that publishes, having read the checks it
+prints. What the two modes removed is the plumbing between: branching, committing,
+pushing, re-fetching, and remembering to verify afterwards.
+
+The long form still works and is what to reach for when something has gone sideways —
+it pushes nothing, so its tag stays local and deletable:
+
+```bash
 bin/release 0.5.0                    # both version files and a commit — no tag yet
 # merge that, then on the merged commit:
 bin/release 0.5.0                    # only tags

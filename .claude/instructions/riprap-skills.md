@@ -35,11 +35,15 @@ merged commit, only tags. A tag cut before the merge points at a commit the squa
 
 Two things it does **not** do, which matter to an agent reading this:
 
-- **It never pushes.** That is deliberate — pushing the tag is what publishes, and it
-  should be something a person types. Push it as a separate, stated act.
-- **Its red-CI prompt needs a terminal.** Without one it prints "tagging anyway" and
-  carries on, so in an agent session it is not a gate. Read the checks yourself before
-  tagging and say what you found.
+- **What pushes depends on the mode.** The long form never pushes: its tag stays local
+  and deletable. `--start` pushes a branch. `--finish` pushes the **tag**, which is what
+  publishes — so it is the publishing command, typed deliberately after reading the
+  checks it prints.
+- **Its red-CI prompt needs a terminal, and only the long form carries on without one.**
+  There it prints "tagging anyway" and continues, which is survivable because nothing is
+  pushed. `--finish` refuses instead — on a red status and on one it could not determine
+  — because it is about to publish. Read the checks yourself either way and say what you
+  found.
 
 ## riprap:branch-cleaner
 

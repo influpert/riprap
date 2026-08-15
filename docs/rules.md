@@ -2,7 +2,7 @@
 title: What riprap tells the model
 eyebrow: Behaviour
 lede: >-
-  The rules injected into every session, how they get there without touching your
+  The rules injected into every fresh session, how they get there without touching your
   CLAUDE.md, and what they cost you in context.
 description: >-
   riprap's seven behavioural rules and five critical rules, the SessionStart injection that
@@ -42,9 +42,10 @@ repository with its own `/learn` or `/reviewer` keeps it. There is nothing to me
 riprap is paid for on every turn, so it is careful about what it injects.
 
 It is not paid on every entry, either. A session that is **resumed or forked** continues a
-context that already holds the router, so those two get three lines naming where the rules are
-rather than the rules again — deliberately not silence, because if that premise about the
-harness were ever wrong, emitting nothing would leave the session with no guardrails at all.
+context that already holds the router, so those two get one line naming where the rules are
+rather than the rules again — but only after the hook has found the earlier injection in the
+replayed transcript. It is never silence, and it is never a guess: without that confirmation,
+or after a plugin update moves the rules, the full router goes out as before.
 
 What arrives at session start is a **router of roughly 150 lines** — the seven rules, a
 task-to-document map, and five rules restated in full. It is not the 19 guardrail documents

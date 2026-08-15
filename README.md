@@ -161,7 +161,7 @@ document shape.
 
 ## Behavioral rules
 
-Seven, injected into context at the start of every session — without a line being added to
+Seven, injected into context at the start of every fresh session — without a line being added to
 your `CLAUDE.md`:
 
 | Rule | What it does |

@@ -94,7 +94,7 @@ PAYLOAD=$(cd "$SCRIPT_DIR/../../../.." && pwd)
   chmod +x bin/hooks/git/pre-commit
   git config core.hooksPath bin/hooks/git
   printf 'x\n' >f.txt && git add -A && git commit -qm init
-) >/dev/null 2>&1
+) >/dev/null 2>&1 || { FAIL=$((FAIL + 1)); printf 'FAIL: could not build the verify fixture\n'; }
 
 run_verify() { ( cd "$VT" && ./bin/riprap verify 2>&1 ); }
 verify_rc()  { ( cd "$VT" && ./bin/riprap verify >/dev/null 2>&1; echo $? ); }
@@ -108,6 +108,16 @@ says() { case "$1" in *"not git-ignored"*) return 0 ;; *) return 1 ;; esac; }
 
 printf '*\n!.gitignore\n' >"$VT/tmp/.gitignore"
 rc_ignored=$(verify_rc)
+
+# The fixture has to be CLEAN, not merely consistent. The advisory assertion
+# below compares two exit codes, and if the baseline is already non-zero for some
+# unrelated reason then note-vs-fail cannot move it and the assertion cannot
+# fail. Mutation testing found exactly that once; this pins it.
+if [ "$rc_ignored" = "0" ]; then
+  PASS=$((PASS + 1)); printf 'PASS: the fixture verifies clean, so the advisory check below can fail\n'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL: fixture is not clean (verify exits %s with tmp/ ignored)\n' "$rc_ignored"
+fi
 if says "$(run_verify)"; then
   FAIL=$((FAIL + 1)); printf 'FAIL: reported an unignored tmp/ when it IS ignored\n'
 else
@@ -129,6 +139,31 @@ if [ "$rc_ignored" = "$rc_unignored" ]; then
   PASS=$((PASS + 1)); printf 'PASS: the report is advisory — it does not change the exit code\n'
 else
   FAIL=$((FAIL + 1)); printf 'FAIL: an unignored tmp/ moved the exit code %s -> %s\n' "$rc_ignored" "$rc_unignored"
+fi
+
+# The guard that stops this nagging in a project where the hook it reports on is
+# not installed. Untested until mutation testing removed it and nothing went red:
+# the fixture copies the whole claude/ directory, so the hook is always present.
+mv "$VT/bin/hooks/riprap/claude/handoff-precompact.sh" "$VT/hpc.bak"
+if says "$(run_verify)"; then
+  FAIL=$((FAIL + 1)); printf 'FAIL: nagged about tmp/ with no pre-compaction hook installed\n'
+else
+  PASS=$((PASS + 1)); printf 'PASS: silent when the hook that needs tmp/ is not installed\n'
+fi
+mv "$VT/hpc.bak" "$VT/bin/hooks/riprap/claude/handoff-precompact.sh"
+
+# A project subdirectory, which is what CLAUDE_PROJECT_DIR actually is when
+# somebody runs `claude` from a package rather than the repository root. verify
+# cd's to the git toplevel, so probing a relative path there answered a different
+# question from the one the hook asks — and reported all-clear on a disabled
+# capture, which is the reading this check exists to refuse.
+mkdir -p "$VT/pkg/app"
+printf '/tmp/\n' >"$VT/.gitignore"          # root tmp/ ignored; pkg/app/tmp is not
+( cd "$VT" && git add -A && git commit -qm subdir ) >/dev/null 2>&1
+if says "$( cd "$VT" && CLAUDE_PROJECT_DIR="$VT/pkg/app" ./bin/riprap verify 2>&1 )"; then
+  PASS=$((PASS + 1)); printf 'PASS: reports a subdirectory project whose tmp/ is unignored\n'
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL: silent for a subdirectory project — verify and the hook disagree on the path\n'
 fi
 rm -rf "$VT"
 

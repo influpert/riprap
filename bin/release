@@ -8,8 +8,11 @@
 # place that discrepancy is visible. Doing it by hand means three edits in three
 # formats, and the one that gets missed is silent until someone installs it.
 #
-#   bin/release 0.5.0          bump both files and commit — no tag yet
-#   bin/release 0.5.0          again, on the merged commit: tag it
+#   bin/release 0.5.0 --start  draft the notes, branch, bump, push, open the PR
+#   bin/release 0.5.0 --finish once it has merged: tag, push, watch, verify
+#
+#   bin/release 0.5.0          the long form: bump both files and commit — no tag
+#   bin/release 0.5.0          again, on the merged commit: tag it, push nothing
 #   bin/release --verify       every v* tag on origin has a release behind it
 #   bin/release --verify 0.5.0 that one release is published, and correct
 #
@@ -19,8 +22,13 @@
 # at all — there is nothing to delete — and the second refuses unless HEAD is
 # contained in the default branch.
 #
-# It never pushes. A tag push publishes a release that cannot be un-published, and
-# that should be a thing you type, not a thing a script did on your behalf.
+# What pushes, and what does not. The long form never pushes at all: its tag stays
+# local and deletable. --start pushes a branch, which is reversible. --finish pushes
+# the TAG, and that publishes a release that cannot be un-published — so --finish is
+# the publishing command, and it is meant to be typed deliberately, having read the
+# checks it prints first. It refuses without gh, and refuses on a red or unknown CI
+# status it cannot ask a human about, because those are the questions it exists to
+# answer and it may not act on "could not tell".
 #
 # Exit 0 = fine, 1 = refused or findings, 2 = usage error.
 set -euo pipefail
@@ -31,6 +39,12 @@ cd "$ROOT"
 PLUGIN_JSON="plugin/.claude-plugin/plugin.json"
 MARKET_JSON=".claude-plugin/marketplace.json"
 NOTES_DIR=".github/releases"
+
+# Written into a drafted notes file, and refused on the tag path while it is still
+# there. Deleting one line is the smallest act that proves a person opened the file —
+# and the workflow publishes that file verbatim, so without this the whole pipeline
+# could report green on a release body reading "TODO: rewrite this".
+DRAFT_SENTINEL="<!-- riprap: generated draft. Delete this line once the body is written. -->"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -118,7 +132,9 @@ remote_versions() {
   # agent session hit exactly the first case, and the fallback of the day was the local
   # tag cache, which is the one source that can be silently stale.
   have_gh || return 1
-  out="$(gh api --paginate "repos/{owner}/{repo}/tags" --jq '.[].name' 2>/dev/null)" || return 1
+  local slug; slug="$(repo_slug)"
+  [ -n "$slug" ] || return 1
+  out="$(gh api --paginate "repos/$slug/tags" --jq '.[].name' 2>/dev/null)" || return 1
   printf '%s\n' "$out" |
     sed -n 's|^v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$|\1|p' | sort -V
 }
@@ -142,6 +158,21 @@ default_branch() {
 
 have_gh() { command -v gh >/dev/null 2>&1; }
 
+# The owner/repo gh should ask about, resolved from ORIGIN specifically.
+#
+# `gh api repos/{owner}/{repo}` does NOT mean origin: gh ranks an `upstream` remote
+# above it, and $GH_REPO overrides both. On a fork that silently asks a different
+# repository — and the answers feed the two checks that cannot be undone, so a tag
+# list from the wrong repo can wave through re-cutting a published version.
+repo_slug() {
+  local url
+  url="$(git remote get-url origin 2>/dev/null)" || return 1
+  # Strip .git BEFORE matching. Doing it as a second sed expression printed the slug
+  # twice, once with the suffix and once without, and head -1 then took the wrong one.
+  url="${url%.git}"
+  printf '%s' "$url" | sed -n 's|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|p'
+}
+
 # ── --start: draft the notes ─────────────────────────────────────────────────
 
 # A scaffold, never a finished body. It lists what merged since the previous tag and
@@ -164,6 +195,7 @@ draft_notes() {
   fi
 
   {
+    echo "$DRAFT_SENTINEL"
     echo "TODO: rewrite this. Every line below is a pull request title, which is what the"
     echo "author called the change — not what a reader needs to decide whether to upgrade."
     echo
@@ -174,9 +206,14 @@ draft_notes() {
     fi
     echo
     if have_gh && [ -n "$prev_date" ]; then
-      gh pr list --state merged --limit 100 --json number,title,mergedAt \
-        --jq --arg d "$prev_date" '.[] | select(.mergedAt > $d) | "- \(.title) (#\(.number))"' 2>/dev/null ||
-        echo "- (could not read the pull request list; fill this in by hand)"
+      # `gh --jq` takes ONE filter and no --arg; passing one makes gh reject the
+      # whole command ("unknown arguments"), which 2>/dev/null then hides. Verified:
+      # the first draft of this shipped that mistake and every notes file it wrote
+      # was the apology below. Raw JSON into real jq instead, which does take --arg.
+      gh pr list --state merged --limit 100 --json number,title,mergedAt 2>/dev/null |
+        jq -r --arg d "$prev_date" '.[] | select(.mergedAt > $d) | "- \(.title) (#\(.number))"' 2>/dev/null ||
+        git log --oneline "v$prev..HEAD" 2>/dev/null | sed 's/^[0-9a-f]* /- /' ||
+        echo "- (could not read what merged; fill this in by hand)"
     elif [ -n "$prev" ]; then
       # No gh, or no release object behind the previous tag. The commit log between the
       # tags is the honest fallback: it names what the branch gained, which is the same
@@ -541,20 +578,6 @@ if [ -n "$HIGHEST" ] && ! is_greater "$VERSION" "$HIGHEST"; then
   exit 1
 fi
 
-# Refused here rather than in CI. The workflow makes the same check, but by then
-# the tag is pushed and public, and the fix is a second tag or a deleted one.
-NOTES="$NOTES_DIR/$TAG.md"
-if [ ! -s "$NOTES" ]; then
-  if [ "$MODE" = start ]; then
-    draft_notes "$NOTES"
-  else
-    echo "❌ no release notes at $NOTES" >&2
-    echo "   The release workflow publishes that file as the body and refuses without it." >&2
-    echo "   \`bin/release $VERSION --start\` drafts one from what merged." >&2
-    exit 1
-  fi
-fi
-
 # Tracked changes only, which is the set that matters: the commit below stages the
 # two version files by path, so an untracked file cannot be swept into it. What a
 # dirty tree does threaten is the thing being tagged — an uncommitted edit is not
@@ -565,10 +588,52 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
+# Refused here rather than in CI. The workflow makes the same check, but by then
+# the tag is pushed and public, and the fix is a second tag or a deleted one.
+NOTES="$NOTES_DIR/$TAG.md"
+# Still the generated scaffold. Checked on every path that leads to a tag, because
+# --start writes this file and pushes it, and nothing downstream reads it for meaning:
+# the workflow only tests that it is non-empty, and verify_one only checks that the
+# published body matches it — both pass on an unedited draft.
+if [ -s "$NOTES" ] && grep -qF -- "$DRAFT_SENTINEL" "$NOTES"; then
+  echo "❌ $NOTES is still the generated draft." >&2
+  echo "   The release workflow publishes it verbatim, so this would ship a TODO as the" >&2
+  echo "   release body. Write it, delete the marker line, and commit." >&2
+  exit 1
+fi
+
+NEED_DRAFT=0
+if [ ! -s "$NOTES" ]; then
+  if [ "$MODE" = start ]; then
+    # Deferred until the branch exists. Drafting here wrote the file before the
+    # branch-point and WIP-branch refusals below, so a run that correctly refused
+    # still left a scaffold behind — and the sentinel check above then refused the
+    # NEXT run too, from the right branch, for a file the last refusal created.
+    NEED_DRAFT=1
+  else
+    echo "❌ no release notes at $NOTES" >&2
+    echo "   The release workflow publishes that file as the body and refuses without it." >&2
+    echo "   \`bin/release $VERSION --start\` drafts one from what merged." >&2
+    exit 1
+  fi
+fi
+
+
 plugin_was="$(version_in "$PLUGIN_JSON")"
 market_was="$(version_in "$MARKET_JSON")"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 DEFAULT="$(default_branch)"
+
+# --finish is the second act, and it has nothing to do until the first one merged.
+# Without this it fell into the bump path like plain mode, committed the bump, printed
+# "git push -u origin main", and exited 0 — pushing a CODEOWNERS-gated change straight
+# at the default branch, which is the whole thing the two-run split exists to stop.
+if [ "$MODE" = finish ] && { [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; }; then
+  echo "❌ $PLUGIN_JSON says $plugin_was, so the bump has not merged yet." >&2
+  echo "   There is nothing to finish. Open the pull request first:" >&2
+  echo "     bin/release $VERSION --start" >&2
+  exit 1
+fi
 
 if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
   # ── First run: bump and commit. Deliberately no tag. ──
@@ -591,22 +656,44 @@ if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
     fi
   done
 
-  # --start makes the branch rather than asking for one, but only from the default
-  # branch: anywhere else, the branch in hand is somebody's work in progress and the
-  # bump would ride along with whatever else is on it.
-  if [ "$MODE" = start ] && { [ "$BRANCH" = "$DEFAULT" ] || [ "$BRANCH" = "HEAD" ]; }; then
-    if [ "$BRANCH" = "HEAD" ] && ! git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT" 2>/dev/null; then
-      echo "❌ HEAD is detached at a commit that is not on origin/$DEFAULT." >&2
-      echo "   Check out $DEFAULT first; a release is cut from what shipped, not from a" >&2
-      echo "   commit nothing points at." >&2
-      exit 1
+  # --start branches from the default branch and refuses anywhere else.
+  #
+  # The refusal is the point, and an earlier draft got it wrong: the condition only
+  # decided whether to CREATE a branch, so on a feature branch it fell through and
+  # committed the release onto somebody's work in progress, then pushed that branch and
+  # opened a pull request titled "Ship x.y.z" carrying it. Merging that ships the WIP.
+  #
+  # The branch POINT is checked too. Being on $DEFAULT is not the same as being at what
+  # $DEFAULT is on the remote: a local commit nobody has seen rides along exactly the
+  # same way, and the pull request body this writes asserts it carries two commits.
+  if [ "$MODE" = start ]; then
+    case "$BRANCH" in
+      "$DEFAULT" | HEAD | "ship-$VERSION") ;;
+      *)
+        echo "❌ --start cuts from $DEFAULT, and you are on $BRANCH." >&2
+        echo "   The bump would ride along with whatever else is on this branch, and the" >&2
+        echo "   pull request would carry it under the title \"Ship $VERSION\"." >&2
+        echo "   git checkout $DEFAULT && git pull, then run this again." >&2
+        exit 1 ;;
+    esac
+
+    if [ "$BRANCH" != "ship-$VERSION" ]; then
+      git fetch -q origin "$DEFAULT" 2>/dev/null || true
+      if ! git rev-parse -q --verify "refs/remotes/origin/$DEFAULT" >/dev/null ||
+         ! git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT" 2>/dev/null; then
+        echo "❌ HEAD is not on origin/$DEFAULT, so a release cut here would carry" >&2
+        echo "   commits nobody has reviewed. Get to what shipped first:" >&2
+        echo "     git checkout $DEFAULT && git pull" >&2
+        exit 1
+      fi
+      git checkout -q -b "ship-$VERSION" || {
+        echo "❌ could not create branch ship-$VERSION — does it already exist?" >&2
+        echo "   git branch -D ship-$VERSION, or check it out and re-run." >&2
+        exit 1; }
+      BRANCH="ship-$VERSION"
+      echo "🌱 branched $BRANCH off $DEFAULT"
     fi
-    git checkout -q -b "ship-$VERSION" || {
-      echo "❌ could not create branch ship-$VERSION — does it already exist?" >&2
-      echo "   git branch -D ship-$VERSION, or check it out and re-run." >&2
-      exit 1; }
-    BRANCH="ship-$VERSION"
-    echo "🌱 branched $BRANCH off $DEFAULT"
+    [ "$NEED_DRAFT" -eq 0 ] || draft_notes "$NOTES"
   fi
 
   # Detached HEAD makes the guidance below unrunnable — BRANCH is the literal string
@@ -764,7 +851,12 @@ set -e
 # read at all has already said so on its own line, and prompting about it every time
 # would train the answer out of anyone who releases without gh installed — which is
 # the same habit that lets a genuinely red check through.
-if [ "$CI_RC" -eq 1 ]; then
+# Red, or unknown. --finish treats them alike: it exists to answer the questions only
+# the forge can answer, and "could not tell" is not one of the answers it may act on.
+# An earlier draft refused only on a definite red, which left the commonest case wide
+# open — checks not yet registered seconds after a merge reads as unknown, and the run
+# ended in three ✅ lines with the tag public.
+if [ "$CI_RC" -ne 0 ]; then
   # Prompt on stderr, and require stderr to be a terminal too. Written to stdout it
   # disappears into the pipe under `bin/release 0.5.0 | tee release.log`, and the script
   # looks hung with no visible question.
@@ -807,24 +899,36 @@ if [ "$MODE" = finish ]; then
   # is read as an instruction to publish again.
   if have_gh; then
     echo "⏳ waiting for the publish workflow…"
+    watched=timeout
     for _ in $(seq 1 60); do
       sleep 5
-      state="$(gh api "repos/{owner}/{repo}/actions/runs?event=push&per_page=10" \
-        --jq --arg t "$TAG" '[.workflow_runs[] | select(.head_branch == $t)] | first | .status + ":" + (.conclusion // "")' 2>/dev/null || true)"
+      state="$(gh api "repos/$(repo_slug)/actions/runs?event=push&per_page=50" 2>/dev/null |
+        jq -r --arg t "$TAG" 'first(.workflow_runs[] | select(.head_branch == $t)) | .status + ":" + (.conclusion // "")' 2>/dev/null || true)"
       case "$state" in
-        completed:success) echo "✅ publish workflow succeeded"; break ;;
+        completed:success) watched=ok; echo "✅ publish workflow succeeded"; break ;;
         completed:*) echo "❌ publish workflow finished: ${state#completed:}" >&2
                      echo "   Read the run before doing anything else. Publishing by hand" >&2
                      echo "   leaves its next attempt colliding with your release object." >&2
                      exit 1 ;;
       esac
     done
+
+    # A timeout is not a result. Falling through to verify here reported "tagged, but
+    # no release exists behind it" for a run that was merely still queued — and then
+    # printed the publish-by-hand command whose collision the branch above warns about.
+    if [ "$watched" != ok ]; then
+      echo "❌ $TAG is pushed, but the publish workflow had not finished after 5 minutes." >&2
+      echo "   That is not the same as it having failed, so do NOT publish by hand —" >&2
+      echo "   its next attempt would collide with whatever you create. Watch it:" >&2
+      echo "     gh run watch \$(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')" >&2
+      echo "   then confirm with: bin/release --verify $VERSION" >&2
+      exit 1
+    fi
   fi
 
   echo
   echo "── verify ──"
   do_verify "$VERSION"
-  exit $?
 fi
 
 cat <<NEXT

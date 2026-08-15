@@ -92,6 +92,21 @@ jobs:
             echo "Write the body there on $DEFAULT_BRANCH, then re-run this workflow with tag $TAG."
             exit 1
           }
+
+          # And that it is not still the scaffold `bin/release --start` writes.
+          #
+          # One rule, two enforcers, because bin/release is not on every path to a
+          # published release: the refusals it prints name hand-tagging as their own
+          # escape hatch, and this job is the chokepoint every publish passes through.
+          # Nothing downstream would catch it either — the check above tests only that
+          # the file is non-empty, and `bin/release --verify` only that the published
+          # body matches the file, so an unedited draft verifies green for ever.
+          ! grep -qF -- '<!-- riprap: generated draft' "$NOTES" || {
+            echo "::error::$NOTES is still the generated draft"
+            echo "It would be published verbatim, TODO line and all. Write the body on"
+            echo "$DEFAULT_BRANCH, delete the marker line, then re-run with tag $TAG."
+            exit 1
+          }
           echo "NOTES=$NOTES" >> "$GITHUB_ENV"
 
       # Refused rather than updated. An edited release silently rewrites what a version

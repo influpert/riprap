@@ -339,6 +339,14 @@ verify_one() {
     fi
   done
 
+  # A published body that is still the scaffold. The workflow refuses one now, but a
+  # release cut before that check existed — or published by hand — carries it for ever,
+  # and the body/file comparison below passes because the file is the scaffold too.
+  if [ -s "$NOTES_DIR/$tag.md" ] && grep -qF -- "$DRAFT_SENTINEL" "$NOTES_DIR/$tag.md"; then
+    echo "  ❌ $tag: the notes are still the generated draft"
+    found=1
+  fi
+
   # Now ask the forge. Kept after the git-only checks so its failure cannot suppress them.
   published="$(gh_release_body "$tag")" && rc=0 || rc=$?
   case "$rc" in
@@ -516,8 +524,8 @@ fi
 # it can answer none of them and would push anyway — which is strictly worse than the
 # plain path, because that one at least leaves the tag local and deletable. "Could not
 # check" is not "checked and fine", least of all on the act that cannot be undone.
-if [ "$MODE" = finish ] && ! have_gh; then
-  echo "❌ --finish needs the gh CLI, and it is not on PATH." >&2
+if [ "$MODE" = finish ] && { ! have_gh || ! command -v jq >/dev/null 2>&1; }; then
+  echo "❌ --finish needs both the gh CLI and jq, and one of them is not on PATH." >&2
   echo "   It exists to check the things only the forge knows — that CI is green, that" >&2
   echo "   the publish succeeded, that the release is really there. Without gh it would" >&2
   echo "   push the tag having verified none of them." >&2
@@ -526,6 +534,18 @@ if [ "$MODE" = finish ] && ! have_gh; then
   echo "     bin/release $VERSION      # tags, pushes nothing" >&2
   echo "     git push origin v$VERSION" >&2
   exit 1
+fi
+
+# F9. Pin every gh placeholder to ORIGIN, once, rather than at each call site.
+#
+# `repos/{owner}/{repo}` prefers an `upstream` remote and is overridden by $GH_REPO, so
+# on a fork the draft would mix origin's tag list with upstream's merge dates and titles,
+# and --start would open the release pull request against the parent repository. This is
+# the same hazard repo_slug() was added for; exporting it covers the call sites that
+# still use the placeholder, and gh's own --repo resolution too.
+if have_gh; then
+  GH_SLUG="$(repo_slug || true)"
+  [ -z "$GH_SLUG" ] || export GH_REPO="$GH_SLUG"
 fi
 
 TAG="v$VERSION"
@@ -580,12 +600,42 @@ fi
 # aborts with a raw "fatal: tag already exists" and exit 128, the one refusal in the
 # script that neither explains itself nor says what to do next.
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-  echo "✅ $TAG already exists locally, at $(git rev-parse --short "$TAG^{commit}")."
-  echo "   Nothing to do but push it:"
-  echo
-  echo "     git push origin $TAG"
-  echo "     bin/release --verify $VERSION"
-  exit 0
+  # Mode-aware, because the modes reach this from different places and only one of
+  # them can be answered with "just push it".
+  #
+  # --finish gets here on the natural retry after a failed push, and exiting 0 there
+  # is a green exit from the publishing command with nothing published. --start gets
+  # here with a stale tag from an abandoned run, and its advice would push a tag
+  # pointing at an old commit — which the workflow refuses and the version is then
+  # spent, because a pushed tag is never withdrawn.
+  TAGGED_AT="$(git rev-parse --short "$TAG^{commit}")"
+  case "$MODE" in
+    finish)
+      if [ "$(git rev-parse "$TAG^{commit}")" != "$(git rev-parse HEAD)" ]; then
+        echo "❌ $TAG already exists locally at $TAGGED_AT, which is not HEAD." >&2
+        echo "   It was cut from a different commit. Delete it and re-run:" >&2
+        echo "     git tag -d $TAG" >&2
+        exit 1
+      fi
+      echo "ℹ️  $TAG already tagged locally at $TAGGED_AT — continuing to push and verify."
+      SKIP_TAGGING=1
+      ;;
+    start)
+      echo "❌ $TAG already exists locally, at $TAGGED_AT." >&2
+      echo "   --start opens the pull request; it never tags, so this is left over from" >&2
+      echo "   an abandoned run. Delete it before starting again:" >&2
+      echo "     git tag -d $TAG" >&2
+      exit 1
+      ;;
+    *)
+      echo "✅ $TAG already exists locally, at $TAGGED_AT."
+      echo "   Nothing to do but push it:"
+      echo
+      echo "     git push origin $TAG"
+      echo "     bin/release --verify $VERSION"
+      exit 0
+      ;;
+  esac
 fi
 
 # Forwards only, and against the highest tag rather than the last one cut. The
@@ -616,7 +666,11 @@ NOTES="$NOTES_DIR/$TAG.md"
 # --start writes this file and pushes it, and nothing downstream reads it for meaning:
 # the workflow only tests that it is non-empty, and verify_one only checks that the
 # published body matches it — both pass on an unedited draft.
-if [ -s "$NOTES" ] && grep -qF -- "$DRAFT_SENTINEL" "$NOTES"; then
+# Not in start mode. --start never tags, it COMMITS the sentinel-bearing draft on
+# purpose ("edit it before this merges"), and refusing here left an interrupted run —
+# a failed push, say — with no way forward: every re-run refused with tag-path advice
+# for a mode that never tags, and following that advice landed on "nothing to start".
+if [ "$MODE" != start ] && [ -s "$NOTES" ] && grep -qF -- "$DRAFT_SENTINEL" "$NOTES"; then
   echo "❌ $NOTES is still the generated draft." >&2
   echo "   The release workflow publishes it verbatim, so this would ship a TODO as the" >&2
   echo "   release body. Write it, delete the marker line, and commit." >&2
@@ -650,9 +704,14 @@ DEFAULT="$(default_branch)"
 # "git push -u origin main", and exited 0 — pushing a CODEOWNERS-gated change straight
 # at the default branch, which is the whole thing the two-run split exists to stop.
 if [ "$MODE" = finish ] && { [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; }; then
-  echo "❌ $PLUGIN_JSON says $plugin_was, so the bump has not merged yet." >&2
-  echo "   There is nothing to finish. Open the pull request first:" >&2
+  echo "❌ the tree here does not say $VERSION, so there is nothing to finish:" >&2
+  echo "     $PLUGIN_JSON: $plugin_was" >&2
+  echo "     $MARKET_JSON: $market_was" >&2
+  echo >&2
+  echo "   Either the bump has not merged — open the pull request:" >&2
   echo "     bin/release $VERSION --start" >&2
+  echo "   or it has, and this checkout is stale:" >&2
+  echo "     git checkout $DEFAULT && git pull && bin/release $VERSION --finish" >&2
   exit 1
 fi
 
@@ -698,23 +757,54 @@ if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
         exit 1 ;;
     esac
 
-    if [ "$BRANCH" != "ship-$VERSION" ]; then
-      git fetch -q origin "$DEFAULT" 2>/dev/null || true
-      if ! git rev-parse -q --verify "refs/remotes/origin/$DEFAULT" >/dev/null ||
-         ! git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT" 2>/dev/null; then
+    git fetch -q origin "$DEFAULT" 2>/dev/null || true
+
+    # The branch point is checked on BOTH paths. It used to sit inside the "not already
+    # on ship-x" arm, so the re-run the error text below steers people onto skipped it
+    # entirely — and a leftover ship branch cut from an old main, or carrying stray
+    # commits, got the bump committed on top and opened as a pull request whose body
+    # asserts it carries two. That is the ride-along hole, reopened on the resume path.
+    #
+    # A ship branch is acceptable when it is on origin/$DEFAULT, or when it is already
+    # published (an interrupted run resuming against its own pushed branch).
+    if ! git rev-parse -q --verify "refs/remotes/origin/$DEFAULT" >/dev/null ||
+       ! git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT" 2>/dev/null; then
+      if [ "$BRANCH" = "ship-$VERSION" ] &&
+         git rev-parse -q --verify "refs/remotes/origin/ship-$VERSION" >/dev/null &&
+         [ "$(git rev-parse HEAD)" = "$(git rev-parse "refs/remotes/origin/ship-$VERSION")" ]; then
+        : # resuming on the branch this already pushed
+      else
         echo "❌ HEAD is not on origin/$DEFAULT, so a release cut here would carry" >&2
         echo "   commits nobody has reviewed. Get to what shipped first:" >&2
         echo "     git checkout $DEFAULT && git pull" >&2
         exit 1
       fi
+    fi
+
+    if [ "$BRANCH" != "ship-$VERSION" ]; then
       git checkout -q -b "ship-$VERSION" || {
         echo "❌ could not create branch ship-$VERSION — does it already exist?" >&2
         echo "   git branch -D ship-$VERSION, or check it out and re-run." >&2
         exit 1; }
-      BRANCH="ship-$VERSION"
+      # Assert the switch rather than assuming it. This environment has a recorded case
+      # of `git checkout -b` creating the ref while HEAD stayed put — after which both
+      # release commits land on the default branch, the pushed ship branch is empty, and
+      # `gh pr create` fails with "no commits between" that the handler below misreports.
+      BRANCH="$(git branch --show-current)"
+      [ "$BRANCH" = "ship-$VERSION" ] || {
+        echo "❌ created ship-$VERSION but HEAD is on ${BRANCH:-a detached commit}." >&2
+        echo "   Nothing has been committed. Switch to it and re-run:" >&2
+        echo "     git checkout ship-$VERSION" >&2
+        exit 1; }
       echo "🌱 branched $BRANCH off $DEFAULT"
     fi
-    [ "$NEED_DRAFT" -eq 0 ] || draft_notes "$NOTES"
+    if [ "$NEED_DRAFT" -ne 0 ]; then
+      # `x || draft_notes` suspends errexit for the entire function body, so a failed
+      # redirect still printed "📝 drafted" and returned 0 — after which no notes commit
+      # was made and the pull request body claimed two commits while carrying one.
+      draft_notes "$NOTES"
+      [ -s "$NOTES" ] || { echo "❌ $NOTES was not written." >&2; exit 1; }
+    fi
   fi
 
   # Detached HEAD makes the guidance below unrunnable — BRANCH is the literal string
@@ -793,6 +883,7 @@ The body the workflow publishes is [\`$NOTES\`]($NOTES) — read it as the relea
 Not tagged yet, deliberately: the version files are CODEOWNERS-gated, so the bump merges as a pull request, and the tag belongs on the commit that merge produces. After this merges:
 
 \`\`\`
+git checkout $DEFAULT && git pull
 bin/release $VERSION --finish
 \`\`\`
 
@@ -807,6 +898,7 @@ bin/release $VERSION --finish
 
 Then, once it is merged and green:
 
+  git checkout $DEFAULT && git pull
   bin/release $VERSION --finish
 NEXT
   exit 0
@@ -872,27 +964,38 @@ set -e
 # read at all has already said so on its own line, and prompting about it every time
 # would train the answer out of anyone who releases without gh installed — which is
 # the same habit that lets a genuinely red check through.
-# Red, or unknown. --finish treats them alike: it exists to answer the questions only
-# the forge can answer, and "could not tell" is not one of the answers it may act on.
-# An earlier draft refused only on a definite red, which left the commonest case wide
-# open — checks not yet registered seconds after a merge reads as unknown, and the run
-# ended in three ✅ lines with the tag public.
-if [ "$CI_RC" -ne 0 ]; then
+# Red always. Unknown only under --finish, which is about to publish and so may not
+# act on "could not tell" — while the long form keeps the leniency the comment above
+# describes, because its tag stays local and deletable. Scoping this is what keeps
+# both comments true; an earlier draft used a bare -ne 0 and made plain mode prompt on
+# a status it had always been willing to proceed past.
+if [ "$CI_RC" -eq 1 ] || { [ "$MODE" = finish ] && [ "$CI_RC" -ne 0 ]; }; then
   # Prompt on stderr, and require stderr to be a terminal too. Written to stdout it
   # disappears into the pipe under `bin/release 0.5.0 | tee release.log`, and the script
   # looks hung with no visible question.
   if [ -t 0 ] && [ -t 2 ]; then
-    printf 'Tag anyway? [y/N] ' >&2
+    if [ "$MODE" = finish ]; then
+      printf 'Tag and PUBLISH anyway? [y/N] ' >&2
+    else
+      printf 'Tag anyway? [y/N] ' >&2
+    fi
     read -r reply || reply=n
     case "$reply" in [yY]*) ;; *) echo "Nothing tagged."; exit 1 ;; esac
   elif [ "$MODE" = finish ]; then
     # No terminal and no answer, so the prompt is not a gate — and --finish pushes,
     # which is the act that cannot be taken back. Plain mode may carry on past this
     # (its tag is local, and a local tag deletes cleanly); --finish may not.
-    echo "❌ checks are not green on $(git rev-parse --short HEAD), and there is no" >&2
-    echo "   terminal to confirm from. --finish pushes the tag, and a published tag is" >&2
-    echo "   never withdrawn — so this refuses rather than asking a question nobody can" >&2
-    echo "   answer. Fix the checks, or tag by hand with: bin/release $VERSION" >&2
+    if [ "$CI_RC" -eq 1 ]; then
+      echo "❌ checks are RED on $(git rev-parse --short HEAD), and there is no terminal" >&2
+      echo "   to confirm from. Fix them, then re-run --finish." >&2
+    else
+      echo "❌ could not read the checks on $(git rev-parse --short HEAD), and there is" >&2
+      echo "   no terminal to confirm from. That is not the same as red — gh, jq or the" >&2
+      echo "   network may be the problem, or the checks may not be registered yet." >&2
+      echo "   Fix that, or wait, then re-run --finish." >&2
+    fi
+    echo "   --finish pushes the tag, and a published tag is never withdrawn, so it" >&2
+    echo "   refuses rather than asking a question nobody is there to answer." >&2
     exit 1
   else
     echo "⚠️  not a terminal, so nothing to confirm with — tagging anyway." >&2
@@ -900,8 +1003,10 @@ if [ "$CI_RC" -ne 0 ]; then
   fi
 fi
 
-git tag -a "$TAG" -m "$TAG" HEAD
-echo "✅ tagged $TAG at $(git rev-parse --short HEAD) on $BRANCH"
+if [ "${SKIP_TAGGING:-0}" -eq 0 ]; then
+  git tag -a "$TAG" -m "$TAG" HEAD
+  echo "✅ tagged $TAG at $(git rev-parse --short HEAD) on $BRANCH"
+fi
 
 if [ "$MODE" = finish ]; then
   # The push is still a thing a person typed — they typed --finish, having read the
@@ -921,10 +1026,14 @@ if [ "$MODE" = finish ]; then
   if have_gh; then
     echo "⏳ waiting for the publish workflow…"
     watched=timeout
-    for _ in $(seq 1 60); do
-      sleep 5
-      state="$(gh api "repos/$(repo_slug)/actions/runs?event=push&per_page=50" 2>/dev/null |
-        jq -r --arg t "$TAG" 'first(.workflow_runs[] | select(.head_branch == $t)) | .status + ":" + (.conclusion // "")' 2>/dev/null || true)"
+    # branch=$TAG server-side: a tag-push run carries the tag in head_branch, so the
+    # forge can select it. Filtering 50 full run objects client-side could page the run
+    # out on a busy day, which surfaced as the false timeout below.
+    i=0
+    while [ "$i" -lt 60 ]; do
+      # Poll first, then sleep. Sleeping first spent 5 seconds before ever looking.
+      state="$(gh api "repos/$GH_SLUG/actions/runs?event=push&branch=$TAG&per_page=1" 2>/dev/null |
+        jq -r 'first(.workflow_runs[]) | .status + ":" + (.conclusion // "")' 2>/dev/null || true)"
       case "$state" in
         completed:success) watched=ok; echo "✅ publish workflow succeeded"; break ;;
         completed:*) echo "❌ publish workflow finished: ${state#completed:}" >&2
@@ -932,6 +1041,8 @@ if [ "$MODE" = finish ]; then
                      echo "   leaves its next attempt colliding with your release object." >&2
                      exit 1 ;;
       esac
+      i=$((i + 1))
+      sleep 5
     done
 
     # A timeout is not a result. Falling through to verify here reported "tagged, but
@@ -950,6 +1061,12 @@ if [ "$MODE" = finish ]; then
   echo
   echo "── verify ──"
   do_verify "$VERSION"
+  # Without this, a fully successful --finish falls into the plain-mode epilogue below
+  # and ends with "Nothing has been pushed. This publishes it: git push origin $TAG" —
+  # after it has pushed, watched and verified. The false line appeared ONLY on the
+  # perfect run, because every failure inside this block exits first. A failing verify
+  # still exits non-zero above under `set -e`.
+  exit 0
 fi
 
 cat <<NEXT

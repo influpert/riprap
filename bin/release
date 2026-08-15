@@ -234,6 +234,31 @@ draft_notes() {
 # that is in fact byte-correct in every way a reader would notice.
 normalize() { sed 's/\r$//; s/[[:space:]]*$//'; }
 
+# One file, as it exists in the tagged tree, over whichever route answers.
+#
+# git first, because a fetched tag is the same object the forge has and needs no
+# credential beyond the remote's. Then gh, for the same reason remote_versions() has a
+# gh route: an SSH remote in an environment with no key fails every git fetch while gh
+# answers fine. Without this, --verify could establish that a tag exists and never
+# check the one thing it is for — that the tree behind it claims the version the tag
+# claims. Observed cutting 0.6.0: the tag read fell back to gh and succeeded, and this
+# fetch failed two lines later, leaving the versions "unchecked".
+#
+# Prints the file. 1 = could not read it by any route.
+tagged_file() {
+  local tag="$1" path="$2" slug
+  if git fetch -q origin "+refs/tags/$tag:refs/tags/$tag" 2>/dev/null; then
+    git show "$tag:$path" 2>/dev/null && return 0
+  fi
+  have_gh || return 1
+  slug="$(repo_slug)" || return 1
+  [ -n "$slug" ] || return 1
+  # -H Accept:...raw returns the file itself rather than base64 in JSON, so this needs
+  # no decoder and cannot half-decode a file into something that parses as valid JSON.
+  gh api -H "Accept: application/vnd.github.raw" \
+    "repos/$slug/contents/$path?ref=$tag" 2>/dev/null
+}
+
 # ── --verify ─────────────────────────────────────────────────────────────────
 
 # Verify one published release. Prints findings, returns 1 if any.
@@ -303,20 +328,16 @@ verify_one() {
   # than a visible error. And a fetch that fails for any other reason is reported, not
   # skipped past: the local tag is not evidence about what was published.
   local f got
-  if git fetch -q origin "+refs/tags/$tag:refs/tags/$tag" 2>/dev/null; then
-    for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
-      if got="$(git show "$tag:$f" 2>/dev/null | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" &&
-        [ -n "$got" ]; then
-        [ "$got" = "$version" ] || { echo "  ❌ $tag: $f says $got"; found=1; }
-      else
-        echo "  ❌ $tag: could not read $f from the tagged tree"
-        found=1
-      fi
-    done
-  else
-    echo "  ⚠️  $tag: could not fetch the tagged tree — the versions in it are unchecked"
-    found=1
-  fi
+  for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
+    if got="$(tagged_file "$tag" "$f" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" &&
+      [ -n "$got" ]; then
+      [ "$got" = "$version" ] || { echo "  ❌ $tag: $f says $got"; found=1; }
+    else
+      echo "  ⚠️  $tag: could not read $f from the tagged tree, over git or gh"
+      echo "     The version it ships is unchecked — not confirmed correct."
+      found=1
+    fi
+  done
 
   # Now ask the forge. Kept after the git-only checks so its failure cannot suppress them.
   published="$(gh_release_body "$tag")" && rc=0 || rc=$?

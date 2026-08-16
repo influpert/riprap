@@ -46,7 +46,7 @@ agreement at all.
 ```sh
 bin/setup    # reports any tool you are missing; installs nothing
 bin/lint     # shellcheck over every script, and bin/scrub-check over everything published
-bin/test     # the hook tests, the generated manifest, and the licence copies
+bin/test     # the hook tests, the generated manifest, CHANGELOG.md, and the licence copies
 ```
 
 `bin/lint` and `bin/test` are the same seams riprap ships to every project, and they are what

@@ -54,6 +54,12 @@
         ]
       },
       {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook require-plan-stress-test.sh" }
+        ]
+      },
+      {
         "matcher": "Bash|Read|Grep|Edit|Write",
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook lint-secrets.sh" }

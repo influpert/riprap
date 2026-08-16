@@ -257,8 +257,12 @@ Every reviewer prompt carries these, whatever its angle:
   it lands, and survives any later edit in the timeline API. Step 4 ranks that second overall:
   damage that outlives the fix. The secrets hook cannot help here; it scans what an edit
   writes, not what this skill sends to the forge.
-- **A cap on findings, and an instruction to say when it is hit.** The cap forces ranking;
-  it is not a licence to go quiet. A reviewer that had more to say must end by saying so.
+- **A cap on findings, and nothing for the reviewer to announce about it.** The cap forces
+  ranking — most severe first, so what it cuts is the tail. Do not ask the reviewer to say
+  whether it hit the cap: that request is what this bullet used to make, and it degenerated
+  into a ritual closing line on nearly every review, under the cap and beside empty reports
+  alike — a truncation signal on every review is no signal. Whether an angle was truncated
+  is step 3's to determine.
 - **An explicit nothing-found sentinel** — a required sentence such as *"No correctness
   issues found."* Without it, a reviewer that died and a reviewer that found nothing return
   the identical empty result, and the second is the one you will assume.
@@ -287,6 +291,10 @@ just the specific lines a finding rests on. Step 1's rule and this one compose �
   opening — never as required changes.
 - **Check the threat model before filing a security finding.** If the design already says
   the property is not guaranteed, the finding is a note, not a defect.
+- **An angle that filed exactly its cap is possibly truncated.** No self-report can settle
+  that, so step 2 asks for none; the filed count is your own fact, and the one truncation
+  signal that needs no honesty from the reviewer. Carry the at-cap note into step 6 rather
+  than resolving it here.
 - **Drop your own findings that do not survive this.** Silently. A review is not scored on
   length.
 
@@ -435,6 +443,13 @@ repository that does not exist, deliberately. A worked example naming a file thi
 actually ships reads, to the next agent that greps for that filename, as a recorded defect in
 it — and a fabricated finding against a real path costs somebody an afternoon disproving it.
 
+**The at-cap note rides with the verdict, on both paths below.** Where step 3 flagged an
+angle as filing at its cap, one line goes beneath the verdict, shaped *"the correctness
+angle filed at its cap of 8; more may exist"* — the count fact, never an assertion of
+truncation. It is informational only: it does not by itself change the verdict. Keep the
+"filed at its cap" wording literal; it is what makes these notes findable across past
+reviews.
+
 **With no pull request open:** emit the reviewer's table with the verdict beneath it, and hand
 it over explicitly — it is what the pull request body gets built from when somebody opens one.
 Say that. A table emitted and carried nowhere is the silence the disposition rule exists to
@@ -465,7 +480,8 @@ jq -n --arg sha "$HEAD_SHA" --arg body "$SUMMARY" --argjson comments "$INLINE" \
 `--input -` carries what `-f`/`-F` cannot: the comments are an array of objects, and the flag
 forms have no syntax for one. Each element carries `path`, `line`, `side` — `RIGHT` for an
 added line, `LEFT` for a removed one — and a `body` giving the class, the finding and the
-recommended fix. `$SUMMARY` is the table, the verdict, and the rider if any.
+recommended fix. `$SUMMARY` is the table, the verdict, the rider if any, and the at-cap
+note if step 3 raised one.
 
 The rules that keep this a review, and not a decision made on the author's behalf:
 

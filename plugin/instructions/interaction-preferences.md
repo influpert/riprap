@@ -150,6 +150,46 @@ objective*, which presupposes the objective — and it classifies findings its o
 than as BLOCKER/MAJOR/MINOR/NON-ISSUE. Use it, then check the count, add the advocate, and
 classify as above.
 
+### Enforcement
+
+A `PreToolUse` hook — `bin/hooks/riprap/claude/require-plan-stress-test.sh` — blocks
+`ExitPlanMode` until at least six qualifying sub-agent dispatches have happened since the last
+passing check: five distinct-angle critics plus one whose prompt or description names the
+devil's advocate. The floor itself lives in `bin/hooks/riprap/lib/stress-test-patterns.sh`,
+project-configurable through its `.local.sh` extension point. The tool names a dispatch is
+recorded under do not: that is a fact about the runtime, not a project preference, so it is a
+plain constant in the hook script itself, corrected upstream rather than configured around.
+
+**There is no pre-commit counterpart, deliberately.** Every other guardrail in this family
+also ships a git hook that scans staged file content — this rule has nothing there to give
+one, since it is about session behavior (how many sub-agents were dispatched, and when) rather
+than about what a diff contains. A commit-time scan cannot see a session that already ended.
+
+**The hook sees less than this document does, in two different ways.** It counts dispatches
+and checks for a phrase; it cannot verify that the five angles were genuinely distinct, that
+findings were classified honestly, that a BLOCKER or MAJOR finding was actually folded into
+the plan, or that a plan wasn't instead pasted into chat and never routed through
+`ExitPlanMode` at all. Separately, it trusts the transcript file's own content as evidence that
+a dispatch happened — it has no independent, harness-issued proof of that, only what the same
+process the hook is gating could in principle also write to first. Clearing the hook means a
+mechanical floor was met, not that the review was any good — never describe it, in a blocked
+message or anywhere else, as having verified more than that.
+
+**No bypass.** Consistent with every Claude-side block in this repo, there is nothing an agent
+can pass to get past it — matching this rule's own stance that there is no exemption for a
+plan that looks small. If the hook is wrong about a specific environment (most likely: that
+harness names the subagent-dispatch tool something other than `Agent` or `Task`), the fix is a
+human editing or disabling `require-plan-stress-test.sh`, not a flag the agent sets itself.
+
+**The unattended carve-out above still applies, and is where this hook's risk concentrates.**
+The hook enforces the same floor whether or not a human is watching — it has no way to tell the
+difference. That is fine when the floor is being met correctly. It is not fine if the
+tool-name assumption above turns out to be wrong for a given harness: an attended session that
+hits a permanent block at least has a human present who can notice and fix it; an unattended
+run does not, and sits stalled in plan mode indefinitely with nobody to intervene. Verify the
+tool names against a real transcript in every harness a deployment actually runs unattended in,
+before relying on this there.
+
 ---
 
 ## Complexity gate: how many questions to ask

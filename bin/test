@@ -8,8 +8,9 @@
 # approximately true, and a guardrail nobody quite believes is not a guardrail.
 #
 # What belongs here is what must hold for the tree to be correct: the shipped
-# hook tests, the generated manifest, and the licence notice that travels with
-# every copy. Lint lives in bin/lint, not here.
+# hook tests, the generated manifest, CHANGELOG.md against the release notes it
+# is generated from, and the licence notice that travels with every copy. Lint
+# lives in bin/lint, not here.
 set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
@@ -25,6 +26,10 @@ done
 echo
 echo "--- Manifest matches the payload, and stays namespaced ---"
 bin/build-manifest --check
+
+echo
+echo "--- CHANGELOG.md matches .github/releases/*.md ---"
+bin/release --changelog --check
 
 echo
 echo "--- Every licence copy is identical, notice included ---"

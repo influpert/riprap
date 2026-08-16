@@ -150,6 +150,32 @@ objective*, which presupposes the objective — and it classifies findings its o
 than as BLOCKER/MAJOR/MINOR/NON-ISSUE. Use it, then check the count, add the advocate, and
 classify as above.
 
+### Enforcement
+
+A `PreToolUse` hook — `bin/hooks/riprap/claude/require-plan-stress-test.sh` — blocks
+`ExitPlanMode` until at least six qualifying sub-agent dispatches have happened since the last
+passing check: five distinct-angle critics plus one whose prompt or description names the
+devil's advocate. The tool names a dispatch is recorded under, and the floor itself, live in
+`bin/hooks/riprap/lib/stress-test-patterns.sh`.
+
+**The hook sees less than this document does.** It counts dispatches and checks for a phrase;
+it cannot verify that the five angles were genuinely distinct, that findings were classified
+honestly, that a BLOCKER or MAJOR finding was actually folded into the plan, or that a plan
+wasn't instead pasted into chat and never routed through `ExitPlanMode` at all. Clearing the
+hook means a mechanical floor was met, not that the review was any good — never describe it,
+in a blocked message or anywhere else, as having verified more than that.
+
+**No bypass.** Consistent with every Claude-side block in this repo, there is nothing an agent
+can pass to get past it — matching this rule's own stance that there is no exemption for a
+plan that looks small. If the hook is wrong about a specific environment (most likely: that
+harness names the subagent-dispatch tool something other than `Agent` or `Task`), the fix is a
+human editing or disabling `require-plan-stress-test.sh`, not a flag the agent sets itself.
+
+**The unattended carve-out above is unaffected.** The hook enforces the same floor whether or
+not a human is watching — it has no way to tell the difference, which is also why blocking is
+safe here: an unattended run that skipped stress-testing was never going to get useful review
+by proceeding regardless.
+
 ---
 
 ## Complexity gate: how many questions to ask

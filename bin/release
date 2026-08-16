@@ -16,6 +16,7 @@
 #   bin/release --verify       every v* tag on origin has a release behind it
 #   bin/release --verify 0.5.0 that one release is published, and correct
 #   bin/release --changelog    regenerate CHANGELOG.md from .github/releases/*.md
+#   bin/release --changelog --check  exit 1 if CHANGELOG.md is out of date (for CI)
 #
 # --start regenerates CHANGELOG.md itself, alongside the notes it drafts or the notes
 # you already wrote by hand — both land in the same commit. The long form does not draft
@@ -23,6 +24,14 @@
 # pull request. Either way `bin/test` runs `--changelog --check` on every push, so a
 # NOTES file edited after that commit without a matching regeneration fails the pull
 # request rather than shipping a changelog that quietly stopped matching what merged.
+#
+# --check ignores date-only differences on purpose. A version's date can only be
+# resolved once its tag exists, which is after --finish — and nothing can push a
+# refresh commit straight to main afterwards (branch protection requires a pull
+# request for every change, admins included). So a freshly-tagged entry ships
+# dateless and self-heals the next time --changelog runs with that tag visible,
+# typically the following release's --start; --check would otherwise start failing
+# on the very next unrelated pull request the moment CI can see the new tag.
 #
 # Two runs, and the split is the point. The version files sit under CODEOWNERS-gated
 # directories, so the bump merges as a pull request; a tag cut before that merges
@@ -48,10 +57,6 @@ PLUGIN_JSON="plugin/.claude-plugin/plugin.json"
 MARKET_JSON=".claude-plugin/marketplace.json"
 NOTES_DIR=".github/releases"
 CHANGELOG_FILE="CHANGELOG.md"
-
-# The line every release note opens with. Stripped when aggregating into CHANGELOG.md —
-# read once in its preamble is enough, thirty repeats of it is not "what changed".
-CHANGELOG_TAGLINE="Guardrails for Claude Code, enforced rather than suggested."
 
 # Written into a drafted notes file, and refused on the tag path while it is still
 # there. Deleting one line is the smallest act that proves a person opened the file —
@@ -248,6 +253,11 @@ draft_notes() {
 
 # ── --changelog: regenerate CHANGELOG.md from the release notes ─────────────
 
+# The heading a version's section opens with, dated or not — shared by the writer
+# below and by the two guards in changelog_body() that refuse to let anything else
+# on the page take this shape.
+CHANGELOG_HEADING_RE='^## v[0-9]+\.[0-9]+\.[0-9]+( — 20[0-9]{2}-[0-9]{2}-[0-9]{2})?$'
+
 # One entry's body: the tagline and $DRAFT_SENTINEL stripped by exact line match, never
 # by position. A note still carrying the sentinel — mid --start, before a human has
 # touched it — has neither a tagline as line 1 nor an **Install** heading, and a strip
@@ -259,13 +269,45 @@ draft_notes() {
 # using only `q`, which is POSIX and needs no GNU extension to work on both platforms
 # this script already promises to run on.
 #
-# The trailing blank line `**Install**` always leaves behind is not trimmed by a second
-# sed pass — command substitution strips every trailing newline on its own, which is a
-# real behaviour of `$( )`, not a workaround standing in for one.
+# The line every release note opens with — stripped here, not carried into
+# CHANGELOG.md, where it would repeat once per entry.
+CHANGELOG_TAGLINE="Guardrails for Claude Code, enforced rather than suggested."
+
+# Two ways a body can go wrong that --check cannot catch on its own, because both
+# would be wrong the same way on every future run — self-consistent, and self-consistency
+# is all a diff against the last regeneration can see.
 changelog_body() {
   local file="$1" body
+
+  # A finished note (no sentinel) with nothing matching **Install** exactly would
+  # otherwise pass its whole remainder through untruncated — the install steps, the
+  # licence line, everything after — into a generated file whose one job is "what
+  # changed". A typo as small as a trailing colon defeats the truncation below in
+  # total silence; refuse instead of leaking it.
+  if ! grep -qF "$DRAFT_SENTINEL" "$file" && ! grep -qFx '**Install**' "$file"; then
+    echo "❌ $file has no line matching exactly '**Install**' to truncate at." >&2
+    echo "   Left as is, changelog_body would leak everything after the body —" >&2
+    echo "   install steps, licence line — into CHANGELOG.md. Fix the heading." >&2
+    exit 1
+  fi
+
   body="$(grep -Fxv -e "$CHANGELOG_TAGLINE" -e "$DRAFT_SENTINEL" "$file" |
     sed -n '/^\*\*Install\*\*$/q;p' | sed '/./,$!d' || true)"
+
+  # bin/scrub-check exempts a line shaped like a generated heading on the strength
+  # of that shape alone — it has no way to tell this script's own output from a
+  # hand-typed line borrowing its cover. A body containing one would ride straight
+  # through that exemption regardless of what date it actually names, so this is
+  # the one place that can still refuse it: after the strips above (so the real
+  # heading this same shape describes, written by the caller, is never in $body to
+  # begin with) and before the value ever reaches CHANGELOG.md.
+  if printf '%s\n' "$body" | grep -qE "$CHANGELOG_HEADING_RE"; then
+    echo "❌ $file's body contains a line shaped like a generated CHANGELOG.md heading" >&2
+    echo "   (## vX.Y.Z, optionally dated). Rewrite it — bin/scrub-check's changelog" >&2
+    echo "   exemption is anchored to this exact shape and would wave it through." >&2
+    exit 1
+  fi
+
   printf '%s\n' "$body"
 }
 
@@ -278,32 +320,46 @@ changelog_body() {
 #
 # Prints to stdout rather than writing $CHANGELOG_FILE directly, so --check can diff it
 # against the committed copy without ever touching the working tree — the same split
-# build-manifest's generate()/--check makes, and for the same reason: a check that
-# writes first and diffs after can clobber whatever was already in the file.
+# build-manifest's generate()/--check makes, though not its shape: build-manifest is
+# free-standing because MANIFEST needs nothing from it, where this depends on
+# $NOTES_DIR, $DRAFT_SENTINEL and is_version(), all already bin/release's.
+#
+# Refuses outright in a shallow clone, rather than resolving each version's date and
+# quietly writing none for the ones it cannot see. A shallow clone cannot tell "not
+# tagged yet" from "tagged, but the ref did not come along" — proven by running this
+# very function against one: every date it already had came back blank. Silently
+# regenerating from there would commit that loss.
 changelog_content() {
-  local f base version date sorted
+  local f base version date
 
-  # v*.md, filtered to names whose version parses — a stray or malformed file in
-  # NOTES_DIR is skipped rather than aborting the whole regeneration over it.
-  sorted="$(
+  if [ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != "false" ]; then
+    echo "❌ this is a shallow clone (or its depth could not be checked), and CHANGELOG.md" >&2
+    echo "   needs full tag history to tell a version with no date yet from one whose date" >&2
+    echo "   this clone simply cannot see. Regenerating here would write the second as the" >&2
+    echo "   first, erasing it." >&2
+    echo "   git fetch --unshallow, or clone without --depth, then try again." >&2
+    exit 1
+  fi
+
+  {
+    echo "# Changelog"
+    echo
+    echo "One entry per tagged release, generated from [$NOTES_DIR/]($NOTES_DIR/) —"
+    echo "each file there is also that release's published GitHub release body. Edit the"
+    echo "per-version file, never this one: \`bin/release --changelog\` regenerates it, and"
+    echo "\`bin/test\` refuses a stale copy."
+
+    # v*.md, filtered to names whose version parses — a stray or malformed file in
+    # NOTES_DIR is skipped rather than aborting the whole regeneration over it. Piped
+    # straight into the loop that renders each entry: nothing computed here needs to
+    # outlive it.
     for f in "$NOTES_DIR"/v*.md; do
       [ -e "$f" ] || continue
       base="$(basename "$f" .md)"
       version="${base#v}"
       is_version "$version" || continue
       printf '%s %s\n' "$version" "$f"
-    done | sort -rV
-  )"
-
-  {
-    echo "# Changelog"
-    echo
-    echo "One entry per tagged release, generated from [.github/releases/]($NOTES_DIR/) —"
-    echo "each file there is also that release's published GitHub release body. Edit the"
-    echo "per-version file, never this one: \`bin/release --changelog\` regenerates it, and"
-    echo "\`bin/test\` refuses a stale copy."
-
-    while IFS=' ' read -r version f; do
+    done | sort -rV | while IFS=' ' read -r version f; do
       [ -n "$version" ] || continue
       # No local tag for the version currently being drafted — not a bug, and not
       # papered over with today's date. It reads with no date until the next
@@ -317,8 +373,49 @@ changelog_content() {
       fi
       echo
       changelog_body "$f"
-    done <<<"$sorted"
+    done
   }
+}
+
+# For --check only: a version's date can only be known once its tag exists, which is
+# after --finish — and nothing can push a refresh commit straight to main afterwards
+# (branch protection requires a pull request for every change, admins included, and
+# --finish never opens one). So a freshly-tagged entry ships dateless and stays that
+# way until something else regenerates CHANGELOG.md in full, typically the next
+# release's --start once that tag is visible. Comparing raw output against that
+# would fail --check on the very next unrelated pull request the moment CI can see
+# the new tag — a stale-content check reporting a mismatch that content drift never
+# caused. This strips the date from every heading on both sides first, so --check
+# still catches real drift (a NOTES file edited without a matching regeneration)
+# without also catching a date becoming resolvable that nobody was in a position to
+# commit.
+changelog_headings_undated() { sed -E 's/^(## v[0-9]+\.[0-9]+\.[0-9]+)( — 20[0-9]{2}-[0-9]{2}-[0-9]{2})?$/\1/'; }
+
+# Write, or check — mirrors do_verify()'s shape rather than living inline at the
+# dispatch site, so the two sibling flags read the same way.
+do_changelog() {
+  local mode="${1:-}"
+  case "$mode" in
+    "" | --check) ;;
+    *) usage ;;
+  esac
+
+  if [ "$mode" = --check ]; then
+    # Compared with dates stripped from both sides — see changelog_headings_undated's
+    # own comment for why a date-only difference is not drift.
+    if diff -q <(changelog_content | changelog_headings_undated) \
+              <(changelog_headings_undated <"$CHANGELOG_FILE") >/dev/null 2>&1; then
+      echo "✅ $CHANGELOG_FILE matches .github/releases/*.md"
+      return 0
+    fi
+    echo "❌ $CHANGELOG_FILE does not match .github/releases/*.md. Run bin/release --changelog." >&2
+    diff <(changelog_content) "$CHANGELOG_FILE" >&2 || true
+    return 1
+  fi
+
+  changelog_content >"$CHANGELOG_FILE"
+  echo "✅ wrote $CHANGELOG_FILE"
+  return 0
 }
 
 # Trailing whitespace and CRLF differ between what was committed and what the forge
@@ -593,22 +690,8 @@ fi
 # argument and fail it with a confusing "not a version" error.
 if [ "$1" = "--changelog" ]; then
   [ $# -le 2 ] || usage
-  case "${2:-}" in
-    "") ;;
-    --check)
-      if diff -q <(changelog_content) "$CHANGELOG_FILE" >/dev/null 2>&1; then
-        echo "✅ $CHANGELOG_FILE matches .github/releases/*.md"
-        exit 0
-      fi
-      echo "❌ $CHANGELOG_FILE does not match .github/releases/*.md. Run bin/release --changelog." >&2
-      diff <(changelog_content) "$CHANGELOG_FILE" >&2 || true
-      exit 1
-      ;;
-    *) usage ;;
-  esac
-  changelog_content >"$CHANGELOG_FILE"
-  echo "✅ wrote $CHANGELOG_FILE"
-  exit 0
+  do_changelog "${2:-}"
+  exit $?
 fi
 
 case "$1" in -h | --help) usage ;; esac

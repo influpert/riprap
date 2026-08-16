@@ -9,6 +9,11 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$SCRIPT_DIR/../claude/require-plan-stress-test.sh"
+LIB="$SCRIPT_DIR/../lib/stress-test-patterns.sh"
+# Where the hook's own .local.sh extension point resolves to, from the LIB's location —
+# an adopter-only path (bin/hooks/lib/, a sibling of bin/hooks/riprap/) that does not exist
+# in this repo's own source tree, so the local-override test below creates and removes it.
+LOCAL_OVERRIDE="$SCRIPT_DIR/../../lib/stress-test-patterns.local.sh"
 
 PASS=0
 FAIL=0
@@ -17,7 +22,12 @@ bad() { FAIL=$((FAIL + 1)); printf 'FAIL: %s\n' "$1"; }
 
 STATE_DIR=$(mktemp -d)
 TMP_FILES=()
-cleanup() { rm -rf "$STATE_DIR"; for f in "${TMP_FILES[@]:-}"; do rm -f "$f"; done; }
+cleanup() {
+  rm -rf "$STATE_DIR"
+  for f in "${TMP_FILES[@]:-}"; do rm -f "$f"; done
+  rm -f "$LOCAL_OVERRIDE"
+  rmdir "$(dirname "$LOCAL_OVERRIDE")" 2>/dev/null || true
+}
 trap cleanup EXIT
 
 new_transcript() {  # writes each arg as one JSONL line, returns the path
@@ -36,6 +46,21 @@ dispatch() {
   local desc="$1" prompt="$2" name="${3:-Agent}" side="${4:-false}"
   jq -nc --arg d "$desc" --arg p "$prompt" --arg n "$name" --argjson s "$side" \
     '{isSidechain: $s, message: {content: [{type:"tool_use", id:"toolu_x", name:$n, input:{description:$d, prompt:$p}}]}}'
+}
+
+# dispatch_raw NAME JQ_INPUT_EXPR -- like dispatch, but input.description/prompt are built
+# from a raw jq expression, so a test can put a non-string value there.
+dispatch_raw() {
+  local name="$1" input_expr="$2"
+  jq -nc --arg n "$name" \
+    "{isSidechain:false, message:{content:[{type:\"tool_use\", id:\"toolu_x\", name:\$n, input:$input_expr}]}}"
+}
+
+# dispatch_sidechain_string DESC PROMPT -- isSidechain as the STRING "true", not boolean.
+dispatch_sidechain_string() {
+  local desc="$1" prompt="$2"
+  jq -nc --arg d "$desc" --arg p "$prompt" \
+    '{isSidechain: "true", message: {content: [{type:"tool_use", id:"toolu_x", name:"Agent", input:{description:$d, prompt:$p}}]}}'
 }
 
 # parallel DESC|PROMPT DESC|PROMPT ... -- ONE line carrying multiple tool_use blocks.
@@ -70,10 +95,10 @@ ADVOCATE=(
   "$(dispatch "devil's advocate" "argue this plan should not be done at all")"
 )
 
-run_hook() {  # $1 = JSON payload; sets OUT, ERR, RC
+run_hook() {  # $1 = JSON payload; sets ERR, RC (stdout is discarded, the hook never uses it)
   local ef
   ef=$(mktemp)
-  OUT=$(printf '%s' "$1" | RIPRAP_TEST=1 RIPRAP_TEST_STATE_DIR="$STATE_DIR" "$HOOK" 2>"$ef")
+  printf '%s' "$1" | RIPRAP_TEST=1 RIPRAP_TEST_STATE_DIR="$STATE_DIR" "$HOOK" >/dev/null 2>"$ef"
   RC=$?
   ERR=$(cat "$ef")
   rm -f "$ef"
@@ -108,11 +133,16 @@ T=$(new_transcript "$(parallel \
 check "6 parallel dispatches on one line -> counted as 6, allow" 0 "$(payload "$T")"
 
 echo
-echo "--- Devil's-advocate phrase variants ---"
+echo "--- Devil's-advocate phrase variants and near-misses ---"
 
 for variant in "devil's advocate" "devil’s advocate" "devils advocate" "Devils Advocate"; do
   T=$(new_transcript "${FIVE_PLAIN[@]}" "$(dispatch "advocate" "$variant: argue against this plan")")
   check "phrase variant '$variant' -> allow" 0 "$(payload "$T")"
+done
+
+for near_miss in "devils3advocate" "_devils_advocate_variable_" "devil goes to advocate school"; do
+  T=$(new_transcript "${FIVE_PLAIN[@]}" "$(dispatch "advocate" "$near_miss")")
+  check "near-miss '$near_miss' does NOT satisfy the advocate check -> block" 2 "$(payload "$T")"
 done
 
 echo
@@ -122,13 +152,19 @@ T=$(new_transcript "$(tool_result "the rule says: dispatch a devil's advocate, d
 check "transcript full of the phrase in a tool_result, zero real dispatches -> block" 2 "$(payload "$T")"
 
 echo
-echo "--- Sidechain exclusion ---"
+echo "--- Sidechain exclusion, including non-boolean serialization ---"
 
 T=$(new_transcript \
   "$(dispatch "d1" "p1" Agent true)" "$(dispatch "d2" "p2" Agent true)" \
   "$(dispatch "d3" "p3" Agent true)" "$(dispatch "d4" "p4" Agent true)" \
   "$(dispatch "d5" "p5" Agent true)" "$(dispatch "devil's advocate" "p6" Agent true)")
-check "6 sidechain-flagged dispatches -> excluded, block" 2 "$(payload "$T")"
+check "6 sidechain-flagged (boolean true) dispatches -> excluded, block" 2 "$(payload "$T")"
+
+T=$(new_transcript \
+  "$(dispatch_sidechain_string "d1" "p1")" "$(dispatch_sidechain_string "d2" "p2")" \
+  "$(dispatch_sidechain_string "d3" "p3")" "$(dispatch_sidechain_string "d4" "p4")" \
+  "$(dispatch_sidechain_string "d5" "p5")" "$(dispatch_sidechain_string "devil's advocate" "p6")")
+check "6 sidechain-flagged (string \"true\") dispatches -> also excluded, block" 2 "$(payload "$T")"
 
 echo
 echo "--- Task name recognized same as Agent ---"
@@ -140,7 +176,14 @@ T=$(new_transcript \
 check "6 Task-named dispatches -> allow" 0 "$(payload "$T")"
 
 echo
-echo "--- Marker: freshness and the retry-after-block accumulation ---"
+echo "--- Non-string description/prompt: coerced, not dropped ---"
+
+T=$(new_transcript "${FIVE_PLAIN[@]}" \
+  "$(dispatch_raw Agent '{description: 42, prompt: "devil'"'"'s advocate: argue against this"}')")
+check "a numeric description still counts toward the floor (coerced to text)" 0 "$(payload "$T")"
+
+echo
+echo "--- Marker: freshness, retry-after-block accumulation, and corruption ---"
 
 T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
 check "first pass -> allow" 0 "$(payload "$T")"
@@ -154,15 +197,8 @@ check "3 dispatches -> block (retry expected)" 2 "$(payload "$T")"
 check "3 more dispatched after a block, 6 total -> allow (blocked attempt did not reset progress)" 0 "$(payload "$T")"
 
 T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
-check "pass with plan text P" 0 "$(payload "$T" "## Summary\nThis plan does the thing.")"
-check "revision sharing the same opening text, no new dispatches -> still block" 2 \
-  "$(payload "$T" "## Summary\nThis plan does the thing, slightly reworded.")"
-
-echo
-echo "--- Fresh/resumed session: no marker yet ---"
-
-T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
-check "brand-new transcript path, no prior marker -> counts from start, allow" 0 "$(payload "$T")"
+printf 'not-a-number\ngarbage-second-line\n' > "$STATE_DIR/$(basename "$T")"
+check "corrupted marker (non-numeric) -> treated as no marker, counts from start, allow" 0 "$(payload "$T")"
 
 echo
 echo "--- Fault tolerance: malformed trailing line ---"
@@ -184,10 +220,61 @@ check "transcript_path points nowhere -> block" 2 \
   "$(jq -nc '{tool_name:"ExitPlanMode", tool_input:{plan:"x"}, transcript_path:"/nonexistent/path.jsonl"}')"
 
 echo
+echo "--- Missing / unreadable lib file ---"
+
+LIB_BACKUP=$(mktemp)
+cp "$LIB" "$LIB_BACKUP"
+rm -f "$LIB"
+T=$(new_transcript)
+check "lib file missing -> block, not a raw script error" 2 "$(payload "$T")"
+case "$ERR" in
+  *"stress-test-patterns.sh"*"missing"*) ok "block message names the missing lib file" ;;
+  *) bad "block message did not name the missing lib file: $ERR" ;;
+esac
+cp "$LIB_BACKUP" "$LIB"
+rm -f "$LIB_BACKUP"
+
+echo
+echo "--- The .local.sh extension point actually takes effect ---"
+
+mkdir -p "$(dirname "$LOCAL_OVERRIDE")"
+printf 'STRESS_TEST_MIN_DISPATCHES=1\n' > "$LOCAL_OVERRIDE"
+T=$(new_transcript "${ADVOCATE[@]}")
+check "with the floor overridden to 1, a single devil's-advocate dispatch -> allow" 0 "$(payload "$T")"
+rm -f "$LOCAL_OVERRIDE"
+
+echo
+echo "--- RIPRAP_TEST_STATE_DIR alone (without RIPRAP_TEST=1) is ignored, not honored ---"
+
+T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
+ef=$(mktemp)
+printf '%s' "$(payload "$T")" | RIPRAP_TEST_STATE_DIR="/nonexistent/bogus/dir" "$HOOK" >/dev/null 2>"$ef"
+RC=$?
+[ "$RC" = 0 ] && ok "RIPRAP_TEST_STATE_DIR without RIPRAP_TEST=1 -> real TMPDIR used, allow" \
+  || bad "RIPRAP_TEST_STATE_DIR alone changed behavior: rc=$RC $(cat "$ef")"
+rm -f "$ef"
+rm -f "${TMPDIR:-/tmp}/riprap-plan-stress-test-$(id -u)/$(basename "$T")" 2>/dev/null || true
+
+echo
+echo "--- Marker write failure: unwritable marker directory blocks rather than allows ---"
+
+RO_DIR=$(mktemp -d)
+chmod 555 "$RO_DIR"
+T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
+ef=$(mktemp)
+printf '%s' "$(payload "$T")" | RIPRAP_TEST=1 RIPRAP_TEST_STATE_DIR="$RO_DIR/sub" "$HOOK" >/dev/null 2>"$ef"
+RC=$?
+[ "$RC" = 2 ] && ok "unwritable marker directory -> block, not a silent allow" \
+  || bad "unwritable marker directory did not block: rc=$RC $(cat "$ef")"
+rm -f "$ef"
+chmod 755 "$RO_DIR"
+rm -rf "$RO_DIR"
+
+echo
 echo "--- Missing jq ---"
 
 SANDBOX=$(mktemp -d)
-for b in bash cat dirname pwd wc tail grep cksum mkdir tr printf mktemp rm; do
+for b in bash cat dirname pwd wc tail grep mkdir tr printf mktemp rm sed id basename; do
   p=$(command -v "$b" 2>/dev/null) && ln -sf "$p" "$SANDBOX/$b"
 done
 T=$(new_transcript)

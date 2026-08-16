@@ -14,7 +14,15 @@ jobs:
   guardrails:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 brings the tags with it — same reason release.yml's checkout
+      # does. bin/test runs `bin/release --changelog --check`, which reads each
+      # release's tag date via `git log`; the default shallow, tagless checkout would
+      # make every date resolve empty in CI while the committed CHANGELOG.md (built on
+      # a normal, tag-having local clone) has real ones — a permanent mismatch that is
+      # red on every PR and has nothing to do with actual drift.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # These two steps run riprap's own stack seams rather than restating what
       # they do. That is the contract riprap ships — "hooks and CI both call this,

@@ -15,6 +15,14 @@
 #   bin/release 0.5.0          again, on the merged commit: tag it, push nothing
 #   bin/release --verify       every v* tag on origin has a release behind it
 #   bin/release --verify 0.5.0 that one release is published, and correct
+#   bin/release --changelog    regenerate CHANGELOG.md from .github/releases/*.md
+#
+# --start regenerates CHANGELOG.md itself, alongside the notes it drafts or the notes
+# you already wrote by hand — both land in the same commit. The long form does not draft
+# or commit notes at all, so on that path run --changelog yourself before opening the
+# pull request. Either way `bin/test` runs `--changelog --check` on every push, so a
+# NOTES file edited after that commit without a matching regeneration fails the pull
+# request rather than shipping a changelog that quietly stopped matching what merged.
 #
 # Two runs, and the split is the point. The version files sit under CODEOWNERS-gated
 # directories, so the bump merges as a pull request; a tag cut before that merges
@@ -39,6 +47,11 @@ cd "$ROOT"
 PLUGIN_JSON="plugin/.claude-plugin/plugin.json"
 MARKET_JSON=".claude-plugin/marketplace.json"
 NOTES_DIR=".github/releases"
+CHANGELOG_FILE="CHANGELOG.md"
+
+# The line every release note opens with. Stripped when aggregating into CHANGELOG.md —
+# read once in its preamble is enough, thirty repeats of it is not "what changed".
+CHANGELOG_TAGLINE="Guardrails for Claude Code, enforced rather than suggested."
 
 # Written into a drafted notes file, and refused on the tag path while it is still
 # there. Deleting one line is the smallest act that proves a person opened the file —
@@ -56,9 +69,13 @@ bin/release <x.y.z> --finish tag the merged commit, push it, watch the publish,
                              and verify — everything after
 bin/release --verify         report every v* tag on origin with no release behind it
 bin/release --verify <x.y.z> check one release: tag, release, versions, body
+bin/release --changelog      regenerate CHANGELOG.md from .github/releases/*.md
+bin/release --changelog --check   exit 1 if CHANGELOG.md is out of date (for CI)
 
 Write .github/releases/v<x.y.z>.md first — the release workflow publishes that
-file as the body and refuses without it. --start drafts it for you to edit.
+file as the body and refuses without it. --start drafts it for you to edit, and
+regenerates CHANGELOG.md alongside it in the same commit. The long form does
+neither — on that path, run --changelog yourself before opening the pull request.
 
 The two gates are unchanged either way: a human merges the pull request, and a
 human types the command that pushes the tag.
@@ -227,6 +244,81 @@ draft_notes() {
 
   echo "📝 drafted $out from what merged. Edit it before this merges —"
   echo "   the workflow publishes it verbatim as the release body."
+}
+
+# ── --changelog: regenerate CHANGELOG.md from the release notes ─────────────
+
+# One entry's body: the tagline and $DRAFT_SENTINEL stripped by exact line match, never
+# by position. A note still carrying the sentinel — mid --start, before a human has
+# touched it — has neither a tagline as line 1 nor an **Install** heading, and a strip
+# that assumes either would corrupt it instead of passing it through unchanged.
+#
+# Truncated at **Install**: that section and the licence line after it are identical in
+# every note and belong to README.md, not to a file whose whole job is already "what
+# changed". `sed -n '/pat/q;p'` prints everything up to but not including the match,
+# using only `q`, which is POSIX and needs no GNU extension to work on both platforms
+# this script already promises to run on.
+#
+# The trailing blank line `**Install**` always leaves behind is not trimmed by a second
+# sed pass — command substitution strips every trailing newline on its own, which is a
+# real behaviour of `$( )`, not a workaround standing in for one.
+changelog_body() {
+  local file="$1" body
+  body="$(grep -Fxv -e "$CHANGELOG_TAGLINE" -e "$DRAFT_SENTINEL" "$file" |
+    sed -n '/^\*\*Install\*\*$/q;p' | sed '/./,$!d' || true)"
+  printf '%s\n' "$body"
+}
+
+# Regenerated, never hand-edited: every section comes straight from the file that is
+# also that release's published GitHub body, so there is exactly one place to write a
+# correction. `--check` is what makes that promise mean something — wired into
+# bin/test, which runs on every pull request push, so a NOTES file edited after the
+# notes commit without a matching regeneration fails CI rather than shipping a
+# changelog that quietly stopped matching what got published.
+#
+# Prints to stdout rather than writing $CHANGELOG_FILE directly, so --check can diff it
+# against the committed copy without ever touching the working tree — the same split
+# build-manifest's generate()/--check makes, and for the same reason: a check that
+# writes first and diffs after can clobber whatever was already in the file.
+changelog_content() {
+  local f base version date sorted
+
+  # v*.md, filtered to names whose version parses — a stray or malformed file in
+  # NOTES_DIR is skipped rather than aborting the whole regeneration over it.
+  sorted="$(
+    for f in "$NOTES_DIR"/v*.md; do
+      [ -e "$f" ] || continue
+      base="$(basename "$f" .md)"
+      version="${base#v}"
+      is_version "$version" || continue
+      printf '%s %s\n' "$version" "$f"
+    done | sort -rV
+  )"
+
+  {
+    echo "# Changelog"
+    echo
+    echo "One entry per tagged release, generated from [.github/releases/]($NOTES_DIR/) —"
+    echo "each file there is also that release's published GitHub release body. Edit the"
+    echo "per-version file, never this one: \`bin/release --changelog\` regenerates it, and"
+    echo "\`bin/test\` refuses a stale copy."
+
+    while IFS=' ' read -r version f; do
+      [ -n "$version" ] || continue
+      # No local tag for the version currently being drafted — not a bug, and not
+      # papered over with today's date. It reads with no date until the next
+      # regeneration, normally the next release's --start, picks up the real one.
+      date="$(git log -1 --format=%as "v$version" 2>/dev/null || true)"
+      echo
+      if [ -n "$date" ]; then
+        echo "## v$version — $date"
+      else
+        echo "## v$version"
+      fi
+      echo
+      changelog_body "$f"
+    done <<<"$sorted"
+  }
 }
 
 # Trailing whitespace and CRLF differ between what was committed and what the forge
@@ -495,6 +587,28 @@ if [ "$1" = "--verify" ]; then
   [ $# -le 2 ] || usage
   do_verify "${2:-}"
   exit $?
+fi
+
+# Ahead of VERSION="$1" below, which would otherwise swallow --changelog as a version
+# argument and fail it with a confusing "not a version" error.
+if [ "$1" = "--changelog" ]; then
+  [ $# -le 2 ] || usage
+  case "${2:-}" in
+    "") ;;
+    --check)
+      if diff -q <(changelog_content) "$CHANGELOG_FILE" >/dev/null 2>&1; then
+        echo "✅ $CHANGELOG_FILE matches .github/releases/*.md"
+        exit 0
+      fi
+      echo "❌ $CHANGELOG_FILE does not match .github/releases/*.md. Run bin/release --changelog." >&2
+      diff <(changelog_content) "$CHANGELOG_FILE" >&2 || true
+      exit 1
+      ;;
+    *) usage ;;
+  esac
+  changelog_content >"$CHANGELOG_FILE"
+  echo "✅ wrote $CHANGELOG_FILE"
+  exit 0
 fi
 
 case "$1" in -h | --help) usage ;; esac
@@ -818,14 +932,23 @@ if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
 
   # The notes go in their own commit, before the bump, so the pull request reads in the
   # order the release happened and a reviewer can see the prose apart from the numbers.
+  #
+  # CHANGELOG.md is regenerated and rides in the same commit — whether $NOTES was just
+  # auto-drafted above or was written by hand before this ran, both reach here. It will
+  # still carry $DRAFT_SENTINEL if $NOTES does; that is expected; `bin/test` refuses a
+  # merge where the two have drifted, which is what forces a re-run of --changelog once
+  # $NOTES is actually finished.
   if [ "$MODE" = start ] && ! git diff --quiet -- "$NOTES" 2>/dev/null ||
      { [ "$MODE" = start ] && [ -n "$(git ls-files --others --exclude-standard -- "$NOTES")" ]; }; then
-    git add -- "$NOTES"
+    changelog_content >"$CHANGELOG_FILE"
+    git add -- "$NOTES" "$CHANGELOG_FILE"
     git commit -q -m "Write the $TAG release notes" \
       -m "The release workflow publishes this file as the body and refuses a tag
-without one, so it lands before the bump rather than after the tag." ||
+without one, so it lands before the bump rather than after the tag.
+
+CHANGELOG.md is regenerated alongside it — bin/release --changelog." ||
       { echo "❌ could not commit $NOTES — see above." >&2; exit 1; }
-    echo "✅ committed $NOTES"
+    echo "✅ committed $NOTES and $CHANGELOG_FILE"
   fi
 
   set_version "$PLUGIN_JSON" "$VERSION"

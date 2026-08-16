@@ -405,6 +405,12 @@ write_changelog() {
   tmp="$(mktemp "$CHANGELOG_FILE.XXXXXX")"
   trap 'rm -f "$tmp"' EXIT
   changelog_content >"$tmp"
+  # mktemp creates $tmp at 0600. A same-filesystem `mv` is a rename, which carries
+  # the source inode's mode along rather than picking up the destination's —
+  # proven by running this and diffing the file's mode before and after: every
+  # write quietly took CHANGELOG.md from 644 to 600. Match every other tracked
+  # text file in this repo before the rename, not after.
+  chmod 644 "$tmp"
   mv "$tmp" "$CHANGELOG_FILE"
   trap - EXIT
 }

@@ -92,6 +92,12 @@ Two rules follow, and both are cheap:
   marker, not a section: everything above it predates the summary the session is now working
   from, so re-check it against the tree, and drop the line on the next rewrite. The rule
   against appending governs what a *session* writes.
+- **A current handoff can also trigger a `/compact` recommendation.** Once the Stop hook finds
+  the handoff already up to date, it checks how full the context window is; past roughly 60% of
+  the model's assumed budget (capped at 300k tokens either way), it recommends running
+  `/compact` directly rather than waiting for the harness's own auto-compact to pick its own
+  moment. This only ever fires once the handoff is confirmed current — recommending compaction
+  before the safety net is in place is the sequencing error the check exists to avoid.
 
 ## When the handoff is the wrong surface
 

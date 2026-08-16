@@ -37,6 +37,7 @@ namespaced	bin/hooks/riprap/claude/lint-tech-footprint.sh
 namespaced	bin/hooks/riprap/claude/session-end.sh
 namespaced	bin/hooks/riprap/git/pre-commit
 namespaced	bin/hooks/riprap/git/pre-push
+namespaced	bin/hooks/riprap/lib/context-usage.sh
 namespaced	bin/hooks/riprap/lib/example-patterns.sh
 namespaced	bin/hooks/riprap/lib/handoff-common.sh
 namespaced	bin/hooks/riprap/lib/hook-common.sh

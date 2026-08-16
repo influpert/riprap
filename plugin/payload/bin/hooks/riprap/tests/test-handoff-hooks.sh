@@ -116,6 +116,41 @@ write_handoff() {  # $1 = project, $2 = basename, $3 = branch ("" for unmarked)
   printf '%s' "$1/tmp/handoff/$2"
 }
 
+# A transcript for the context-usage checks in handoff-stop.sh. Each argument
+# after the path is one line, oldest first: "tokens:model" for a normal
+# assistant turn, "tokens:model:sidechain" for a subagent turn (must never be
+# read as the session's own usage), "synthetic" for the all-zero placeholder a
+# dropped connection or a retried turn leaves behind, or "malformed" for a torn
+# or invalid line — a real risk against a file the live session may still be
+# appending to.
+write_transcript() {  # $1 = path, then entries
+  local path="$1" spec tokens model side sidechain
+  : >"$path"
+  shift
+  for spec in "$@"; do
+    case "$spec" in
+      synthetic)
+        jq -cn '{type:"assistant", isSidechain:false, message:{model:"<synthetic>",
+                 usage:{input_tokens:0, cache_read_input_tokens:0, cache_creation_input_tokens:0}}}' \
+          >>"$path"
+        ;;
+      malformed)
+        printf '{not valid json at all\n' >>"$path"
+        ;;
+      *)
+        IFS=: read -r tokens model side <<EOF
+$spec
+EOF
+        [ "$side" = "sidechain" ] && sidechain=true || sidechain=false
+        jq -cn --argjson t "$tokens" --arg m "$model" --argjson s "$sidechain" \
+          '{type:"assistant", isSidechain:$s, message:{model:$m,
+             usage:{input_tokens:0, cache_read_input_tokens:$t, cache_creation_input_tokens:0}}}' \
+          >>"$path"
+        ;;
+    esac
+  done
+}
+
 echo "--- handoff-stop.sh: when it must stay silent ---"
 
 P=$(new_project); B=$(branch_of "$P")
@@ -216,6 +251,135 @@ write_handoff "$P/app" "$WORK" "$B" >/dev/null
 printf 'edited\n' >>"$P/app/code.txt"; touch -t "$NEW" "$P/app/code.txt"
 run_hook handoff-stop.sh "$P/app" '{}'
 assert_context_says "fires when the project root is a repo subdirectory" "code.txt"
+rm -rf "$P"
+
+echo
+echo "--- handoff-stop.sh: recommending /compact once usage is high and the handoff is fresh ---"
+
+# Thresholds are handoff-stop.sh's own: 60% of the assumed ceiling, capped at
+# 300000 tokens. For claude-sonnet-5 (1M ceiling) the cap binds, so the trigger
+# is 300000; for the 200k fallback ceiling the cap never binds and the trigger
+# is 120000.
+LOW_USAGE=50000
+HIGH_USAGE=350000
+
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "${LOW_USAGE}:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_silent "fresh handoff, usage well under the trigger"
+rm -f "$T"; rm -rf "$P"
+
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_context_says "fresh handoff, usage over the trigger, recommends /compact" "/compact"
+assert_context_says "names the handoff that is already safe" "tmp/handoff/$WORK"
+rm -f "$T"; rm -rf "$P"
+
+# The sequencing this feature exists to protect: never recommend compacting
+# before the safety net is confirmed fresh. The existing rewrite message must
+# still fire, unchanged, and must not also suggest /compact.
+P=$(new_project); B=$(branch_of "$P")
+H=$(write_handoff "$P" "$WORK" "$B")
+printf 'changed\n' >>"$P/tracked.txt"; touch -t "$NEW" "$P/tracked.txt"
+T=$(mktemp)
+write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_context_says "stale handoff still gets the rewrite message" "Rewrite it in place"
+c=$(context_of); case "$c" in
+  *"/compact"*) bad "stale handoff must not also recommend /compact: $c" ;;
+  *) ok "stale handoff never recommends /compact, even at high usage" ;;
+esac
+rm -f "$T"; rm -rf "$P"
+
+# Never asks for a first handoff, at any usage — the rule handoff-stop.sh
+# already holds for staleness holds for usage too. Untouched by this feature.
+P=$(new_project)
+T=$(mktemp)
+write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_silent "no handoff at all, even at high usage, stays quiet"
+rm -f "$T"; rm -rf "$P"
+
+# A precompact capture is not a handoff, at any usage.
+P=$(new_project)
+mkdir -p "$P/tmp/handoff"
+printf '# NOT A HANDOFF — automatic capture\n\nstuff\n' >"$P/tmp/handoff/$CAPTURE"
+T=$(mktemp)
+write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_silent "a precompact capture is not a handoff, even at high usage"
+rm -f "$T"; rm -rf "$P"
+
+# A subagent's turn must never be read as the session's own usage — it lives in
+# the same transcript but isSidechain:true, and a huge subagent turn sitting
+# last in the file must not outrank the real, low, main-thread usage before it.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "${LOW_USAGE}:claude-sonnet-5" "999999:claude-sonnet-5:sidechain"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_silent "a huge sidechain turn after the real usage does not trigger the recommendation"
+rm -f "$T"; rm -rf "$P"
+
+# A dropped connection or a retried turn leaves an all-zero <synthetic> entry
+# behind. If that were read as "current usage", a session genuinely over the
+# trigger would report 0% instead — the unsafe direction to be wrong in.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5" "synthetic"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_context_says "a trailing zero-usage entry does not mask real high usage" "/compact"
+rm -f "$T"; rm -rf "$P"
+
+# The transcript is a file the live session may still be appending to. A single
+# torn or invalid last line must not make the whole read come up empty.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5" "malformed"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_context_says "a malformed trailing line does not blank out the real usage before it" "/compact"
+rm -f "$T"; rm -rf "$P"
+
+# THE BUG THE CEILING TABLE WAS FIXED FOR: a trailing wildcard (claude-*-5*)
+# matched claude-3-5-sonnet-20241022 and claude-haiku-4-5-20251001 — real,
+# currently-shipping model IDs, both actually 200k — and would have assumed the
+# 1M ceiling for them. Guessing high is the unsafe direction: at 150000 tokens
+# (75% of the real 200k budget, over its 120000 trigger) the buggy pattern
+# would have assumed a 300000 trigger and stayed silent.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "150000:claude-3-5-sonnet-20241022"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_context_says "a dated model correctly gets the 200k fallback, not a false 1M match" "/compact"
+rm -f "$T"; rm -rf "$P"
+
+# ...and the true 5-family model genuinely gets the larger ceiling: the same
+# token count is a small fraction of 1M, so it must stay quiet.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "150000:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_silent "the true 5-family model is not nagged at the same token count"
+rm -f "$T"; rm -rf "$P"
+
+# A transcript_path that is missing or points nowhere must fail open, not
+# crash — this hook runs before the model is told anything, so any new failure
+# mode here is strictly worse than staying silent.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+run_hook handoff-stop.sh "$P" '{}'
+assert_silent "no transcript_path at all"
+run_hook handoff-stop.sh "$P" "$(jq -cn '{transcript_path:"/nonexistent/path.jsonl"}')"
+assert_silent "a transcript_path that does not exist"
 rm -rf "$P"
 
 echo

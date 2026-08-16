@@ -5,6 +5,49 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
+## v0.7.0
+
+**What you get**
+
+- 19 guardrail documents, indexed by a router loaded every session
+- 9 skills — `/riprap:reviewer`, `/riprap:handoff`, `/riprap:architect`, `/riprap:implement`,
+  `/riprap:release`, `/riprap:spec`, `/riprap:council`, `/riprap:learn`, `/riprap:branch-cleaner`
+- 11 hook registrations that block rather than advise, and a payload that lands in your
+  repository so the git hooks and the Claude hooks enforce one rule definition from a plain clone
+
+**New**
+
+- **Plan stress-testing is now enforced, not just documented.** A new `PreToolUse` hook blocks
+  `ExitPlanMode` until at least six qualifying sub-agent dispatches have happened since the last
+  passing check, one of them devil's-advocate-flavored — the rule `interaction-preferences.md`
+  already stated, now with something checking it rather than a reader's discipline under
+  pressure. It tracks dispatches via a marker file rather than fingerprinting plan text, so a
+  blocked retry's dispatches still count and a revision can't reuse an already-spent batch. The
+  marker write is atomic and fails closed: an unwritable marker directory or a missing hook
+  library now refuses the exit rather than silently letting it through.
+- **The Stop hook now recommends `/compact`, not only a fresh handoff.** Once `handoff-stop.sh`
+  has already brought the handoff current, it reads the transcript's real token usage and
+  recommends `/compact` once usage crosses 60% of a guessed model ceiling (capped at 300k tokens
+  either way) — instead of waiting for the harness's own auto-compact to pick its own moment, by
+  which point there is no turn left to write anything down first. No new hook event: it folds
+  into the existing Stop hook and reuses its freshness check.
+
+**Changed**
+
+- **`/riprap:reviewer` no longer asks each reviewer to announce its own findings cap.** The
+  prescribed closing sentence was pattern-matched as ritual — in one run, 9 of 14 reviewers
+  reported "cap reached" while under the cap, and none was genuinely truncated. Truncation is
+  now the orchestrator's own call, read from the filed-finding count, and carried into the
+  summary as an informational fact rather than a self-report that could be right by accident.
+
+**Internal**
+
+- **riprap's changelog is now generated, not hand-maintained.** The five per-tag files under
+  `.github/releases/` — one of them, v0.2.1, had gone missing — are backfilled and aggregated
+  into a root `CHANGELOG.md`. `bin/release` regenerates it on every `--start`, and `bin/test`
+  refuses a pull request where it has drifted from the notes it was built from, so it stays
+  current rather than going stale the next time a release note changes.
+
 ## v0.6.1 — 2026-08-15
 
 **Nothing you install has changed.** The plugin in v0.6.1 is byte-identical to v0.6.0 — same

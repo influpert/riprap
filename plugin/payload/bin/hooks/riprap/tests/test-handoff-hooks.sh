@@ -151,6 +151,29 @@ EOF
   done
 }
 
+# Runs handoff-stop.sh from a scratch copy of the payload, so a
+# context-usage.local.sh override resolves the same way an adopter's actually
+# does — relative to where the hook itself lives, per context-usage.sh's own
+# BASH_SOURCE-based lookup. run_hook can't exercise this: it always invokes the
+# real, in-place hook, whose override path is this repository's own, not a
+# scratch one — writing there would touch a file this suite doesn't own.
+run_hook_with_local_override() {  # $1=project dir  $2=stdin JSON  $3=.local.sh content
+  local scratch ef
+  scratch=$(mktemp -d)
+  mkdir -p "$scratch/hooks/riprap/claude" "$scratch/hooks/riprap/lib" "$scratch/hooks/lib"
+  cp "$CLAUDE_DIR/handoff-stop.sh" "$scratch/hooks/riprap/claude/"
+  cp "$CLAUDE_DIR/../lib/handoff-common.sh" "$CLAUDE_DIR/../lib/context-usage.sh" \
+    "$scratch/hooks/riprap/lib/"
+  printf '%s' "$3" >"$scratch/hooks/lib/context-usage.local.sh"
+  ef=$(mktemp)
+  OUT=$( ( cd "$1" && printf '%s' "$2" \
+    | CLAUDE_PROJECT_DIR="$1" bash "$scratch/hooks/riprap/claude/handoff-stop.sh" 2>"$ef" ) )
+  RC=$?
+  ERR=$(cat "$ef")
+  rm -f "$ef"
+  rm -rf "$scratch"
+}
+
 echo "--- handoff-stop.sh: when it must stay silent ---"
 
 P=$(new_project); B=$(branch_of "$P")
@@ -280,6 +303,26 @@ assert_context_says "fresh handoff, usage over the trigger, recommends /compact"
 assert_context_says "names the handoff that is already safe" "tmp/handoff/$WORK"
 rm -f "$T"; rm -rf "$P"
 
+# The boundary itself: claude-sonnet-5's trigger is exactly 300000 (the cap
+# binds before 60% of 1M would). One token short must stay silent; exactly at
+# it must fire — `-ge`, not `-gt`. A suite that only ever tests values far from
+# the boundary would pass just as happily with either operator.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "299999:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_silent "one token short of the trigger stays silent"
+rm -f "$T"; rm -rf "$P"
+
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "300000:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+assert_context_says "exactly at the trigger fires" "/compact"
+rm -f "$T"; rm -rf "$P"
+
 # The sequencing this feature exists to protect: never recommend compacting
 # before the safety net is confirmed fresh. The existing rewrite message must
 # still fire, unchanged, and must not also suggest /compact.
@@ -296,24 +339,11 @@ c=$(context_of); case "$c" in
 esac
 rm -f "$T"; rm -rf "$P"
 
-# Never asks for a first handoff, at any usage — the rule handoff-stop.sh
-# already holds for staleness holds for usage too. Untouched by this feature.
-P=$(new_project)
-T=$(mktemp)
-write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_silent "no handoff at all, even at high usage, stays quiet"
-rm -f "$T"; rm -rf "$P"
-
-# A precompact capture is not a handoff, at any usage.
-P=$(new_project)
-mkdir -p "$P/tmp/handoff"
-printf '# NOT A HANDOFF — automatic capture\n\nstuff\n' >"$P/tmp/handoff/$CAPTURE"
-T=$(mktemp)
-write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_silent "a precompact capture is not a handoff, even at high usage"
-rm -f "$T"; rm -rf "$P"
+# "No handoff" and "capture only" don't need their own usage-threshold cases:
+# handoff_current and handoff_is_capture both exit the hook (lines above the
+# usage check) before TRANSCRIPT is ever read, so those branches are already
+# exhaustively covered by "when it must stay silent" above regardless of usage
+# — a transcript fixture here would assert nothing the earlier cases don't.
 
 # A subagent's turn must never be read as the session's own usage — it lives in
 # the same transcript but isSidechain:true, and a huge subagent turn sitting
@@ -337,14 +367,20 @@ run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
 assert_context_says "a trailing zero-usage entry does not mask real high usage" "/compact"
 rm -f "$T"; rm -rf "$P"
 
-# The transcript is a file the live session may still be appending to. A single
-# torn or invalid last line must not make the whole read come up empty.
+# The transcript is a file the live session may still be appending to. A torn
+# or invalid line must not make the whole read come up empty — and the case
+# that actually discriminates a per-line-tolerant parse from a naive
+# `jq -c 'select(...)'` is the malformed line coming BEFORE the real entry, not
+# after: a naive parse dies on the first bad line and never reaches anything
+# past it, whereas a good line before the malformed one is already flushed
+# either way. Ordering it first is what a mutation from the tolerant parse back
+# to the naive one would actually be caught by.
 P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
-write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5" "malformed"
+write_transcript "$T" "malformed" "${HIGH_USAGE}:claude-sonnet-5"
 run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_context_says "a malformed trailing line does not blank out the real usage before it" "/compact"
+assert_context_says "a malformed line before the real entry does not blank it out" "/compact"
 rm -f "$T"; rm -rf "$P"
 
 # THE BUG THE CEILING TABLE WAS FIXED FOR: a trailing wildcard (claude-*-5*)
@@ -371,6 +407,39 @@ run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
 assert_silent "the true 5-family model is not nagged at the same token count"
 rm -f "$T"; rm -rf "$P"
 
+# The documented extension point: an adopter overriding context_usage_ceiling
+# in their own context-usage.local.sh, exercised through the real
+# BASH_SOURCE-relative resolution rather than a synthetic stand-in.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "6000:some-future-model"
+run_hook_with_local_override "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')" \
+  'context_usage_ceiling() { echo 10000; }'
+assert_context_says "a local override moves the trigger for an unrecognized model" "/compact"
+rm -f "$T"; rm -rf "$P"
+
+# A malformed override must fail open, not crash — this is the exact shape of
+# bug a leading-zero or an out-of-range value in a hand-edited override caused
+# before the numeric guard checked for both, not just non-digit characters.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
+run_hook_with_local_override "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')" \
+  'context_usage_ceiling() { echo 080000; }'
+assert_silent "a leading-zero override value fails open instead of crashing"
+rm -f "$T"; rm -rf "$P"
+
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "100:claude-sonnet-5"
+run_hook_with_local_override "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')" \
+  'context_usage_ceiling() { echo 99999999999999999999999; }'
+assert_silent "an overflowing override value fails open instead of a false trigger"
+rm -f "$T"; rm -rf "$P"
+
 # A transcript_path that is missing or points nowhere must fail open, not
 # crash — this hook runs before the model is told anything, so any new failure
 # mode here is strictly worse than staying silent.
@@ -381,6 +450,17 @@ assert_silent "no transcript_path at all"
 run_hook handoff-stop.sh "$P" "$(jq -cn '{transcript_path:"/nonexistent/path.jsonl"}')"
 assert_silent "a transcript_path that does not exist"
 rm -rf "$P"
+
+# stop_hook_active guards the usage check too, not just the staleness one — a
+# model that already got one forced continuation this turn must not get a
+# second, whichever of the two messages would otherwise have fired.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+T=$(mktemp)
+write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{stop_hook_active:true, transcript_path:$t}')"
+assert_silent "already continued once this turn, so high usage is not raised again"
+rm -f "$T"; rm -rf "$P"
 
 echo
 echo "--- handoff-precompact.sh ---"

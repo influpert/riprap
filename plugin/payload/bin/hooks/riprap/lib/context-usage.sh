@@ -26,11 +26,27 @@
 #
 # `_context_usage_tokens` is computed once here and carried on the emitted
 # object, rather than recomputed by whoever reads the result — one formula,
-# not two copies that can drift. Zero-usage entries are dropped in the same
-# pass: a `model:"<synthetic>"`, all-zero-usage line shows up after a dropped
-# connection or a retried turn, and if that were the line reported, an
-# advisory check would read a session's actual high usage as zero — the
-# unsafe direction to be wrong in.
+# not two copies that can drift. It sums `input_tokens`, `cache_read_input_tokens`
+# and `cache_creation_input_tokens` — everything the API billed as going INTO
+# this turn, i.e. the size of the context the turn was sent with. `output_tokens`
+# is deliberately excluded: it becomes part of the context for the NEXT turn,
+# not this one, so including it would double-count on the following read. The
+# lag this creates (a turn's own output isn't "seen" until the turn after) is
+# acceptable because usage only grows — the trigger still fires, just one turn
+# later than a hypothetical instant reading would.
+#
+# Zero-usage entries are dropped in the same pass: a `model:"<synthetic>"`,
+# all-zero-usage line shows up after a dropped connection or a retried turn,
+# and if that were the line reported, an advisory check would read a session's
+# actual high usage as zero — the unsafe direction to be wrong in.
+#
+# The 500-line bound is a correctness assumption as well as a performance one:
+# it assumes the most recent main-thread usage-bearing line is always within
+# the last 500 raw entries. A turn that fans out to many subagents before the
+# main thread's own final message could in principle push the real entry
+# outside that window, in which case this goes silent for a reason the caller
+# has no way to see — accepted here as comfortably rare (500 lines is dozens of
+# tool rounds) rather than solved with an unbounded read.
 context_usage_snapshot() {  # $1 = transcript path
   tail -n 500 "$1" 2>/dev/null | jq -Rc '
     fromjson? // empty
@@ -41,16 +57,6 @@ context_usage_snapshot() {  # $1 = transcript path
           + (.message.usage.cache_creation_input_tokens // 0))}
     | select(._context_usage_tokens > 0)
   ' 2>/dev/null | tail -n1
-}
-
-# The token total carried on a line context_usage_snapshot already produced.
-context_usage_tokens() {  # $1 = a context_usage_snapshot line
-  printf '%s' "$1" | jq -r '._context_usage_tokens // empty' 2>/dev/null
-}
-
-# The model name carried on a line context_usage_snapshot already produced.
-context_usage_model() {  # $1 = a context_usage_snapshot line
-  printf '%s' "$1" | jq -r '.message.model // empty' 2>/dev/null
 }
 
 # The context window to assume for a model, in tokens.

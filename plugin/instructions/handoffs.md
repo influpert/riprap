@@ -92,12 +92,26 @@ Two rules follow, and both are cheap:
   marker, not a section: everything above it predates the summary the session is now working
   from, so re-check it against the tree, and drop the line on the next rewrite. The rule
   against appending governs what a *session* writes.
-- **A current handoff can also trigger a `/compact` recommendation.** Once the Stop hook finds
-  the handoff already up to date, it checks how full the context window is; past roughly 60% of
-  the model's assumed budget (capped at 300k tokens either way), it recommends running
-  `/compact` directly rather than waiting for the harness's own auto-compact to pick its own
-  moment. This only ever fires once the handoff is confirmed current — recommending compaction
-  before the safety net is in place is the sequencing error the check exists to avoid.
+
+## Compacting proactively, once the handoff already covers it
+
+Once the Stop hook finds the handoff already up to date, it also checks how full the context
+window is; past roughly 60% of the model's assumed budget (capped at 300k tokens either way),
+it recommends running `/compact` directly rather than waiting for the harness's own
+auto-compact to pick its own moment. This only ever fires once the handoff is confirmed
+current — recommending compaction before the safety net is in place is the sequencing error
+the check exists to avoid.
+
+"Current" here means the tree: no tracked or untracked file has changed since the handoff was
+written. It does not mean every open question or piece of reasoning discussed but never
+written down is captured — that is still on the six questions in the section above, not on
+this check.
+
+There is no dedicated setting to turn this off. An adopter who wants to disable it can override
+`context_usage_ceiling()` in their own `bin/hooks/lib/context-usage.local.sh` to always return
+`0`, which the hook already treats as "no plausible ceiling" and skips silently — the same
+extension point exists for correcting the ceiling guess for a model this table doesn't
+recognize yet.
 
 ## When the handoff is the wrong surface
 

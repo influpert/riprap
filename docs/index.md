@@ -37,7 +37,8 @@ caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
 <em>from</em>. They are not what it ships. What it ships is 19 guardrail documents, nine
-skills and ten hooks — the inventory is on the <a href="reference.md">reference page</a>.</p>
+skills, ten hooks and one agent — the inventory is on the
+<a href="reference.md">reference page</a>.</p>
 
 </div>
 
@@ -118,6 +119,8 @@ skills/         /riprap:learn      /riprap:spec
                 /riprap:council    /riprap:branch-cleaner
                 /riprap:release    /riprap:reviewer
                 /riprap:handoff
+agents/         riprap:agent — a generic
+                role-based worker
 hooks/          the Claude hook registrations,
                 and the session router
 ```

@@ -1092,6 +1092,23 @@ done
 
 [ "$count" -ge 1 ] || { echo "❌ plugin/skills/ contains no skills"; exit 1; }
 
+# plugin/agents/*.md gets the same generic prose checks skills do — everything
+# that isn't specific to a SKILL.md's own contract (the stored-answers protocol,
+# the reviewer contract, never-edits, which only make sense for a skill). Flat
+# files, one per agent rather than one directory per skill, so this is its own
+# loop rather than a reuse of the one above. Zero agents is fine and not an
+# error: unlike plugin/skills/, this category is new and optional.
+agent_count=0
+for f in plugin/agents/*.md; do
+  [ -f "$f" ] || continue   # the glob matched nothing
+  name=$(basename "$f" .md)
+  agent_count=$((agent_count + 1))
+  check_doc_mentions_resolve "$name" "$f" || fail=1
+  check_class_vocabulary     "$name" "$f" || fail=1
+  check_no_pasted_tables     "$name" "$f" || fail=1
+  check_never_merges         "$name" "$f" || fail=1
+done
+
 # A skill that must exist, checked before its contract, so a rename or a bad
 # merge reds this file instead of silently retiring every assertion below.
 for name in $REQUIRED_SKILLS; do
@@ -1112,5 +1129,7 @@ if [ "$fail" -eq 0 ]; then
   echo "   the reviewer is gone from the document it left, and no skill instructs a"
   echo "   merge or an approval. Prose that restates a rule in its own words is not"
   echo "   detectable here — see the header."
+  echo "   $agent_count agent(s) in plugin/agents/ get the same four checks, minus the"
+  echo "   SKILL.md-specific contract."
 fi
 exit "$fail"

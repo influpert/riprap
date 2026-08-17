@@ -75,12 +75,13 @@ skill can shrink.
 
 ## The rules that are easy to get wrong here
 
-**The split between `plugin/` and `plugin/payload/` is not arbitrary.** Prose, skills and
-hook *registration* live in the plugin, where the harness namespaces them and no adopter
-file is touched. Every executable and every pattern library lives in the payload, because
-the git hooks share those libraries and git hooks run for teammates who never installed the
-plugin. A library in a version-stamped, user-scoped plugin cache is simply missing for half
-the team. One rule definition, two enforcers, both reachable from a plain clone.
+**The split between `plugin/` and `plugin/payload/` is not arbitrary.** Prose, skills,
+agents and hook *registration* live in the plugin, where the harness namespaces them and
+no adopter file is touched. Every executable and every pattern library lives in the
+payload, because the git hooks share those libraries and git hooks run for teammates who
+never installed the plugin. A library in a version-stamped, user-scoped plugin cache is
+simply missing for half the team. One rule definition, two enforcers, both reachable from
+a plain clone.
 
 **`plugin/payload/MANIFEST` is the allowlist, and it is generated.** The installer copies
 only what it lists and refuses anything unlisted. After adding or removing a file under
@@ -102,19 +103,21 @@ source paths and identifiers that no text scrubber can see inside, and a recursi
 happily deliver one into someone's public repo. `bin/scrub-check` refuses non-text files
 outright.
 
-**`plugin/instructions/` and `plugin/skills/` are markdown only.** Every executable lives
-under `plugin/hooks/`, `plugin/scripts/`, or `plugin/payload/bin/`. CI enforces this with
-one `find`.
+**`plugin/instructions/`, `plugin/skills/` and `plugin/agents/` are markdown only.** Every
+executable lives under `plugin/hooks/`, `plugin/scripts/`, or `plugin/payload/bin/`. CI
+enforces this with one `find`.
 
-**No shipped skill carries a settings block.** `plugin/skills/` is replaced wholesale on
-`/plugin update`, so a value an adopter edits into a `SKILL.md` is reverted the next time the
-plugin moves — and the skill goes on behaving as though it were still set, which is worse
-than never having offered the setting. Whatever a skill needs to know about the project it
-works out first, asks once with `AskUserQuestion` offering that as the default, writes into
-the adopter's own `.claude/instructions/`, and reads back on every later run. A stored answer
+**No shipped skill or agent carries a settings block.** `plugin/skills/` and
+`plugin/agents/` are both replaced wholesale on `/plugin update`, so a value an adopter
+edits into a `SKILL.md` or an agent's frontmatter is reverted the next time the plugin
+moves — and it goes on behaving as though it were still set, which is worse than never
+having offered the setting. Whatever a skill needs to know about the project it works out
+first, asks once with `AskUserQuestion` offering that as the default, writes into the
+adopter's own `.claude/instructions/`, and reads back on every later run. A stored answer
 that no longer resolves gets re-asked, never guessed around — otherwise storing answers just
 relocates the stale-setting bug. CI rejects a `## Configuration` heading under
-`plugin/skills/`, because this is a rule about a file nobody re-reads once it works.
+`plugin/skills/` or `plugin/agents/`, because this is a rule about a file nobody re-reads
+once it works.
 
 **Two hook families, two exit codes.** `plugin/payload/bin/hooks/riprap/claude/` blocks a
 tool call with exit 2 and its message must go to **stderr**;

@@ -5,7 +5,35 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.7.0
+## v0.8.0
+
+**What you get**
+
+- 19 guardrail documents, indexed by a router loaded every session
+- 9 skills — `/riprap:reviewer`, `/riprap:handoff`, `/riprap:architect`, `/riprap:implement`,
+  `/riprap:release`, `/riprap:spec`, `/riprap:council`, `/riprap:learn`, `/riprap:branch-cleaner`
+- `riprap:agent` — a generic role-based worker subagent
+- 11 hook registrations that block rather than advise, and a payload that lands in your
+  repository so the git hooks and the Claude hooks enforce one rule definition from a plain clone
+
+**New**
+
+- **A generic role-based worker subagent, `riprap:agent`.** Give it a task with a stated role —
+  architect, developer, reviewer, release — and it maps that role to the matching riprap skill
+  and invokes it, rather than every caller needing to know riprap's skill names by hand.
+  Registered automatically the same way `plugin/skills/` is: no wiring required. It stops short
+  of `riprap:release`'s two human-only acts — merging the version-bump pull request and running
+  the publish step — so dispatching it unattended can open a release PR but never ship one.
+
+**Internal**
+
+- **`plugin/agents/` now has the same CI and tooling coverage `plugin/skills/` and
+  `plugin/instructions/` already had.** Markdown-only enforcement, a namespacing and
+  self-description check, and the skill-agnostic prose checks in `bin/check-skills` all now run
+  over agent definitions too, so a second agent gets the same guardrails the first one needed
+  reviewed in by hand.
+
+## v0.7.0 — 2026-08-16
 
 **What you get**
 

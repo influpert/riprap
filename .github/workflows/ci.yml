@@ -42,11 +42,11 @@ jobs:
       - name: Test
         run: bin/test
 
-      # The plugin ships prose and skills; every executable is in the payload,
-      # where the project can read it. One find keeps that true.
+      # The plugin ships prose, skills and agents; every executable is in the
+      # payload, where the project can read it. One find keeps that true.
       - name: Prose and scripts stay apart
         run: |
-          found=$(find plugin/instructions plugin/skills -type f ! -name '*.md')
+          found=$(find plugin/instructions plugin/skills plugin/agents -type f ! -name '*.md')
           if [ -n "$found" ]; then echo "non-markdown in plugin prose:"; echo "$found"; exit 1; fi
 
       - name: Plugin metadata is valid JSON
@@ -438,6 +438,42 @@ jobs:
             done < <(find "$d" -name '*.md')
           done
           [ "$fail" -eq 0 ] && echo "✅ skills namespaced"
+          exit "$fail"
+
+      # plugin/agents/ ships wholesale on update exactly like plugin/skills/ does,
+      # so the same two invariants apply: the frontmatter is self-describing, and
+      # nothing in it is a settings block an adopter could edit and lose. Agents
+      # are flat files rather than one directory per skill, so name: agrees with
+      # the filename rather than a directory, and this is a new, first-cut check —
+      # plugin/agents/ had no coverage at all before the agent it now checks.
+      #
+      # An agent's skills: list is a preload hint, not an access-control
+      # allowlist (a `Skill` call still reaches any skill regardless), but a name
+      # in it that no longer resolves is still worth catching before an adopter
+      # hits it.
+      - name: Agents are namespaced and self-describing
+        run: |
+          fail=0
+          for f in plugin/agents/*.md; do
+            [ -f "$f" ] || continue   # the glob matched nothing
+            n=$(basename "$f" .md)
+            grep -q "^name: $n$" "$f" || {
+              echo "❌ $f: name: does not match its filename"; fail=1; }
+            if grep -qiE '^#+[[:space:]]+(configuration|config|settings)\b' "$f"; then
+              echo "❌ $f has a settings block; ask once and store it in the project"; fail=1
+            fi
+            while IFS= read -r k; do
+              [ -n "$k" ] || continue
+              [ -d "plugin/skills/${k#riprap:}" ] || {
+                echo "❌ $f lists $k under skills:, which does not resolve to a shipped skill"
+                fail=1; }
+            done < <(awk '
+              /^skills:$/ { insk = 1; next }
+              insk && /^  - / { sub(/^  - /, ""); print; next }
+              insk { insk = 0 }
+            ' "$f")
+          done
+          [ "$fail" -eq 0 ] && echo "✅ agents namespaced"
           exit "$fail"
 
       # The naming check above proves CLAUDE.md mentions every skill. It cannot prove

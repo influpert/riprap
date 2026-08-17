@@ -6,13 +6,14 @@ lede: >-
   it before installing anything.
 description: >-
   The complete riprap catalogue: 19 guardrail documents, nine skills, ten hook
-  registrations, four stack seams, and everything the installer writes into a repository.
+  registrations, one agent, four stack seams, and everything the installer writes into a
+  repository.
 ---
 
-riprap is two halves. The plugin carries **19 guardrail documents**, **nine skills** and
-**ten hook registrations**, and puts no file in your repository. `/riprap:install` adds the
-half that has to live in the repo: the guardrail scripts, their shared pattern libraries,
-the git hooks, and the four stack commands the hooks call.
+riprap is two halves. The plugin carries **19 guardrail documents**, **nine skills**,
+**ten hook registrations** and **one agent**, and puts no file in your repository.
+`/riprap:install` adds the half that has to live in the repo: the guardrail scripts,
+their shared pattern libraries, the git hooks, and the four stack commands the hooks call.
 
 Nothing on this page needs an installation to read. That is the point of it — deciding
 whether to hand a tool write access to your repository is easier when you can see the
@@ -121,6 +122,19 @@ plugin updates.
 
 Fuller descriptions, and what each one costs you in context, are on
 [what riprap tells the model](rules.md).
+
+## The agent
+
+Namespaced the same way skills are, and discovered the same way: nothing to configure,
+nothing to install separately.
+
+- **`riprap:agent`** — a generic role-based worker, for dispatching a task tagged with a
+  role (architect, developer, reviewer, release) without naming the skill directly. It
+  maps the role to the matching skill and follows that skill's process exactly. For
+  `release`, it also checks for in-flight pull requests first, and never performs the
+  skill's own two human-only acts — merging the version-bump pull request, or running the
+  publish step.
+{: .doc-links}
 
 ## What is enforced
 

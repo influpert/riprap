@@ -103,6 +103,7 @@ skills/           /riprap:learn  /riprap:spec  /riprap:architect
                   /riprap:implement  /riprap:council
                   /riprap:branch-cleaner  /riprap:release  /riprap:reviewer
                   /riprap:handoff
+agents/           riprap:agent — a generic role-based worker
 hooks/            the Claude hook registrations, and the session router
 ```
 

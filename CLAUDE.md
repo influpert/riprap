@@ -5,7 +5,7 @@ riprap ships to projects, those are in [plugin/instructions/](plugin/instruction
 
 ## What this repo is
 
-riprap is a Claude Code plugin. Three things must not be confused:
+riprap is a shared Claude Code and Codex plugin. Three things must not be confused:
 
 | | What it is |
 |---|---|
@@ -56,6 +56,7 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 
 | Skill | For |
 |---|---|
+| `/riprap:install` | Installing or refreshing the repository-side payload. **Do not run it in riprap itself**; this repository develops the payload but does not adopt it. |
 | `/riprap:release` | Cutting a release. See **Cutting a release** below for what is specific to riprap. |
 | `/riprap:branch-cleaner` | Pruning merged and stale branches, and triaging quiet pull requests. |
 | `/riprap:learn` | Recording what a session taught. **Read the note in the answers file first** — this skill's central rule inverts here. |
@@ -66,7 +67,7 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:reviewer` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
 | `/riprap:handoff` | Writing the handoff that carries work across a lost context, or resuming from one. Its answers file says what a handoff about `plugin/` must carry that one about an ordinary repository need not. |
 
-**riprap's answers to its own skills live in [.claude/instructions/riprap-skills.md](.claude/instructions/riprap-skills.md).**
+**riprap's answers to its own skills live in [.riprap/instructions/riprap-skills.md](.riprap/instructions/riprap-skills.md).**
 The skills that store answers read that file before asking anything, so it is what stops them
 re-interviewing this repository every run. It also carries the corrections for `learn` and
 `spec` — they are there rather than here because a skill is licensed to rewrite this file
@@ -112,8 +113,8 @@ enforces this with one `find`.
 edits into a `SKILL.md` or an agent's frontmatter is reverted the next time the plugin
 moves — and it goes on behaving as though it were still set, which is worse than never
 having offered the setting. Whatever a skill needs to know about the project it works out
-first, asks once with `AskUserQuestion` offering that as the default, writes into the
-adopter's own `.claude/instructions/`, and reads back on every later run. A stored answer
+first, asks once with the host's structured choice UI offering that as the default, writes
+into the adopter's own `.riprap/instructions/`, and reads back on every later run. A stored answer
 that no longer resolves gets re-asked, never guessed around — otherwise storing answers just
 relocates the stale-setting bug. CI rejects a `## Configuration` heading under
 `plugin/skills/` or `plugin/agents/`, because this is a rule about a file nobody re-reads
@@ -190,7 +191,7 @@ The long form still works and is what to reach for when something has gone sidew
 it pushes nothing, so its tag stays local and deletable:
 
 ```bash
-bin/release 0.5.0                    # both version files and a commit — no tag yet
+bin/release 0.5.0                    # all version files and a commit — no tag yet
 # merge that, then on the merged commit:
 bin/release 0.5.0                    # only tags
 git push origin v0.5.0               # publishes
@@ -198,7 +199,7 @@ bin/release --verify 0.5.0           # confirms it actually published
 ```
 
 **Cutting a release goes through `/riprap:release`.** It reads riprap's answers out of
-`.claude/instructions/riprap-skills.md` before it asks anything, and it carries the
+`.riprap/instructions/riprap-skills.md` before it asks anything, and it carries the
 reasoning — why the tag belongs on the commit that merged, why a published tag is never
 moved, why a green pipeline is not a finished release. None of that is repeated here. What
 is below is only what is true of riprap and of nowhere else.

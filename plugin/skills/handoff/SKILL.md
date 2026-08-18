@@ -5,6 +5,12 @@ description: Write or update the handoff document that lets a piece of work surv
 
 # Handoff
 
+## Shared guardrails
+
+Before starting, check whether riprap's router is already in context. If not, read
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
+so this supplies the same shared rules. Follow the router's document links on demand.
+
 Write down what only this session knows, before the session is what gets lost.
 
 **The reasoning is the perishable part.** The diff survives, the branch survives, the commits

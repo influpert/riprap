@@ -279,7 +279,7 @@ The one-line announcement costs nothing and buys a history shaped like the work.
 
 ## Capturing feedback
 
-**When corrected, write the correction into `.claude/instructions/` in the same turn** —
+**When corrected, write the correction into `.riprap/instructions/` in the same turn** —
 not at the end of the session, not in a later cleanup pass. The specifics that make a rule
 bind are gone by then, and what survives is a vague version that does not.
 
@@ -288,7 +288,7 @@ Where it goes depends on what kind of thing it is:
 | Kind | Home | Framing |
 |---|---|---|
 | How you should behave, anywhere | Memory | Personal: "how I should behave" |
-| How code in *this* repo is written | `.claude/instructions/<topic>.md` | Project: "how code in this repo is written" |
+| How code in *this* repo is written | `.riprap/instructions/<topic>.md` | Project: "how code in this repo is written" |
 
 The distinction matters because the second kind has to survive you. A project rule kept as
 a personal preference is invisible to the next reader and to your next session; a personal
@@ -296,7 +296,7 @@ preference written into the repo's instructions becomes a rule others must obey 
 knowing why.
 
 New rules take the shape in [guardrail-template.md](guardrail-template.md) and get
-registered in CLAUDE.md's index per [project-standards.md](project-standards.md).
+registered in `CLAUDE.md` or `AGENTS.md` per [project-standards.md](project-standards.md).
 
 ---
 

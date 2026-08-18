@@ -5,6 +5,12 @@ description: Prune merged and stale Git branches and triage pull requests that h
 
 # Branch Cleaner
 
+## Shared guardrails
+
+Before starting, check whether riprap's router is already in context. If not, read
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
+so this supplies the same shared rules. Follow the router's document links on demand.
+
 Prune merged and stale Git branches, and report on pull requests that have gone
 quiet, so the branch list stays readable.
 
@@ -30,11 +36,14 @@ something it was told to keep. An answer stored in the project survives, and is 
 only kind that does.
 
 **1. Read the stored answers first.** Look for a `## riprap:branch-cleaner` section in the
-project's `.claude/instructions/riprap-skills.md`, and in `CLAUDE.md`. If it is
+project's `.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is
 there, say what you found and go straight to the steps. Do not ask again — a skill
 that re-interrogates the user every run trains them to answer without reading.
+If the neutral file is absent, read `.claude/instructions/riprap-skills.md` or
+`.codex/instructions/riprap-skills.md` for migration, then the root file. Neutral guidance wins;
+write every new or changed answer only to `.riprap/instructions/riprap-skills.md`.
 
-**2. Only if there is none, ask — once — with `AskUserQuestion`.** Work out the
+**2. Only if there is none, ask — once — with the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex).** Work out the
 likely answer first and offer it as the recommended option, so the ordinary case is
 one keystroke rather than a typed branch name:
 
@@ -50,7 +59,7 @@ Ask two questions: which branch work merges into, and which branches must never 
 deleted. Offer the detected default first, marked as recommended.
 
 **3. Write the answers down**, so the next run does not ask. Append to the
-project's `.claude/instructions/riprap-skills.md`, creating it if absent:
+project's `.riprap/instructions/riprap-skills.md`, creating it if absent:
 
 ```markdown
 ## riprap:branch-cleaner
@@ -64,8 +73,8 @@ exactly, so a stored `release/*` protects nothing and every branch it was meant 
 cover is offered for deletion. If a project protects a whole family of branches, store
 the names it has today and re-ask when the list changes.
 
-If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that
-does. The instructions file is the record; `CLAUDE.md` is what makes it findable.
+If the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) does not already point at `.riprap/instructions/`, add one line that
+does. The instructions file is the record; the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) is what makes it findable.
 
 **4. Re-ask when a stored answer stops resolving.** If the stored base branch no
 longer exists, say so and ask again rather than falling back to a guess — a stale
@@ -126,7 +135,7 @@ between a stale default and a deletion list.
    If it fails, stop and ask which branch work merges into. Do not guess, and do
    not fall back to another name — a wrong base makes "merged" meaningless and
    every subsequent answer unsafe. **Write the new answer back** to
-   `.claude/instructions/riprap-skills.md`, replacing the stale one; an answer that is
+   `.riprap/instructions/riprap-skills.md`, replacing the stale one; an answer that is
    re-asked every run because nobody updated the record is not a stored answer.
 
 2. **Work in an isolated worktree (optional)**

@@ -55,7 +55,7 @@ would be filtering something that has already been said.
 
 ## The four layers
 
-1. **The document** — `.claude/instructions/<topic>.md`: the rule, why it exists, the
+1. **The document** — `.riprap/instructions/<topic>.md`: the rule, why it exists, the
    correct usage, and the exceptions.
 2. **A pre-commit check** — a block in `bin/hooks/git/pre-commit` scanning staged
    additions, emitting `file:line` violations, exiting 1.
@@ -63,6 +63,10 @@ would be filtering something that has already been said.
    at edit time rather than commit time, exiting 2 with the reason on stderr.
 4. **One shared pattern library** — `bin/hooks/lib/<topic>-patterns.sh`, holding the
    patterns *and* the allow-list, sourced by both hooks above.
+
+Claude Code supports all four layers. Codex's native plugin contract does not expose the
+PreToolUse lifecycle hook, so Codex uses the document, git check, and shared library; riprap
+does not rewrite global Codex configuration to pretend otherwise.
 
 Those are the paths for a rule *you* write. riprap's own live one level down, under
 `bin/hooks/riprap/`, which is replaced wholesale on every install — so nothing you write

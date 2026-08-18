@@ -5,6 +5,12 @@ description: Build an approved plan — tests first, three review gates with a c
 
 # Implement
 
+## Shared guardrails
+
+Before starting, check whether riprap's router is already in context. If not, read
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
+so this supplies the same shared rules. Follow the router's document links on demand.
+
 Turn an approved plan into a reviewed pull request, and stop three times on the way to be told
 you are wrong.
 
@@ -98,10 +104,13 @@ the plugin updates, so a value set here is reverted the next time it moves — a
 quietly lost the project's test command reports every run as verified having run nothing.
 
 **1. Read the stored answers first.** Look for a `## riprap:implement` section in the project's
-`.claude/instructions/riprap-skills.md`, and in `CLAUDE.md`. If it is there, say what you found
+`.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is there, say what you found
 and go straight to the steps — do not ask again.
+If the neutral file is absent, read `.claude/instructions/riprap-skills.md` or
+`.codex/instructions/riprap-skills.md` for migration, then the root file. Neutral guidance wins;
+write every new or changed answer only to `.riprap/instructions/riprap-skills.md`.
 
-**2. Only if there is none, ask — once — with `AskUserQuestion`.** Work each answer out first and
+**2. Only if there is none, ask — once — with the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex).** Work each answer out first and
 offer it as the recommended option:
 
 ```bash
@@ -145,7 +154,7 @@ That last one is not a failure case. This skill has to work in a project where n
 `/riprap:architect` run has ever happened.
 
 **3. Write the answers down**, so the next run does not ask. Append to the project's
-`.claude/instructions/riprap-skills.md`, creating it if absent:
+`.riprap/instructions/riprap-skills.md`, creating it if absent:
 
 ```markdown
 ## riprap:implement
@@ -161,7 +170,7 @@ That last one is not a failure case. This skill has to work in a project where n
 rewritten whenever an answer stops resolving, and a fact recorded outside this list is dropped by
 that rewrite without anything saying so.
 
-If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that does.
+If the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) does not already point at `.riprap/instructions/`, add one line that does.
 
 **4. Re-ask when a stored answer stops resolving** — a renamed base branch, a test command that
 moved, a plans path nothing writes to any more, an isolation level whose tooling is gone. A stale
@@ -420,7 +429,7 @@ landed, and *offer* `/riprap:branch-cleaner` rather than running it.
 
 **Each gate: present, then ask.** Present the findings grouped by the classes
 interaction-preferences.md defines, each carrying your proposed disposition; then one
-`AskUserQuestion` with the recommended option first — fix everything at the blocking tier and
+the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex) with the recommended option first — fix everything at the blocking tier and
 proceed · fix the lesser findings too, naming what that adds · proceed with these named items
 outstanding · stop, this needs a different plan. Gate 1 omits the third, per step 4.
 

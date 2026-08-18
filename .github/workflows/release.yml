@@ -58,7 +58,7 @@ jobs:
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "Releasing $TAG ($(git rev-parse --short "$TAG^{commit}"))"
 
-      # The two version files are already checked against each other on every push. What
+      # The version files are already checked against each other on every push. What
       # nothing checked is either of them against the tag — and that is the pair that has to
       # agree for `/plugin install` to deliver what the release page advertises. A v0.4.0
       # release built from a tree still saying 0.3.0 installs as 0.3.0 in every adopting
@@ -68,14 +68,23 @@ jobs:
           set -euo pipefail
           want="${TAG#v}"
           plugin=$(git show "$TAG:plugin/.claude-plugin/plugin.json" | jq -r '.version')
+          codex=$(git show "$TAG:plugin/.codex-plugin/plugin.json" | jq -r '.version')
           market=$(git show "$TAG:.claude-plugin/marketplace.json" | jq -r '.metadata.version')
-          for got in "$plugin:plugin.json" "$market:marketplace.json"; do
+          for got in "$plugin:plugin.json" "$codex:codex-plugin.json" "$market:marketplace.json"; do
             if [ "${got%%:*}" != "$want" ]; then
               echo "::error::${got#*:} says ${got%%:*}, tag says $want"
               exit 1
             fi
           done
-          echo "Both version files say $want"
+          for field in name description homepage repository author license keywords; do
+            claude=$(git show "$TAG:plugin/.claude-plugin/plugin.json" | jq -cS ".$field")
+            codex=$(git show "$TAG:plugin/.codex-plugin/plugin.json" | jq -cS ".$field")
+            if [ "$claude" != "$codex" ]; then
+              echo "::error::Claude and Codex manifests disagree on $field"
+              exit 1
+            fi
+          done
+          echo "All version files say $want"
 
       # Fail rather than fall back to an empty or auto-generated body. A release published
       # with no notes cannot be un-published without deleting it, and the commit subjects a

@@ -5,6 +5,12 @@ description: Cut a release — verify the build is green, choose the version, dr
 
 # Release
 
+## Shared guardrails
+
+Before starting, check whether riprap's router is already in context. If not, read
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
+so this supplies the same shared rules. Follow the router's document links on demand.
+
 Cut a release and then prove it happened.
 
 Publishing is two acts that nothing holds together: something gets tagged, and
@@ -32,10 +38,13 @@ moves — and a release skill that has quietly lost its base branch tags the wro
 commit. An answer stored in the project survives, and is the only kind that does.
 
 **1. Read the stored answers first.** Look for a `## riprap:release` section in the
-project's `.claude/instructions/riprap-skills.md`, and in `CLAUDE.md`. If it is there,
+project's `.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is there,
 say what you found and go straight to the steps — do not ask again.
+If the neutral file is absent, read `.claude/instructions/riprap-skills.md` or
+`.codex/instructions/riprap-skills.md` for migration, then the root file. Neutral guidance wins;
+write every new or changed answer only to `.riprap/instructions/riprap-skills.md`.
 
-**2. Only if there is none, ask — once — with `AskUserQuestion`.** Work each answer
+**2. Only if there is none, ask — once — with the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex).** Work each answer
 out first and offer it as the recommended option, so the ordinary case is a
 confirmation rather than a typed path:
 
@@ -102,7 +111,7 @@ workflow where there is none and the release is tagged, announced, and never act
 published. Ask rather than infer, even when a manifest makes the registry obvious.
 
 **3. Write the answers down**, so the next run does not ask. Append to the project's
-`.claude/instructions/riprap-skills.md`, creating it if absent:
+`.riprap/instructions/riprap-skills.md`, creating it if absent:
 
 ```markdown
 ## riprap:release
@@ -120,16 +129,16 @@ rewritten whenever an answer stops resolving, and a fact recorded outside this l
 dropped by that rewrite without anything saying so. The next release is what finds out,
 and by then it has already tagged.
 
-If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that
-does. The instructions file is the record; `CLAUDE.md` is what makes it findable.
+If the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) does not already point at `.riprap/instructions/`, add one line that
+does. The instructions file is the record; the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) is what makes it findable.
 
 **4. Re-ask when a stored answer stops resolving** — a version file that no longer
 exists, a branch that was renamed. Say so and ask again rather than guessing. A stale
 stored answer is exactly as dangerous as a stale setting in a file, and this is the one
 thing storing answers could otherwise make worse.
 
-Where the two sources disagree, `.claude/instructions/riprap-skills.md` wins and
-`CLAUDE.md` gets corrected to point at it. One record, one place to change it.
+Where the two sources disagree, `.riprap/instructions/riprap-skills.md` wins and
+the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) gets corrected to point at it. One record, one place to change it.
 
 Report the answers back before going further, the way this plugin's other skills report
 their whole plan first. Then bind them for the run — real values, not placeholders — and

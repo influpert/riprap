@@ -116,7 +116,7 @@ design inside it. Look in this order, and stop at the first that answers:
 1. **A design system the user has built or defined** — on Claude Design, or on their
    preferred tool. This is the authority: its tokens, components and rules are the
    vocabulary, and the mockup is assembled from them rather than drawn beside them.
-2. **The project's own instructions and config** — `.claude/instructions/`, a style guide,
+2. **The project's own instructions and config** — `.riprap/instructions/`, a style guide,
    a tokens or theme file, a brand doc. Where a project doc and this one disagree, the
    project doc wins.
 3. **The product as it already exists.** Read the code for the visual identity the product

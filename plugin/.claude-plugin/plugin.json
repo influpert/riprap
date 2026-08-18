@@ -1,6 +1,6 @@
 {
   "name": "riprap",
-  "description": "Baseline engineering guardrails for Claude Code, enforced rather than suggested.",
+  "description": "Baseline engineering guardrails for Claude Code and Codex, enforced rather than suggested.",
   "version": "0.8.0",
   "homepage": "https://riprap.dev",
   "repository": "https://github.com/influpert/riprap",

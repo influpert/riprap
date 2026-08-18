@@ -1,7 +1,6 @@
 # riprap
 
-Guardrails, conventions, and enforcement for projects built with
-[Claude Code](https://claude.com/claude-code).
+Guardrails, conventions, and enforcement for projects built with Claude Code or Codex.
 
 > **Every rule in riprap was earned in production.**
 >
@@ -44,7 +43,9 @@ This is what separates riprap from a list of things that sound sensible:
 
 ## Install
 
-riprap is a Claude Code plugin. There is nothing to clone.
+riprap is one plugin for Claude Code and Codex. There is nothing to clone.
+
+Claude Code:
 
 ```
 /plugin marketplace add influpert/riprap
@@ -52,10 +53,17 @@ riprap is a Claude Code plugin. There is nothing to clone.
 /riprap:install
 ```
 
-The first two commands give you the guardrail documents, the nine skills, and the Claude
-hooks — none of which put a file in your repository. `/riprap:install` adds the half that
-has to live there: the guardrail scripts, their pattern libraries, the git hooks, and the
-four stack commands the hooks call.
+Codex CLI:
+
+```
+codex plugin marketplace add https://github.com/influpert/riprap.git
+codex plugin add riprap@influpert
+```
+
+Then ask Codex to run `/riprap:install` from the repository root. Both hosts install the
+same ten skills, worker agent, and payload workflow. Claude Code also loads riprap's native
+lifecycle hooks; Codex relies on its native skills plus the repository-side git hooks and
+does not mutate user-level Codex configuration.
 
 Run `/riprap:install` again any time. It is the update path.
 
@@ -64,10 +72,10 @@ are at [riprap.dev/install/](https://riprap.dev/install/).
 
 ### What riprap will and will not touch in your repo
 
-**It never touches your `CLAUDE.md` or your `.claude/settings.json`.** The documents reach
-the model through a SessionStart hook and the skills are namespaced by the harness as
-`/riprap:learn` and friends, so there is nothing to merge and nothing to collide with. A
-repo with its own `/learn` keeps it.
+**Installation never touches `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, or global
+Codex configuration.** A skill writes project guidance only when its workflow calls for a
+persistent answer, under `.riprap/instructions/`, and links it from the active host's root
+instruction file. A repository with its own `/learn` keeps it.
 
 What lands on disk is one of two tiers:
 
@@ -97,14 +105,14 @@ Improvements flow back as ordinary pull requests.
 **From the plugin** — outside your repo, nothing to maintain:
 
 ```
-instructions/     19 guardrail documents, indexed by task. A router is injected each
-                  session; the rest are read on demand.
+instructions/     19 guardrail documents, indexed by task. Claude injects the router;
+                  Codex skills read the same documents on demand.
 skills/           /riprap:learn  /riprap:spec  /riprap:architect
                   /riprap:implement  /riprap:council
                   /riprap:branch-cleaner  /riprap:release  /riprap:reviewer
-                  /riprap:handoff
+                  /riprap:handoff  /riprap:install
 agents/           riprap:agent — a generic role-based worker
-hooks/            the Claude hook registrations, and the session router
+hooks/            Claude lifecycle hooks; repository git hooks are shared
 ```
 
 Every document, skill and hook is catalogued at
@@ -162,14 +170,14 @@ document shape.
 
 ## Behavioral rules
 
-Seven, injected into context at the start of every fresh session — without a line being added to
-your `CLAUDE.md`:
+Seven. Claude Code injects them at session start; Codex skills apply the same router when invoked.
+Neither installation path writes them into `CLAUDE.md` or `AGENTS.md`:
 
 | Rule | What it does |
 |---|---|
 | **Plan first** | Plan before any 3+ step or architectural task. If work goes sideways, stop and re-plan rather than pushing through. |
 | **Use subagents** | Offload research and parallel analysis, one task each, to keep the main context clean. |
-| **Capture corrections** | After any correction, write the lesson into `.claude/instructions/` so it outlives the session. |
+| **Capture corrections** | After any correction, write the lesson into `.riprap/instructions/` so it outlives the session. |
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |
 | **Prefer the simpler solution** | When two designs both work, ship the one with less code. Add structure at the second occurrence, not in anticipation of one. |
 | **Fix bugs autonomously** | Given a failing test or a red CI run, diagnose and fix it without a round trip. |

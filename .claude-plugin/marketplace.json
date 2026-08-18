@@ -5,13 +5,13 @@
     "url": "https://riprap.dev"
   },
   "metadata": {
-    "description": "Engineering guardrails for Claude Code, enforced rather than suggested.",
+    "description": "Engineering guardrails for Claude Code and Codex, enforced rather than suggested.",
     "version": "0.8.0"
   },
   "plugins": [
     {
       "name": "riprap",
-      "description": "Baseline engineering guardrails for Claude Code: instruction docs loaded every session, nine skills, and hooks that block rather than advise. Run /riprap:install to add the repo-side half — git hooks and the stack seams they call.",
+      "description": "Baseline engineering guardrails for Claude Code and Codex: ten shared skills, a worker agent, repository git enforcement, and native Claude lifecycle hooks. Run /riprap:install to add the repo-side half.",
       "source": "./plugin",
       "homepage": "https://riprap.dev"
     }

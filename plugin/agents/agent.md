@@ -31,8 +31,9 @@ matched by hand.
 Checked before the skill is invoked, and can turn step 3's "invoke" into "stop instead" —
 see below.
 
-- **release**: resolve the release branch the way `riprap:release` itself would — its
-  stored answer in `.claude/instructions/riprap-skills.md`, or ask once — then check for
+- **release**: resolve the release branch the way `riprap:release` itself would — first its
+  stored answer in `.riprap/instructions/riprap-skills.md`, then the active host's legacy
+  `.claude/instructions/` or `.codex/instructions/` answer during migration, or ask once — then check for
   in-flight pull requests against it: open, not yet merged, e.g. `gh pr list --base
   <release-branch> --state open`. Treat a failed or unreadable check (`gh` not
   authenticated, a network error, output you can't parse as a clean list) the same as "PRs

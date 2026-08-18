@@ -37,6 +37,15 @@ actual_skills=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d -exec basenam
 [ -f plugin/skills/install/SKILL.md ] || problem "shared install skill is missing"
 [ ! -e plugin/commands/install.md ] || problem "Claude-only install command still duplicates the shared skill"
 
+actual_agents=$(find plugin/agents -mindepth 1 -maxdepth 1 -type f -name '*.md' | wc -l | tr -d ' ')
+[ "$actual_agents" = 1 ] && [ -f plugin/agents/agent.md ] ||
+  problem "Codex must discover exactly the shared riprap worker agent"
+
+for skill in plugin/skills/*/SKILL.md; do
+  grep -qF '${CLAUDE_PLUGIN_ROOT}/instructions/README.md' "$skill" ||
+    problem "${skill%/SKILL.md} does not load shared guardrails when the router is absent"
+done
+
 for mapping in architect implement reviewer release; do
   grep -q "riprap:$mapping" plugin/agents/agent.md ||
     problem "worker agent lost its $mapping mapping"
@@ -45,7 +54,25 @@ done
 grep -qF '.riprap/instructions/riprap-skills.md' plugin/agents/agent.md ||
   problem "worker agent does not use neutral stored answers"
 
-if grep -rEl 'creating it if absent|write.*\.claude/instructions|update.*\.claude/instructions' \
+for skill in architect branch-cleaner implement release reviewer; do
+  file="plugin/skills/$skill/SKILL.md"
+  for contract in '.riprap/instructions/riprap-skills.md' \
+                  '.claude/instructions/riprap-skills.md' \
+                  '.codex/instructions/riprap-skills.md' \
+                  'Neutral guidance wins' \
+                  'write every new or changed answer only to `.riprap/instructions/riprap-skills.md`'; do
+    grep -qF "$contract" "$file" || problem "$file is missing neutral-guidance migration contract: $contract"
+  done
+done
+
+grep -qF 'Read `.riprap/instructions/` first' plugin/instructions/README.md ||
+  problem "router does not give neutral project guidance first precedence"
+grep -qF 'updated guidance only under `.riprap/instructions/`' \
+  plugin/instructions/README.md || problem "router does not make neutral guidance authoritative for writes"
+grep -qF 'does not install or mutate user-level Codex configuration' plugin/skills/install/SKILL.md ||
+  problem "installer does not disclose the Codex configuration boundary"
+
+if grep -rEl '\.claude/instructions/.*creat|write.*\.claude/instructions|update.*\.claude/instructions' \
   plugin/skills plugin/agents plugin/instructions >/dev/null; then
   problem "published guidance still instructs writes to the legacy Claude directory"
 fi

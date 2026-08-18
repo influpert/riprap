@@ -11,10 +11,10 @@
 # anything it did not generate, which would delete tmp/tasks/ and tmp/handoff/.
 
 title: riprap
-tagline: Guardrails for Claude Code, enforced rather than suggested
+tagline: Guardrails for Claude Code and Codex, enforced rather than suggested
 description: >-
-  Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
-  documents loaded on every fresh session, nine skills, and hooks that block rather than advise.
+  Guardrails, conventions, and enforcement for Claude Code and Codex. Ten shared skills,
+  repository git enforcement, and native Claude Code lifecycle hooks.
 url: https://riprap.dev
 baseurl: ""
 

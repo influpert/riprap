@@ -15,7 +15,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 # Paths riprap publishes, and therefore scrubs. Kept in step with the same list
 # in .github/workflows/ci.yml, CLAUDE.md and CONTRIBUTING.md.
-SCRUB_PATHS=(plugin/ docs/ .claude/ README.md CONTRIBUTING.md TRADEMARK.md CLA.md CHANGELOG.md .github/)
+SCRUB_PATHS=(plugin/ docs/ .claude/ .riprap/ README.md CONTRIBUTING.md TRADEMARK.md CLA.md CHANGELOG.md .github/)
 
 shell_files() {
   find bin plugin/hooks plugin/scripts plugin/payload/bin \
@@ -35,7 +35,7 @@ if [ "$#" -gt 0 ]; then
       *) head -n1 -- "$f" | grep -q '^#!.*\(bash\|sh\)$' && shell_args+=("$f") ;;
     esac
     case "$f" in
-      plugin/*|docs/*|.claude/*|.github/*|README.md|CONTRIBUTING.md|TRADEMARK.md|CLA.md)
+      plugin/*|docs/*|.claude/*|.riprap/*|.github/*|README.md|CONTRIBUTING.md|TRADEMARK.md|CLA.md)
         scrub_args+=("$f") ;;
     esac
   done

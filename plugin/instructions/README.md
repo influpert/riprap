@@ -1,15 +1,22 @@
 # riprap — engineering guardrails
 
-This is the baseline. It is loaded on every fresh session, so it stays a router: the rules live in
-the files listed below, and this index is written so that reading it is usually enough.
+This is the baseline. Claude Code loads it on every fresh session; Codex skills load it when the
+native plugin contract provides no session-start hook. It stays a router: the rules live in the
+files below, and this index is written so that reading it is usually enough.
 
 **Where a project doc and a riprap doc disagree, the project doc wins.** riprap carries
 generic standards; your repo knows things riprap cannot. Nothing here overrides a rule the
 project states for itself.
 
 **These files are read-only.** They ship inside the riprap plugin and are replaced whenever
-it updates. Project-specific rules belong in the project's own `.claude/instructions/`,
+it updates. Project-specific rules belong in the project's own `.riprap/instructions/`,
 and a lesson worth keeping goes there — never here, where the next update erases it.
+
+**Project guidance is host-neutral.** Read `.riprap/instructions/` first. When migrating an
+existing project, fall back to the active host's legacy directory — `.claude/instructions/`
+or `.codex/instructions/` — and then its root file, `CLAUDE.md` or `AGENTS.md`. Write new and
+updated guidance only under `.riprap/instructions/`, and add a short pointer from the active
+host's root file so later sessions can find it.
 
 ---
 
@@ -23,7 +30,7 @@ through. Use plan mode for verification steps too, not just for building.
 main context clean. One task per subagent. → [interaction-preferences.md](interaction-preferences.md)
 
 **3. Capture corrections.** After any correction, write the lesson into the project's
-`.claude/instructions/` so it survives the session. A correction that only lives in the
+`.riprap/instructions/` so it survives the session. A correction that only lives in the
 conversation gets made again next week.
 
 **4. Verify before claiming done.** Never mark work complete without evidence: tests run,

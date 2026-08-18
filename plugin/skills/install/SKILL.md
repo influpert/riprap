@@ -56,8 +56,9 @@ List each overlap with a recommendation; act only after the user chooses:
 - Multiple Claude `PostToolUse` formatters matching `Edit|Write`.
 - A `hooks` key in `.claude/settings.local.json` shadowing project settings.
 
-The Codex plugin does not install or mutate user-level Codex configuration. Its unsupported
-lifecycle hooks are limitations, not configuration work for this skill to route around.
+The Codex plugin discovers the shared lifecycle hooks and asks the user to review and trust
+them. This skill does not install or mutate user-level Codex configuration, and it never
+bypasses a decision to leave those hooks disabled.
 
 ## 5. Offer Claude permissions only on Claude Code
 

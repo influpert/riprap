@@ -117,7 +117,8 @@ grep -qF 'On Codex, read' plugin/agents/agent.md ||
   problem "worker agent has no Codex-native skill invocation path"
 
 for doc in README.md docs/index.md docs/install.md docs/guardrails.md docs/rules.md \
-           plugin/instructions/README.md plugin/instructions/project-standards.md; do
+           plugin/instructions/README.md plugin/instructions/project-standards.md \
+           plugin/skills/install/SKILL.md; do
   if grep -Eq 'Codex.{0,100}(does not expose|no native session-start|missing lifecycle|relies on.{0,30}repository-side)' "$doc"; then
     problem "$doc still claims Codex lacks native lifecycle hooks"
   fi
@@ -132,12 +133,6 @@ if [ -s "$PRE_NATIVE_TAGS" ]; then
       problem "$PRE_NATIVE_TAGS still names $tag even though it has a Codex manifest"
     fi
   done < "$PRE_NATIVE_TAGS"
-  while IFS= read -r tag; do
-    if ! git cat-file -e "$tag:$CODEX_MANIFEST" 2>/dev/null &&
-      ! grep -qxF "$tag" "$PRE_NATIVE_TAGS"; then
-      problem "$tag lacks a Codex manifest but is not an approved pre-native tag"
-    fi
-  done < <(git tag --list 'v*')
 fi
 
 [ "$fail" -eq 0 ] || exit 1

@@ -5,7 +5,16 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.8.0
+## v0.9.0
+
+TODO: rewrite this. Every line below is a pull request title, which is what the
+author called the change — not what a reader needs to decide whether to upgrade.
+
+Merged since v0.8.0:
+
+- Add native Codex plugin support (#29)
+
+## v0.8.0 — 2026-08-17
 
 **What you get**
 

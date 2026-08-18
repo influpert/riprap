@@ -62,6 +62,11 @@ marketplace. The repository is its own marketplace, so there is no directory to 
 worker agent, and the shared installer. Claude Code also registers its lifecycle hooks.
 Nothing lands in a repository until `/riprap:install` runs.
 
+The shared skill surface is `/riprap:install`, `/riprap:learn`, `/riprap:spec`,
+`/riprap:architect`, `/riprap:implement`, `/riprap:council`, `/riprap:branch-cleaner`,
+`/riprap:release`, `/riprap:reviewer`, and `/riprap:handoff`. The names and behavior are
+the same on both hosts.
+
 **`/riprap:install`** adds the half that has to live in the repo: the guardrail scripts,
 their shared pattern libraries, the git hooks, and the four stack commands the hooks call.
 Run it from the root of a git repository with a clean working tree.

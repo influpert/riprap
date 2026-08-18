@@ -34,6 +34,12 @@ actual_skills=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d -exec basenam
 [ "$actual_skills" = "$EXPECTED_SKILLS" ] ||
   problem "shared skill surface is '$actual_skills', expected '$EXPECTED_SKILLS'"
 
+for doc in README.md CLAUDE.md docs/index.md docs/install.md docs/reference.md docs/rules.md; do
+  for skill in $EXPECTED_SKILLS; do
+    grep -qF "/riprap:$skill" "$doc" || problem "$doc never names /riprap:$skill"
+  done
+done
+
 [ -f plugin/skills/install/SKILL.md ] || problem "shared install skill is missing"
 [ ! -e plugin/commands/install.md ] || problem "Claude-only install command still duplicates the shared skill"
 

@@ -61,9 +61,9 @@ codex plugin add riprap@influpert
 ```
 
 Then ask Codex to run `/riprap:install` from the repository root. Both hosts install the
-same ten skills, worker agent, and payload workflow. Claude Code also loads riprap's native
-lifecycle hooks; Codex relies on its native skills plus the repository-side git hooks and
-does not mutate user-level Codex configuration.
+same ten skills, worker agent, payload workflow, and native lifecycle hooks. Codex asks the
+user to review and trust plugin hooks before enabling them; riprap does not mutate user-level
+Codex configuration.
 
 Run `/riprap:install` again any time. It is the update path.
 
@@ -105,14 +105,14 @@ Improvements flow back as ordinary pull requests.
 **From the plugin** — outside your repo, nothing to maintain:
 
 ```
-instructions/     19 guardrail documents, indexed by task. Claude injects the router;
-                  Codex skills read the same documents on demand.
+instructions/     19 guardrail documents, indexed by task. Both hosts inject the router;
+                  skills also read it on demand if hooks are disabled.
 skills/           /riprap:learn  /riprap:spec  /riprap:architect
                   /riprap:implement  /riprap:council
                   /riprap:branch-cleaner  /riprap:release  /riprap:reviewer
                   /riprap:handoff  /riprap:install
 agents/           riprap:agent — a generic role-based worker
-hooks/            Claude lifecycle hooks; repository git hooks are shared
+hooks/            shared native lifecycle hooks; repository git hooks are shared
 ```
 
 Every document, skill and hook is catalogued at
@@ -170,8 +170,8 @@ document shape.
 
 ## Behavioral rules
 
-Seven. Claude Code injects them at session start; Codex skills apply the same router when invoked.
-Neither installation path writes them into `CLAUDE.md` or `AGENTS.md`:
+Seven. Both hosts inject them at session start; skills load the same router on demand if native
+hooks are disabled. Neither installation path writes them into `CLAUDE.md` or `AGENTS.md`:
 
 | Rule | What it does |
 |---|---|

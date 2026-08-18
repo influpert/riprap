@@ -15,7 +15,7 @@ hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
 description: >-
   Guardrails, conventions, and enforcement for Claude Code and Codex. Ten shared skills,
-  repository git enforcement, and native Claude Code lifecycle hooks.
+  repository git enforcement, and shared native lifecycle hooks.
 ---
 
 <div class="provenance" markdown="1">
@@ -69,7 +69,7 @@ riprap is one plugin for Claude Code and Codex. There is nothing to clone.
 
 These are the Claude Code commands; Codex installation is listed on the
 [installation page](install.md). Both hosts receive the same ten skills, worker agent, and
-payload workflow. Claude Code also loads the native lifecycle hooks.
+payload workflow, and native lifecycle hooks.
 
 Run `/riprap:install` again any time. It is also the update path.
 
@@ -118,7 +118,7 @@ skills/         /riprap:learn      /riprap:spec
                 /riprap:handoff    /riprap:install
 agents/         riprap:agent — a generic
                 role-based worker
-hooks/          native Claude lifecycle hooks;
+hooks/          shared native lifecycle hooks;
                 repository git hooks are shared
 ```
 
@@ -178,8 +178,8 @@ what you believe is enforced. [How a rule is made to hold](guardrails.md).
 
 ## Behavioral rules
 
-Seven rules. Claude Code injects them at session start; Codex skills apply the same router when
-invoked. Installation writes neither `CLAUDE.md` nor `AGENTS.md`:
+Seven rules. Both hosts inject them at session start; skills apply the same router on demand if
+native hooks are disabled. Installation writes neither `CLAUDE.md` nor `AGENTS.md`:
 
 | Rule | What it does |
 |---|---|

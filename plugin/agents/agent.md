@@ -61,7 +61,8 @@ see below.
    Only treat it as unmapped if nothing in the table is a reasonable match.
 3. If it matches, apply any pre-invocation check listed for it under Role-specific rules
    above. If that check says to stop, stop there — do not invoke the skill. Otherwise,
-   invoke that skill with the `Skill` tool and follow its process exactly — don't skip its
-   gates or improvise around it.
+   invoke that skill with the `Skill` tool on Claude Code. On Codex, read the registered
+   `${CLAUDE_PLUGIN_ROOT}/skills/<name>/SKILL.md` file. Follow its process exactly on either
+   host — don't skip its gates or improvise around it.
 4. If the role doesn't match any entry, say so, then complete the task directly using
    ordinary engineering judgment — do not invent or guess a skill.

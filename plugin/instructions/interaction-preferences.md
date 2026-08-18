@@ -61,6 +61,18 @@ This covers every decision artifact, not just implementation plans:
 The test: **can the user reject part of this, and does that rejection bind?** If not, it
 is not a review surface.
 
+### Structured choices belong in the host UI
+
+Whenever the user must choose between alternatives, use the host's structured question UI:
+`AskUserQuestion` on Claude Code and `request_user_input` on Codex. Never turn the options
+into a numbered list and ask the user to type a number; the choice must be clickable.
+
+Codex exposes `request_user_input` in Plan mode. Enter Plan mode before a workflow reaches a
+choice checkpoint, collect the selection there, and only then resume execution. If an
+unforeseen choice appears outside Plan mode, stop before the choice has consequences and ask
+the user to switch modes; do not silently choose and do not fall back to typed input. The mode
+switch is a transport requirement, not approval of the plan or of any option.
+
 ---
 
 ## Always stress-test a plan before presenting it

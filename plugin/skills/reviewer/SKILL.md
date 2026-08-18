@@ -8,8 +8,8 @@ description: Review a branch or a pull request across parallel angles and close 
 ## Shared guardrails
 
 Before starting, check whether riprap's router is already in context. If not, read
-`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
-so this supplies the same shared rules. Follow the router's document links on demand.
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
 
 Review a change, and end by saying what should happen to it.
 
@@ -107,8 +107,9 @@ reviewer that has quietly lost its base branch reports the whole history as new.
 **1. Read the stored answers first.** Look for a `## riprap:reviewer` section in the
 project's `.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is there, say
 what you found and go straight to the steps — do not ask again.
-If the neutral file is absent, read `.claude/instructions/riprap-skills.md` or
-`.codex/instructions/riprap-skills.md` for migration, then the root file. Neutral guidance wins;
+If that section is absent from the neutral file, read the matching section in
+`.claude/instructions/riprap-skills.md` or `.codex/instructions/riprap-skills.md` for migration,
+then the root file. Neutral guidance wins for each section;
 write every new or changed answer only to `.riprap/instructions/riprap-skills.md`.
 
 **2. Only if there is none, ask — once — with the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex).** Work each answer out
@@ -470,7 +471,7 @@ abandon the post if it moved; every inline comment is pinned to that commit.
 
 **This step needs `jq` itself**, not gh's built-in `--jq` filter, and it is the only place
 this skill does. Check for it first — a project that installed the plugin and stopped there
-was told, correctly until now, that `jq` is only needed by the Claude hooks:
+was told that `jq` is needed by native hooks, but those hooks may have been disabled:
 
 ```bash
 command -v jq >/dev/null || echo "no jq — go straight to the summary-only fallback"

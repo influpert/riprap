@@ -8,8 +8,8 @@ description: Cut a release — verify the build is green, choose the version, dr
 ## Shared guardrails
 
 Before starting, check whether riprap's router is already in context. If not, read
-`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
-so this supplies the same shared rules. Follow the router's document links on demand.
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
 
 Cut a release and then prove it happened.
 
@@ -40,8 +40,9 @@ commit. An answer stored in the project survives, and is the only kind that does
 **1. Read the stored answers first.** Look for a `## riprap:release` section in the
 project's `.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is there,
 say what you found and go straight to the steps — do not ask again.
-If the neutral file is absent, read `.claude/instructions/riprap-skills.md` or
-`.codex/instructions/riprap-skills.md` for migration, then the root file. Neutral guidance wins;
+If that section is absent from the neutral file, read the matching section in
+`.claude/instructions/riprap-skills.md` or `.codex/instructions/riprap-skills.md` for migration,
+then the root file. Neutral guidance wins for each section;
 write every new or changed answer only to `.riprap/instructions/riprap-skills.md`.
 
 **2. Only if there is none, ask — once — with the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex).** Work each answer

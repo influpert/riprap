@@ -122,9 +122,9 @@ Four layers, all of them:
 4. **A shared pattern library** — `bin/hooks/lib/<topic>-patterns.sh`, holding the
    forbidden patterns *and* the allow-list, sourced by both hooks above.
 
-Claude Code supports all four layers. Codex's native plugin contract does not expose
-PreToolUse hooks, so Codex uses the document, git check, and shared library. Never mutate global
-Codex configuration to simulate the missing lifecycle layer.
+Both hosts support all four layers through the shared native plugin hooks. Codex enables those
+hooks only after the user reviews and trusts them. Never mutate global Codex configuration to
+bypass that decision.
 
 All four paths are the project's own. riprap's copies live under `bin/hooks/riprap/` and
 are replaced wholesale on every update, so a rule written there lasts until the next one.

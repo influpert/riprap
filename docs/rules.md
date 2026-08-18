@@ -2,7 +2,7 @@
 title: What riprap tells the model
 eyebrow: Behaviour
 lede: >-
-  The shared rules Claude Code injects at session start and Codex skills load on demand,
+  The shared rules both hosts inject at session start and skills load on demand,
   how they avoid installation-time project edits, and what they cost in context.
 description: >-
   riprap's seven behavioural rules and five critical rules, their host-specific delivery,
@@ -19,10 +19,10 @@ On this page
 
 ## How the rules reach the model
 
-Claude Code delivers riprap's router through a **SessionStart hook**. Codex's native plugin
-contract has no equivalent hook, so every riprap skill loads the same router before it starts.
-Installation writes neither `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, nor global Codex
-configuration.
+Both hosts deliver riprap's router through a **SessionStart hook**. Every riprap skill also
+loads the same router when it is absent, so disabling or declining native hooks does not make a
+skill lose the baseline. Installation writes neither `CLAUDE.md`, `AGENTS.md`,
+`.claude/settings.json`, nor global Codex configuration.
 
 Injecting is strictly better than writing a file into the project, for three reasons worth
 stating because the alternative looks easier:

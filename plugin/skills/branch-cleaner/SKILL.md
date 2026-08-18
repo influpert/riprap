@@ -8,8 +8,8 @@ description: Prune merged and stale Git branches and triage pull requests that h
 ## Shared guardrails
 
 Before starting, check whether riprap's router is already in context. If not, read
-`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
-so this supplies the same shared rules. Follow the router's document links on demand.
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
 
 Prune merged and stale Git branches, and report on pull requests that have gone
 quiet, so the branch list stays readable.
@@ -39,8 +39,9 @@ only kind that does.
 project's `.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is
 there, say what you found and go straight to the steps. Do not ask again — a skill
 that re-interrogates the user every run trains them to answer without reading.
-If the neutral file is absent, read `.claude/instructions/riprap-skills.md` or
-`.codex/instructions/riprap-skills.md` for migration, then the root file. Neutral guidance wins;
+If that section is absent from the neutral file, read the matching section in
+`.claude/instructions/riprap-skills.md` or `.codex/instructions/riprap-skills.md` for migration,
+then the root file. Neutral guidance wins for each section;
 write every new or changed answer only to `.riprap/instructions/riprap-skills.md`.
 
 **2. Only if there is none, ask — once — with the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex).** Work out the

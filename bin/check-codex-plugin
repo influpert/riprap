@@ -27,8 +27,18 @@ if [ -f "$CLAUDE_MANIFEST" ] && [ -f "$CODEX_MANIFEST" ]; then
   jq -e '.interface.defaultPrompt | length == 3' "$CODEX_MANIFEST" >/dev/null ||
     problem "Codex manifest must offer exactly three starter prompts"
   jq -e 'has("hooks") | not' "$CODEX_MANIFEST" >/dev/null ||
-    problem "Codex manifest must not claim unsupported native hooks"
+    problem "Codex manifest must use native default discovery for hooks/hooks.json"
 fi
+
+[ -f plugin/hooks/hooks.json ] || problem "shared native lifecycle hooks are missing"
+for event in SessionStart PreToolUse PostToolUse PreCompact Stop SessionEnd; do
+  jq -e --arg event "$event" '.hooks[$event] | type == "array" and length > 0' \
+    plugin/hooks/hooks.json >/dev/null || problem "shared hooks do not register $event"
+done
+for matcher in Bash 'Edit|Write'; do
+  grep -qF '"matcher": "'"$matcher"'"' plugin/hooks/hooks.json ||
+    problem "shared hooks lost Codex-compatible matcher $matcher"
+done
 
 actual_skills=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort | tr '\n' ' ' | sed 's/ $//')
 [ "$actual_skills" = "$EXPECTED_SKILLS" ] ||
@@ -69,6 +79,8 @@ for skill in architect branch-cleaner implement release reviewer; do
                   'write every new or changed answer only to `.riprap/instructions/riprap-skills.md`'; do
     grep -qF "$contract" "$file" || problem "$file is missing neutral-guidance migration contract: $contract"
   done
+  grep -qF 'If that section is absent from the neutral file' "$file" ||
+    problem "$file falls back only when the whole neutral file is absent"
 done
 
 grep -qF 'Read `.riprap/instructions/` first' plugin/instructions/README.md ||
@@ -84,8 +96,30 @@ if grep -rEl '\.claude/instructions/.*creat|write.*\.claude/instructions|update.
 fi
 
 for tool in AskUserQuestion request_user_input; do
-  grep -rEq "$tool" plugin/skills || problem "shared skills do not name $tool"
+  grep -qF "$tool" plugin/instructions/interaction-preferences.md ||
+    problem "interaction preferences do not name $tool"
 done
+grep -qF 'Plan mode' plugin/instructions/interaction-preferences.md ||
+  problem "Codex structured choices do not define their Plan-mode checkpoint"
+
+grep -qF 'On Codex, read' plugin/agents/agent.md ||
+  problem "worker agent has no Codex-native skill invocation path"
+
+grep -qF 'none beyond the current `.github/CODEOWNERS`' .riprap/instructions/riprap-skills.md &&
+  grep -qF 'every run so a newly protected path' .riprap/instructions/riprap-skills.md ||
+    problem "riprap reviewer answers duplicate CODEOWNERS instead of reading it"
+
+for doc in README.md docs/index.md docs/install.md docs/guardrails.md docs/rules.md \
+           plugin/instructions/README.md plugin/instructions/project-standards.md; do
+  if grep -Eq 'Codex.{0,100}(does not expose|no native session-start|missing lifecycle|relies on.{0,30}repository-side)' "$doc"; then
+    problem "$doc still claims Codex lacks native lifecycle hooks"
+  fi
+done
+
+grep -qF 'predates native Codex packaging' bin/release ||
+  problem "release verification has no historical-tag compatibility path"
+grep -qF 'predates native Codex packaging' .github/workflows/release.yml ||
+  problem "release workflow cannot republish historical pre-Codex tags"
 
 [ "$fail" -eq 0 ] || exit 1
 echo "✅ native Codex plugin contract holds"

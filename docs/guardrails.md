@@ -64,9 +64,10 @@ would be filtering something that has already been said.
 4. **One shared pattern library** — `bin/hooks/lib/<topic>-patterns.sh`, holding the
    patterns *and* the allow-list, sourced by both hooks above.
 
-Claude Code supports all four layers. Codex's native plugin contract does not expose the
-PreToolUse lifecycle hook, so Codex uses the document, git check, and shared library; riprap
-does not rewrite global Codex configuration to pretend otherwise.
+Both hosts support all four layers through the shared native plugin hooks. Codex recognizes
+the compatible `Bash`, `Edit`, and `Write` matcher aliases and honors exit 2 plus stderr as a
+blocking PreToolUse result. Codex enables plugin hooks only after the user reviews and trusts
+them; riprap does not rewrite global Codex configuration to bypass that decision.
 
 Those are the paths for a rule *you* write. riprap's own live one level down, under
 `bin/hooks/riprap/`, which is replaced wholesale on every install — so nothing you write
@@ -81,7 +82,7 @@ They are different systems and confusing them is the most common mistake:
 
 | | Trigger | Blocks with | Message goes to |
 |---|---|---|---|
-| Claude hooks | a tool call | exit **2** | **stderr** — stdout is discarded |
+| native plugin hooks | a tool call | exit **2** | **stderr** — stdout is discarded |
 | git hooks | a commit or push | exit **1** | stdout is fine |
 
 Exit 0 means allow, and is also the right answer for every "this does not concern me"

@@ -41,7 +41,7 @@ On this page
 - **A git repository** with a clean working tree, for `/riprap:install`. The clean-tree
   requirement is what makes `git checkout --` the undo button, so nothing is backed up to
   `.orig` files that then need cleaning up.
-- **`jq`**, for the Claude hooks, and for `/riprap:reviewer` when it posts a batched pull
+- **`jq`**, for the native hooks, and for `/riprap:reviewer` when it posts a batched pull
   request review. `brew install jq` or `apt-get install jq`.
 
 > **Install `jq` before anything else.** The hooks read the tool payload as JSON on stdin,
@@ -59,8 +59,9 @@ On this page
 marketplace. The repository is its own marketplace, so there is no directory to go through.
 
 **The host's plugin-install command** installs 19 guardrail documents, ten skills, the
-worker agent, and the shared installer. Claude Code also registers its lifecycle hooks.
-Nothing lands in a repository until `/riprap:install` runs.
+worker agent, shared lifecycle hooks, and the shared installer. Codex asks the user to review
+and trust plugin hooks before enabling them. Nothing lands in a repository until
+`/riprap:install` runs.
 
 The shared skill surface is `/riprap:install`, `/riprap:learn`, `/riprap:spec`,
 `/riprap:architect`, `/riprap:implement`, `/riprap:council`, `/riprap:branch-cleaner`,
@@ -113,13 +114,14 @@ that already has its own instructions, skills, and hooks cannot clobber any of t
 | `riprap:agent` worker | Native | Native |
 | `/riprap:install` and shared payload | Native | Native |
 | Repository pre-commit and pre-push enforcement | After install | After install |
-| Session and tool lifecycle hooks | Native plugin hooks | Not exposed by the native plugin contract |
+| Session and tool lifecycle hooks | Native plugin hooks | Native plugin hooks after trust review |
 | Project guidance | `.riprap/instructions/` | `.riprap/instructions/` |
 | User-level configuration changes | Never automatic | Never automatic |
 
-Codex's missing lifecycle-hook row is a boundary, not an invitation for the installer to
-rewrite global settings. Repository git hooks remain the team-wide enforcement layer on both
-hosts.
+Codex discovers `hooks/hooks.json` from the plugin package and asks the user to review and
+trust those hooks. Disabling them leaves the skills' on-demand router fallback and the
+repository git hooks intact; the installer never rewrites global settings to bypass that
+choice. Repository git hooks remain the team-wide enforcement layer on both hosts.
 
 > **A copy of riprap's licence lands at `bin/hooks/riprap/LICENSE`**, because the licence
 > requires its terms to travel with the files they cover. It is namespaced and will never

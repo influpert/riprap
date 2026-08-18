@@ -62,9 +62,8 @@ that day and re-ask when the list changes.
 - Where a review lands: one batched pull request review — inline comments on the lines they
   concern, plus the summary and verdict in its body — or the reviewer's table handed over for
   the body when no pull request is open yet
-- Extra blast-radius paths: `plugin/**`, `.claude/**`, `.claude-plugin/**`, `bin/**`,
-  `.github/workflows/**` — every path CODEOWNERS gates, which is this repository having
-  already answered the question once
+- Extra blast-radius paths: none beyond the current `.github/CODEOWNERS`; read that file on
+  every run so a newly protected path cannot fall out of review.
 
 **A change under `plugin/` is a change to what every future adopter receives**, and that
 is what makes reviewing here different. There is no staging: the plugin loads live from

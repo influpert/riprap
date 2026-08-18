@@ -8,8 +8,8 @@ description: Use when the user asks to install, adopt, configure, refresh, or up
 ## Shared guardrails
 
 Before starting, check whether riprap's router is already in context. If not, read
-`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
-so this supplies the same shared rules. Follow the router's document links on demand.
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
 
 Install riprap's repository-side half into the current project. Re-running this skill is the
 update path.

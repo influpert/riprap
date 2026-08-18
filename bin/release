@@ -542,7 +542,7 @@ verify_one() {
   # than a visible error. And a fetch that fails for any other reason is reported, not
   # skipped past: the local tag is not evidence about what was published.
   local f got
-  for f in "$PLUGIN_JSON" "$CODEX_JSON" "$MARKET_JSON"; do
+  for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
     if got="$(tagged_file "$tag" "$f" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" &&
       [ -n "$got" ]; then
       [ "$got" = "$version" ] || { echo "  ❌ $tag: $f says $got"; found=1; }
@@ -552,6 +552,22 @@ verify_one() {
       found=1
     fi
   done
+
+  # Tags cut before riprap shipped a Codex manifest remain valid historical releases.
+  # The Claude manifest read above fetches the tag, so a locally present commit with no
+  # Codex path means the tag predates native Codex packaging rather than that the network
+  # failed. Any tag that does contain the file is held to the same exact version check.
+  if got="$(tagged_file "$tag" "$CODEX_JSON" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" &&
+    [ -n "$got" ]; then
+    [ "$got" = "$version" ] || { echo "  ❌ $tag: $CODEX_JSON says $got"; found=1; }
+  elif git cat-file -e "$tag^{commit}" 2>/dev/null &&
+    ! git cat-file -e "$tag:$CODEX_JSON" 2>/dev/null; then
+    echo "  ℹ️  $tag predates native Codex packaging; no Codex manifest to verify"
+  else
+    echo "  ⚠️  $tag: could not read $CODEX_JSON from the tagged tree, over git or gh"
+    echo "     The version it ships is unchecked — not confirmed correct."
+    found=1
+  fi
 
   # A published body that is still the scaffold. The workflow refuses one now, but a
   # release cut before that check existed — or published by hand — carries it for ever,

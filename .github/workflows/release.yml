@@ -68,23 +68,31 @@ jobs:
           set -euo pipefail
           want="${TAG#v}"
           plugin=$(git show "$TAG:plugin/.claude-plugin/plugin.json" | jq -r '.version')
-          codex=$(git show "$TAG:plugin/.codex-plugin/plugin.json" | jq -r '.version')
           market=$(git show "$TAG:.claude-plugin/marketplace.json" | jq -r '.metadata.version')
-          for got in "$plugin:plugin.json" "$codex:codex-plugin.json" "$market:marketplace.json"; do
+          for got in "$plugin:plugin.json" "$market:marketplace.json"; do
             if [ "${got%%:*}" != "$want" ]; then
               echo "::error::${got#*:} says ${got%%:*}, tag says $want"
               exit 1
             fi
           done
-          for field in name description homepage repository author license keywords; do
-            claude=$(git show "$TAG:plugin/.claude-plugin/plugin.json" | jq -cS ".$field")
-            codex=$(git show "$TAG:plugin/.codex-plugin/plugin.json" | jq -cS ".$field")
-            if [ "$claude" != "$codex" ]; then
-              echo "::error::Claude and Codex manifests disagree on $field"
+          if git cat-file -e "$TAG:plugin/.codex-plugin/plugin.json" 2>/dev/null; then
+            codex=$(git show "$TAG:plugin/.codex-plugin/plugin.json" | jq -r '.version')
+            if [ "$codex" != "$want" ]; then
+              echo "::error::codex-plugin.json says $codex, tag says $want"
               exit 1
             fi
-          done
-          echo "All version files say $want"
+            for field in name description homepage repository author license keywords; do
+              claude=$(git show "$TAG:plugin/.claude-plugin/plugin.json" | jq -cS ".$field")
+              codex=$(git show "$TAG:plugin/.codex-plugin/plugin.json" | jq -cS ".$field")
+              if [ "$claude" != "$codex" ]; then
+                echo "::error::Claude and Codex manifests disagree on $field"
+                exit 1
+              fi
+            done
+          else
+            echo "$TAG predates native Codex packaging; no Codex manifest to verify"
+          fi
+          echo "All available version files say $want"
 
       # Fail rather than fall back to an empty or auto-generated body. A release published
       # with no notes cannot be un-published without deleting it, and the commit subjects a

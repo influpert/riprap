@@ -1,8 +1,8 @@
 # riprap — engineering guardrails
 
-This is the baseline. Claude Code loads it on every fresh session; Codex skills load it when the
-native plugin contract provides no session-start hook. It stays a router: the rules live in the
-files below, and this index is written so that reading it is usually enough.
+This is the baseline. Both hosts load it on every fresh session through the shared native hook;
+skills load it on demand when that hook is disabled or not yet trusted. It stays a router: the
+rules live in the files below, and this index is written so that reading it is usually enough.
 
 **Where a project doc and a riprap doc disagree, the project doc wins.** riprap carries
 generic standards; your repo knows things riprap cannot. Nothing here overrides a rule the

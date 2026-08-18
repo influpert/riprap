@@ -8,8 +8,8 @@ description: Review the current session and update the active host's root instru
 ## Shared guardrails
 
 Before starting, check whether riprap's router is already in context. If not, read
-`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; Codex has no native session-start plugin hook,
-so this supplies the same shared rules. Follow the router's document links on demand.
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
 
 Review the current session and update the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) with any new learnings, patterns, or insights discovered.
 

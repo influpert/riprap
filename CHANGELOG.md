@@ -7,12 +7,30 @@ per-version file, never this one: `bin/release --changelog` regenerates it, and
 
 ## v0.9.0
 
-TODO: rewrite this. Every line below is a pull request title, which is what the
-author called the change — not what a reader needs to decide whether to upgrade.
+**What you get**
 
-Merged since v0.8.0:
+- 19 guardrail documents, 10 skills, and a role-based worker agent shared by Claude Code
+  and Codex
+- Native lifecycle hooks on both hosts, plus the same repository payload and git enforcement
+  from a plain clone
+- Host-neutral project guidance under `.riprap/instructions/`
 
-- Add native Codex plugin support (#29)
+**New**
+
+- **Native Codex plugin support.** Codex can now install riprap directly from its marketplace,
+  discover the same skills and worker agent as Claude Code, and load the shared router through
+  native lifecycle hooks. Codex asks you to review and trust those hooks before enabling them.
+- **Host-neutral project guidance.** Persistent answers now live in `.riprap/instructions/`.
+  Existing `.claude/instructions/` and `.codex/instructions/` guidance remains readable during
+  migration, with fallback resolved per section so one migrated answer does not hide another.
+- **A shared install skill.** `/riprap:install` now drives the repository-side payload workflow
+  on both hosts while leaving `CLAUDE.md`, `AGENTS.md`, host settings, and global Codex
+  configuration alone unless a workflow explicitly records project guidance.
+
+**Internal**
+
+- CI and release verification now enforce Claude/Codex parity while remaining compatible with
+  releases that predate native Codex packaging.
 
 ## v0.8.0 — 2026-08-17
 

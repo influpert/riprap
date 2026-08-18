@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# check-codex-plugin — native Codex packaging and shared-surface contracts.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+CLAUDE_MANIFEST=plugin/.claude-plugin/plugin.json
+CODEX_MANIFEST=plugin/.codex-plugin/plugin.json
+EXPECTED_SKILLS="architect branch-cleaner council handoff implement install learn release reviewer spec"
+
+fail=0
+problem() { echo "❌ $*" >&2; fail=1; }
+
+for file in "$CLAUDE_MANIFEST" "$CODEX_MANIFEST"; do
+  [ -f "$file" ] || { problem "$file is missing"; continue; }
+  jq -e . "$file" >/dev/null || problem "$file is not valid JSON"
+done
+
+if [ -f "$CLAUDE_MANIFEST" ] && [ -f "$CODEX_MANIFEST" ]; then
+  for field in name version description homepage repository author license keywords; do
+    claude=$(jq -cS ".$field" "$CLAUDE_MANIFEST")
+    codex=$(jq -cS ".$field" "$CODEX_MANIFEST")
+    [ "$claude" = "$codex" ] || problem "plugin manifests disagree on $field"
+  done
+  [ "$(jq -r .skills "$CODEX_MANIFEST")" = "./skills/" ] ||
+    problem "Codex manifest does not register ./skills/"
+  jq -e '.interface.defaultPrompt | length == 3' "$CODEX_MANIFEST" >/dev/null ||
+    problem "Codex manifest must offer exactly three starter prompts"
+  jq -e 'has("hooks") | not' "$CODEX_MANIFEST" >/dev/null ||
+    problem "Codex manifest must not claim unsupported native hooks"
+fi
+
+actual_skills=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort | tr '\n' ' ' | sed 's/ $//')
+[ "$actual_skills" = "$EXPECTED_SKILLS" ] ||
+  problem "shared skill surface is '$actual_skills', expected '$EXPECTED_SKILLS'"
+
+[ -f plugin/skills/install/SKILL.md ] || problem "shared install skill is missing"
+[ ! -e plugin/commands/install.md ] || problem "Claude-only install command still duplicates the shared skill"
+
+for mapping in architect implement reviewer release; do
+  grep -q "riprap:$mapping" plugin/agents/agent.md ||
+    problem "worker agent lost its $mapping mapping"
+done
+
+grep -qF '.riprap/instructions/riprap-skills.md' plugin/agents/agent.md ||
+  problem "worker agent does not use neutral stored answers"
+
+if grep -rEl 'creating it if absent|write.*\.claude/instructions|update.*\.claude/instructions' \
+  plugin/skills plugin/agents plugin/instructions >/dev/null; then
+  problem "published guidance still instructs writes to the legacy Claude directory"
+fi
+
+for tool in AskUserQuestion request_user_input; do
+  grep -rEq "$tool" plugin/skills || problem "shared skills do not name $tool"
+done
+
+[ "$fail" -eq 0 ] || exit 1
+echo "✅ native Codex plugin contract holds"

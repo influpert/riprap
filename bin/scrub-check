@@ -155,6 +155,10 @@ allowed_line() {  # $1 = the matched line
     # they installed — publishing it is the point, not an accident. Anchored to
     # that one file and that one value.
     *plugin.json:*\"name\":\ \"[Ii]nflupert\ LLC\"*) return 0 ;;
+    # Codex requires the same public publisher identity under interface.developerName.
+    # Anchored to the native manifest, the exact key, and the exact licensed publisher;
+    # a bare organisation mention anywhere else still fails the source-project scan.
+    *plugin/.codex-plugin/plugin.json:*\"developerName\":\ \"[Ii]nflupert\ LLC\"*) return 0 ;;
     # A release's tag date, in the one file whose whole job is to print one per
     # version — already public on that tag's GitHub release page, not an incident
     # timestamp. Anchored to CHANGELOG.md AND to the exact generated heading shape

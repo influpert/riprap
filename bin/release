@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# release — set the shipped version in both files, commit it, and tag the commit that merged.
+# release — set the shipped version in all manifests, commit it, and tag the commit that merged.
 #
-# The version lives in two places and the tag is a third. All three have to agree:
+# The version lives in three manifests and the tag is a fourth value. All four have to agree:
 # .github/workflows/release.yml refuses to publish a tag whose tree claims a
 # different version, because a v0.5.0 release built from a tree still saying 0.4.0
 # installs as 0.4.0 in every adopting repository, and the release page is the only
@@ -54,6 +54,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PLUGIN_JSON="plugin/.claude-plugin/plugin.json"
+CODEX_JSON="plugin/.codex-plugin/plugin.json"
+CODEX_PRE_NATIVE_TAGS="plugin/.codex-plugin/pre-native-tags"
 MARKET_JSON=".claude-plugin/marketplace.json"
 NOTES_DIR=".github/releases"
 CHANGELOG_FILE="CHANGELOG.md"
@@ -66,7 +68,7 @@ DRAFT_SENTINEL="<!-- riprap: generated draft. Delete this line once the body is 
 
 usage() {
   cat >&2 <<'USAGE'
-bin/release <x.y.z>          bump both version files and commit; run again on the
+bin/release <x.y.z>          bump all version files and commit; run again on the
                              merged commit to tag it
 bin/release <x.y.z> --start  draft the notes, branch, bump, push, open the pull
                              request — everything up to the merge
@@ -552,6 +554,21 @@ verify_one() {
     fi
   done
 
+  # Only the explicit, immutable list of releases cut before native Codex packaging may
+  # omit this manifest. Treating every absent path as historical would let a future tag
+  # publish after accidentally deleting the Codex package; checking the allowlist before
+  # local git state also prevents a stale local tag from laundering a network failure.
+  if got="$(tagged_file "$tag" "$CODEX_JSON" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" &&
+    [ -n "$got" ]; then
+    [ "$got" = "$version" ] || { echo "  ❌ $tag: $CODEX_JSON says $got"; found=1; }
+  elif grep -qxF "$tag" "$CODEX_PRE_NATIVE_TAGS"; then
+    echo "  ℹ️  $tag predates native Codex packaging; no Codex manifest to verify"
+  else
+    echo "  ⚠️  $tag: could not read $CODEX_JSON from the tagged tree, over git or gh"
+    echo "     The version it ships is unchecked — not confirmed correct."
+    found=1
+  fi
+
   # A published body that is still the scaffold. The workflow refuses one now, but a
   # release cut before that check existed — or published by hand — carries it for ever,
   # and the body/file comparison below passes because the file is the scaffold too.
@@ -782,7 +799,7 @@ if ! is_version "$VERSION"; then
   exit 2
 fi
 
-for f in "$PLUGIN_JSON" "$MARKET_JSON"; do
+for f in "$PLUGIN_JSON" "$CODEX_JSON" "$MARKET_JSON"; do
   [ -f "$f" ] || { echo "❌ missing $f" >&2; exit 1; }
 done
 
@@ -871,7 +888,7 @@ if [ -n "$HIGHEST" ] && ! is_greater "$VERSION" "$HIGHEST"; then
 fi
 
 # Tracked changes only, which is the set that matters: the commit below stages the
-# two version files by path, so an untracked file cannot be swept into it. What a
+# version files by path, so an untracked file cannot be swept into it. What a
 # dirty tree does threaten is the thing being tagged — an uncommitted edit is not
 # in the commit the tag points at, so the tree you tested is not the tree you ship.
 if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -916,6 +933,7 @@ fi
 
 
 plugin_was="$(version_in "$PLUGIN_JSON")"
+codex_was="$(version_in "$CODEX_JSON")"
 market_was="$(version_in "$MARKET_JSON")"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 DEFAULT="$(default_branch)"
@@ -924,9 +942,11 @@ DEFAULT="$(default_branch)"
 # Without this it fell into the bump path like plain mode, committed the bump, printed
 # "git push -u origin main", and exited 0 — pushing a CODEOWNERS-gated change straight
 # at the default branch, which is the whole thing the two-run split exists to stop.
-if [ "$MODE" = finish ] && { [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; }; then
+if [ "$MODE" = finish ] && { [ "$plugin_was" != "$VERSION" ] ||
+  [ "$codex_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; }; then
   echo "❌ the tree here does not say $VERSION, so there is nothing to finish:" >&2
   echo "     $PLUGIN_JSON: $plugin_was" >&2
+  echo "     $CODEX_JSON: $codex_was" >&2
   echo "     $MARKET_JSON: $market_was" >&2
   echo >&2
   echo "   Either the bump has not merged — open the pull request:" >&2
@@ -936,7 +956,8 @@ if [ "$MODE" = finish ] && { [ "$plugin_was" != "$VERSION" ] || [ "$market_was" 
   exit 1
 fi
 
-if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
+if [ "$plugin_was" != "$VERSION" ] || [ "$codex_was" != "$VERSION" ] ||
+   [ "$market_was" != "$VERSION" ]; then
   # ── First run: bump and commit. Deliberately no tag. ──
   #
   # The version files are CODEOWNERS-gated, so this commit becomes a pull request.
@@ -949,7 +970,8 @@ if [ "$plugin_was" != "$VERSION" ] || [ "$market_was" != "$VERSION" ]; then
   # the file already at the target is not "ahead of" itself, so the bump could never
   # complete and the message named one version twice without saying which file was
   # stuck. Naming the file matters more here than anywhere else in this script.
-  for pair in "$PLUGIN_JSON:$plugin_was" "$MARKET_JSON:$market_was"; do
+  for pair in "$PLUGIN_JSON:$plugin_was" "$CODEX_JSON:$codex_was" \
+              "$MARKET_JSON:$market_was"; do
     was="${pair#*:}"
     if [ "$was" != "$VERSION" ] && is_greater "$was" "$VERSION"; then
       echo "❌ ${pair%%:*} says $was, which is ahead of $VERSION. Nothing committed." >&2
@@ -1059,8 +1081,9 @@ CHANGELOG.md is regenerated alongside it — bin/release --changelog." ||
   fi
 
   set_version "$PLUGIN_JSON" "$VERSION"
+  set_version "$CODEX_JSON" "$VERSION"
   set_version "$MARKET_JSON" "$VERSION"
-  git add -- "$PLUGIN_JSON" "$MARKET_JSON"
+  git add -- "$PLUGIN_JSON" "$CODEX_JSON" "$MARKET_JSON"
 
   # A commit can fail for reasons that have nothing to do with this script — a rejecting
   # pre-commit hook, a broken signing key. riprap installs such a hook into its own
@@ -1069,14 +1092,14 @@ CHANGELOG.md is regenerated alongside it — bin/release --changelog." ||
   # refuses with "uncommitted changes", and the advice it gives ("commit or stash") makes
   # the bump commit without the message this script exists to write. Undo it and say so.
   if ! git commit -q -m "Ship $VERSION" \
-    -m "plugin.json and marketplace.json both move, because the release workflow
-refuses a tag whose tree claims a different version than the tag does."; then
-    git restore --staged --worktree -- "$PLUGIN_JSON" "$MARKET_JSON" 2>/dev/null ||
-      git checkout -- "$PLUGIN_JSON" "$MARKET_JSON"
-    echo "❌ the commit was rejected — see above. Both version files put back as they were." >&2
+    -m "The Claude, Codex, and marketplace manifests move together, because the release
+workflow refuses a tag whose tree claims a different version than the tag does."; then
+    git restore --staged --worktree -- "$PLUGIN_JSON" "$CODEX_JSON" "$MARKET_JSON" 2>/dev/null ||
+      git checkout -- "$PLUGIN_JSON" "$CODEX_JSON" "$MARKET_JSON"
+    echo "❌ the commit was rejected — see above. All version files put back as they were." >&2
     exit 1
   fi
-  echo "✅ $plugin_was → $VERSION in both files, committed on $BRANCH"
+  echo "✅ $plugin_was → $VERSION in all manifests, committed on $BRANCH"
 
   if [ "$MODE" != start ]; then
     cat <<NEXT
@@ -1134,16 +1157,16 @@ NEXT
   exit 0
 fi
 
-# Both files already say $VERSION. --start has nothing left to do, and saying so
+# All manifests already say $VERSION. --start has nothing left to do, and saying so
 # beats silently falling through into the tag path — which is the one act it is not
 # allowed to take.
 if [ "$MODE" = start ]; then
-  echo "❌ both version files already say $VERSION, so there is nothing to start." >&2
+  echo "❌ all version files already say $VERSION, so there is nothing to start." >&2
   echo "   If the bump has merged, the next act is: bin/release $VERSION --finish" >&2
   exit 1
 fi
 
-# ── Second run: both files already say $VERSION, so tag. ──
+# ── Second run: all manifests already say $VERSION, so tag. ──
 
 # Refresh the default branch before asking whether HEAD is on it. A stale
 # origin/$DEFAULT answers the question about where the branch was, not where it is,

@@ -1,10 +1,10 @@
 ---
 title: riprap
 layout: home
-eyebrow: Engineering guardrails for Claude Code
+eyebrow: Engineering guardrails for Claude Code and Codex
 hero_title: Rules that hold, not rules that get ignored
 hero_lede: >-
-  Guardrails, conventions, and enforcement for projects built with Claude Code. A convention
+  Guardrails, conventions, and enforcement for projects built with Claude Code and Codex. A convention
   that lives only in a document is a suggestion. Everything here is enforced by something
   that can say no.
 hero_commands:
@@ -14,8 +14,8 @@ hero_commands:
 hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
 description: >-
-  Guardrails, conventions, and enforcement for projects built with Claude Code. Instruction
-  documents loaded on every fresh session, nine skills, and hooks that block rather than advise.
+  Guardrails, conventions, and enforcement for Claude Code and Codex. Ten shared skills,
+  repository git enforcement, and shared native lifecycle hooks.
 ---
 
 <div class="provenance" markdown="1">
@@ -36,7 +36,7 @@ good practice. Every rule is here because something broke first, and the inciden
 caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
-<em>from</em>. They are not what it ships. What it ships is 19 guardrail documents, nine
+<em>from</em>. They are not what it ships. What it ships is 19 guardrail documents, ten
 skills, ten hooks and one agent — the inventory is on the
 <a href="reference.md">reference page</a>.</p>
 
@@ -59,7 +59,7 @@ exists because of a specific failure, and each entry names the mechanism and wha
 
 ## Install
 
-riprap is a Claude Code plugin. There is nothing to clone.
+riprap is one plugin for Claude Code and Codex. There is nothing to clone.
 
 ```
 /plugin marketplace add influpert/riprap
@@ -67,11 +67,9 @@ riprap is a Claude Code plugin. There is nothing to clone.
 /riprap:install
 ```
 
-The first two commands give you the guardrail documents, the nine skills, and the Claude
-hooks — none of which put a file in your repository, and none of which touch your
-`CLAUDE.md` or `.claude/settings.json`. `/riprap:install` adds the half that has to live
-there: the guardrail scripts, their pattern libraries, the git hooks, and the four stack
-commands the hooks call.
+These are the Claude Code commands; Codex installation is listed on the
+[installation page](install.md). Both hosts receive the same ten skills, worker agent, and
+payload workflow, and native lifecycle hooks.
 
 Run `/riprap:install` again any time. It is also the update path.
 
@@ -80,10 +78,9 @@ your git hooks — are in [installing riprap](install.md).
 
 ### What riprap will and will not touch
 
-**It never touches your `CLAUDE.md` or your `.claude/settings.json`.** The documents reach
-the model through a SessionStart hook, and the skills are namespaced by the harness as
-`/riprap:learn` and friends, so there is nothing to merge and nothing to collide with. A
-repository with its own `/learn` keeps it.
+**Installation never touches `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, or global
+Codex configuration.** Skills persist answers and corrections only when their workflow calls
+for it, under `.riprap/instructions/`.
 
 What lands on disk is one of two tiers:
 
@@ -118,11 +115,11 @@ skills/         /riprap:learn      /riprap:spec
                 /riprap:architect  /riprap:implement
                 /riprap:council    /riprap:branch-cleaner
                 /riprap:release    /riprap:reviewer
-                /riprap:handoff
+                /riprap:handoff    /riprap:install
 agents/         riprap:agent — a generic
                 role-based worker
-hooks/          the Claude hook registrations,
-                and the session router
+hooks/          shared native lifecycle hooks;
+                repository git hooks are shared
 ```
 
 </div>
@@ -181,14 +178,14 @@ what you believe is enforced. [How a rule is made to hold](guardrails.md).
 
 ## Behavioral rules
 
-Seven rules are injected into context at the start of every fresh session — without a line being
-added to your `CLAUDE.md`:
+Seven rules. Both hosts inject them at session start; skills apply the same router on demand if
+native hooks are disabled. Installation writes neither `CLAUDE.md` nor `AGENTS.md`:
 
 | Rule | What it does |
 |---|---|
 | **Plan first** | Plan before any 3+ step or architectural task. If work goes sideways, stop and re-plan rather than pushing through. |
 | **Use subagents** | Offload research and parallel analysis, one task each, to keep the main context clean. |
-| **Capture corrections** | After any correction, write the lesson into `.claude/instructions/` so it outlives the session. |
+| **Capture corrections** | After any correction, write the lesson into `.riprap/instructions/` so it outlives the session. |
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |
 | **Prefer the simpler solution** | When two designs both work, ship the one with less code. Add structure at the second occurrence, not in anticipation of one. |
 | **Fix bugs autonomously** | Given a failing test or a red CI run, diagnose and fix it without a round trip. |

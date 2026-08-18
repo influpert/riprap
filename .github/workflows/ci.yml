@@ -52,6 +52,7 @@ jobs:
       - name: Plugin metadata is valid JSON
         run: |
           for f in .claude-plugin/marketplace.json plugin/.claude-plugin/plugin.json \
+                   plugin/.codex-plugin/plugin.json \
                    plugin/hooks/hooks.json plugin/permissions.suggested.json; do
             jq -e . "$f" > /dev/null || { echo "invalid JSON: $f"; exit 1; }
           done
@@ -60,8 +61,10 @@ jobs:
           # version nobody can install.
           m=$(jq -r .metadata.version .claude-plugin/marketplace.json)
           p=$(jq -r .version plugin/.claude-plugin/plugin.json)
-          [ "$m" = "$p" ] || { echo "❌ marketplace says $m, plugin says $p"; exit 1; }
-          echo "✅ plugin metadata valid, versions agree"
+          c=$(jq -r .version plugin/.codex-plugin/plugin.json)
+          [ "$m" = "$p" ] && [ "$p" = "$c" ] || {
+            echo "❌ marketplace says $m, Claude says $p, Codex says $c"; exit 1; }
+          echo "✅ plugin metadata valid, all versions agree"
 
       # The site and the README describe the same thing at two lengths, and prose is
       # allowed to differ. Counts, commands and URLs are not: every check below is one
@@ -138,7 +141,7 @@ jobs:
           #    window has to look like the real claim: next to "guardrail document", next
           #    to "loaded every session", or written as "the N skills".
           for f in README.md CLAUDE.md docs/_config.yml .claude-plugin/marketplace.json \
-                   plugin/commands/install.md plugin/instructions/README.md \
+                   plugin/skills/install/SKILL.md plugin/instructions/README.md \
                    $(find docs -name '*.md'); do
             [ -f "$f" ] || { echo "❌ skill-count sweep: $f is missing"; fail=1; continue; }
             #    Matched on the claim, not on the word. "N skills" appears in prose that
@@ -182,7 +185,6 @@ jobs:
             #    that no longer exists.
             for m in $(grep -oE '/riprap:[a-z][a-z0-9-]*' "$f" | sort -u); do
               n="${m#/riprap:}"
-              [ "$n" = "install" ] && continue   # a command, not a skill
               [ -d "plugin/skills/$n" ] || { echo "❌ $f names $m, which ships no skill"; fail=1; }
             done
           done
@@ -524,7 +526,7 @@ jobs:
           REPO_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           fail=0
-          A=.claude/instructions/riprap-skills.md
+          A=.riprap/instructions/riprap-skills.md
           [ -f "$A" ] || { echo "❌ $A is missing; every skill will re-interview the repo"; exit 1; }
 
           # A section per skill that carries the stored-answers protocol. Detected by

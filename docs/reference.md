@@ -5,12 +5,12 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 19 guardrail documents, nine skills, ten hook
+  The complete riprap catalogue: 19 guardrail documents, ten skills, ten hook
   registrations, one agent, four stack seams, and everything the installer writes into a
   repository.
 ---
 
-riprap is two halves. The plugin carries **19 guardrail documents**, **nine skills**,
+riprap is two halves. The plugin carries **19 guardrail documents**, **ten skills**,
 **ten hook registrations** and **one agent**, and puts no file in your repository.
 `/riprap:install` adds the half that has to live in the repo: the guardrail scripts,
 their shared pattern libraries, the git hooks, and the four stack commands the hooks call.
@@ -21,8 +21,8 @@ inventory first.
 
 ## The guardrail documents
 
-Grouped by task rather than alphabetically, mirroring the router that riprap injects at the
-start of every session. That grouping is deliberate: `git.md` and `git-hooks.md` sound
+Grouped by task rather than alphabetically, mirroring the router Claude Code injects and Codex
+skills load on demand. That grouping is deliberate: `git.md` and `git-hooks.md` sound
 interchangeable and cover different problems, and the file you want when CI is red is not
 named after CI in most repositories. Guessing from filenames costs more than reading a map.
 
@@ -100,15 +100,16 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `tech-footprint.md` | Never add a language, runtime or tool without asking |
 | `testing.md` | Writing tests first, reading failures, the four costly mistakes |
 
-## The nine skills
+## The ten skills
 
 Namespaced by the harness, so a repository with its own `/learn` keeps it.
 
 None of them carry settings for you to edit. What a skill needs to know about your
 project it works out, confirms with you once, and writes into your own
-`.claude/instructions/` — a value edited into a skill would be reverted the next time the
+`.riprap/instructions/` — a value edited into a skill would be reverted the next time the
 plugin updates.
 
+- **`/riprap:install`** — installs or refreshes the repository payload, wires git hooks without taking over another hook manager, proposes stack-seam configuration, reports overlaps, and verifies the result.
 - **`/riprap:learn`** — reviews the session and writes what was learned into *your* project's instructions, never riprap's, which are replaced on update.
 - **`/riprap:spec`** — interactive feature definition: stakeholder interviews, mockups, phased work items, acceptance tests. Planning only; it writes no implementation.
 - **`/riprap:architect`** — turns a settled requirement into an implementation plan its reader can execute without re-exploring: what already exists with line references, what has to change, the files, the ordered steps and how each is verified. Planning only; it writes no source.
@@ -155,7 +156,7 @@ Only these files, and nothing else in your project is touched.
 | `bin/hooks/lib/` | Your own pattern libraries. riprap never writes here |
 | `bin/hooks/riprap/claude/` | Ten hook scripts: nine wired, plus `lint-example.sh`, an inert template |
 | `bin/hooks/riprap/git/` | riprap's own `pre-commit` and `pre-push`, called by yours |
-| `bin/hooks/riprap/lib/` | Six libraries: five pattern libraries shared by both hook families, plus the handoff helpers the Claude hooks share with each other |
+| `bin/hooks/riprap/lib/` | Six libraries: five pattern libraries shared by both hook families, plus the handoff helpers the native hooks share with each other |
 | `bin/hooks/riprap/tests/` | The regression suites, runnable in your own repo |
 | `bin/hooks/riprap/LICENSE` | riprap's licence, carried with the files it covers |
 | `bin/hooks/riprap/VERSION` | What `bin/riprap verify` compares against the plugin |

@@ -1,0 +1,39 @@
+{
+  "name": "riprap",
+  "description": "Baseline engineering guardrails for Claude Code and Codex, enforced rather than suggested.",
+  "version": "0.8.0",
+  "homepage": "https://riprap.dev",
+  "repository": "https://github.com/influpert/riprap",
+  "author": {
+    "name": "Influpert LLC",
+    "url": "https://riprap.dev"
+  },
+  "license": "LicenseRef-PolyForm-Perimeter-1.0.1",
+  "keywords": [
+    "guardrails",
+    "standards",
+    "hooks",
+    "git-hooks",
+    "code-review",
+    "secret-hygiene"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "riprap",
+    "shortDescription": "Engineering guardrails that enforce the rules",
+    "longDescription": "Shared engineering guardrails, planning and review workflows, repository installation, and git enforcement for Claude Code and Codex.",
+    "developerName": "Influpert LLC",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://riprap.dev",
+    "defaultPrompt": [
+      "Install riprap in this repository",
+      "Plan this change with riprap",
+      "Review this branch with riprap"
+    ]
+  }
+}

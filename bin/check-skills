@@ -38,7 +38,7 @@ root=$(git rev-parse --show-toplevel) || {
 cd "$root"
 
 INSTRUCTIONS=plugin/instructions
-ANSWERS=.claude/instructions/riprap-skills.md
+ANSWERS=.riprap/instructions/riprap-skills.md
 
 # Skills that must exist. Without this the reviewer contract below sits behind a
 # path test that silently skips — the exact fail-open A7 condemns in ci.yml,
@@ -63,15 +63,16 @@ REVIEWER_MUST_DEFER="code-review.md interaction-preferences.md merge-gates.md gi
 # from an oversight. A mention carrying a path (docs/rules.md) is handled by the
 # path rule in A1 and needs no entry here.
 #
-#   CLAUDE.md         the adopting project's own file, at ITS root, not riprap's
-#   riprap-skills.md  the adopter's stored answers, under .claude/instructions/
+#   CLAUDE.md         the adopting Claude Code project's root file, not riprap's
+#   AGENTS.md         the adopting Codex project's root file, not riprap's
+#   riprap-skills.md  the adopter's stored answers, under .riprap/instructions/
 #   SKILL.md          a skill referring to itself
 #
 # README.md is deliberately NOT here, and A1b is what caught the attempt:
 # plugin/instructions/README.md is the session router, so a bare mention resolves
 # on its own, and an entry would only blind A1 to the one document every session
 # is actually given.
-NOT_A_GUARDRAIL_DOC=" CLAUDE.md riprap-skills.md SKILL.md "
+NOT_A_GUARDRAIL_DOC=" CLAUDE.md AGENTS.md riprap-skills.md SKILL.md "
 
 # Table header rows, one list per owning file. A row belongs to exactly one
 # document or skill, and must not appear in the other file named at the call

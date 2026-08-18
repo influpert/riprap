@@ -55,7 +55,7 @@ would be filtering something that has already been said.
 
 ## The four layers
 
-1. **The document** — `.claude/instructions/<topic>.md`: the rule, why it exists, the
+1. **The document** — `.riprap/instructions/<topic>.md`: the rule, why it exists, the
    correct usage, and the exceptions.
 2. **A pre-commit check** — a block in `bin/hooks/git/pre-commit` scanning staged
    additions, emitting `file:line` violations, exiting 1.
@@ -63,6 +63,11 @@ would be filtering something that has already been said.
    at edit time rather than commit time, exiting 2 with the reason on stderr.
 4. **One shared pattern library** — `bin/hooks/lib/<topic>-patterns.sh`, holding the
    patterns *and* the allow-list, sourced by both hooks above.
+
+Both hosts support all four layers through the shared native plugin hooks. Codex recognizes
+the compatible `Bash`, `Edit`, and `Write` matcher aliases and honors exit 2 plus stderr as a
+blocking PreToolUse result. Codex enables plugin hooks only after the user reviews and trusts
+them; riprap does not rewrite global Codex configuration to bypass that decision.
 
 Those are the paths for a rule *you* write. riprap's own live one level down, under
 `bin/hooks/riprap/`, which is replaced wholesale on every install — so nothing you write
@@ -77,7 +82,7 @@ They are different systems and confusing them is the most common mistake:
 
 | | Trigger | Blocks with | Message goes to |
 |---|---|---|---|
-| Claude hooks | a tool call | exit **2** | **stderr** — stdout is discarded |
+| native plugin hooks | a tool call | exit **2** | **stderr** — stdout is discarded |
 | git hooks | a commit or push | exit **1** | stdout is fine |
 
 Exit 0 means allow, and is also the right answer for every "this does not concern me"

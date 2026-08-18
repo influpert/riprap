@@ -1,7 +1,7 @@
 ---
 title: Installing riprap
 eyebrow: Getting started
-lede: Three commands, and nothing to clone.
+lede: One shared plugin for Claude Code and Codex, and nothing to clone.
 description: >-
   Requirements, what each command does, what lands in your repository, wiring the git hooks
   for a team, coexisting with an existing hook manager, and how to remove it.
@@ -9,14 +9,23 @@ redirect_from:
   - /install.html
 ---
 
+### Claude Code
+
 ```
 /plugin marketplace add influpert/riprap
 /plugin install riprap@influpert
 /riprap:install
 ```
 
-Run the first two once, in any Claude Code session. Run the third from inside each project
-you want guarded.
+### Codex CLI
+
+```
+codex plugin marketplace add https://github.com/influpert/riprap.git
+codex plugin add riprap@influpert
+```
+
+Then ask Codex to run `/riprap:install` from the repository root. Both routes install the
+same plugin package and project payload.
 
 <nav class="toc" markdown="1">
 On this page
@@ -28,11 +37,11 @@ On this page
 
 ## Requirements
 
-- **Claude Code.** The plugin and its skills are a Claude Code feature.
+- **Claude Code or Codex.** Both discover the same skills and worker agent.
 - **A git repository** with a clean working tree, for `/riprap:install`. The clean-tree
   requirement is what makes `git checkout --` the undo button, so nothing is backed up to
   `.orig` files that then need cleaning up.
-- **`jq`**, for the Claude hooks, and for `/riprap:reviewer` when it posts a batched pull
+- **`jq`**, for the native hooks, and for `/riprap:reviewer` when it posts a batched pull
   request review. `brew install jq` or `apt-get install jq`.
 
 > **Install `jq` before anything else.** The hooks read the tool payload as JSON on stdin,
@@ -49,11 +58,15 @@ On this page
 **`/plugin marketplace add influpert/riprap`** registers this repository as a plugin
 marketplace. The repository is its own marketplace, so there is no directory to go through.
 
-**`/plugin install riprap@influpert`** installs the plugin: 19 guardrail documents, nine
-skills, and the Claude hook registrations. The form is `plugin@marketplace` — the plugin is
-`riprap`, and it comes from the `influpert/riprap` marketplace you registered in the previous
-step. Nothing lands in any repository. You can stop here if all you want is the documents and
-skills.
+**The host's plugin-install command** installs 19 guardrail documents, ten skills, the
+worker agent, shared lifecycle hooks, and the shared installer. Codex asks the user to review
+and trust plugin hooks before enabling them. Nothing lands in a repository until
+`/riprap:install` runs.
+
+The shared skill surface is `/riprap:install`, `/riprap:learn`, `/riprap:spec`,
+`/riprap:architect`, `/riprap:implement`, `/riprap:council`, `/riprap:branch-cleaner`,
+`/riprap:release`, `/riprap:reviewer`, and `/riprap:handoff`. The names and behavior are
+the same on both hosts.
 
 **`/riprap:install`** adds the half that has to live in the repo: the guardrail scripts,
 their shared pattern libraries, the git hooks, and the four stack commands the hooks call.
@@ -85,14 +98,30 @@ tmp/
 
 The complete file-by-file inventory is on the [reference page](reference.md).
 
-**Your `CLAUDE.md` and `.claude/settings.json` are never touched.** The documents reach the
-model through a SessionStart hook and the skills are namespaced by the harness as
-`/riprap:learn`, `/riprap:spec`, `/riprap:architect`, `/riprap:implement`,
-`/riprap:council`, `/riprap:branch-cleaner`, `/riprap:release`, `/riprap:reviewer` and
-`/riprap:handoff`. There is nothing to merge, and a project with its own `/learn` keeps it.
+**Installation never touches `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, or global
+Codex configuration.** Skills are namespaced as `/riprap:<name>`. When a skill later needs
+to persist a project answer or correction, it writes under `.riprap/instructions/` and adds
+a pointer from the active host's root instruction file.
 
 Everything riprap overwrites lives under a path only riprap uses, so installing into a repo
 that already has its own instructions, skills, and hooks cannot clobber any of them.
+
+## Host capability matrix
+
+| Capability | Claude Code | Codex |
+|---|---|---|
+| Ten `/riprap:*` skills | Native | Native |
+| `riprap:agent` worker | Native | Native |
+| `/riprap:install` and shared payload | Native | Native |
+| Repository pre-commit and pre-push enforcement | After install | After install |
+| Session and tool lifecycle hooks | Native plugin hooks | Native plugin hooks after trust review |
+| Project guidance | `.riprap/instructions/` | `.riprap/instructions/` |
+| User-level configuration changes | Never automatic | Never automatic |
+
+Codex discovers `hooks/hooks.json` from the plugin package and asks the user to review and
+trust those hooks. Disabling them leaves the skills' on-demand router fallback and the
+repository git hooks intact; the installer never rewrites global settings to bypass that
+choice. Repository git hooks remain the team-wide enforcement layer on both hosts.
 
 > **A copy of riprap's licence lands at `bin/hooks/riprap/LICENSE`**, because the licence
 > requires its terms to travel with the files they cover. It is namespaced and will never
@@ -172,10 +201,10 @@ Both sets of checks then run on every commit.
 Installing into a mature repository is safe, but it can leave you running two sources of
 truth. `/riprap:install` reports each of these and asks; none of it is acted on for you.
 
-- **Documents.** A file in your `.claude/instructions/` with the same basename as one of
-  riprap's. Yours still wins, but the two will now drift, and you should decide which rule
-  you meant to keep.
-- **Skills.** A directory in `.claude/skills/` with the same name as one of riprap's. These
+- **Documents.** A file in `.riprap/instructions/` or a legacy host instruction directory
+  with the same basename as one of riprap's. Yours still wins, but the two can drift.
+- **Skills.** A directory in `.claude/skills/`, `.codex/skills/`, or `.agents/skills/` with
+  the same name as one of riprap's. These
   no longer collide, since riprap's are `/riprap:<name>` — but two skills with near-identical
   descriptions leave the model choosing between them.
 - **Hooks.** A command in `.claude/settings.json` whose basename matches one of riprap's
@@ -204,9 +233,8 @@ fix to the rest.
 
 ## Updating
 
-Update the plugin through `/plugin`, then re-run `/riprap:install` in each project to
-refresh the repo-side half. `bin/riprap verify` warns when the two halves have drifted,
-since they update through different channels.
+Update through the active host's plugin manager, then re-run `/riprap:install` in each
+project. `bin/riprap verify` warns when the plugin and repository payload have drifted.
 
 ## Removing it
 
@@ -220,7 +248,7 @@ and the four stack commands — are yours, and deleting them is your call.
 
 ## Optional companions
 
-All optional, all configured in your user-level `~/.claude/`, none of them touched by riprap.
+All optional and configured outside riprap; none is changed by installation.
 
 - [Superpowers](https://claude.com/plugins/superpowers) — process skills (brainstorming, systematic debugging, TDD, writing plans, verification) that pair naturally with riprap's rules.
 - [RTK](https://github.com/rtk-ai/rtk) — a token-optimised CLI proxy that wraps noisy dev commands and filters their output.

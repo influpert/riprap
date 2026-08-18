@@ -58,7 +58,7 @@ jobs:
           echo "TAG=$TAG" >> "$GITHUB_ENV"
           echo "Releasing $TAG ($(git rev-parse --short "$TAG^{commit}"))"
 
-      # The two version files are already checked against each other on every push. What
+      # The version files are already checked against each other on every push. What
       # nothing checked is either of them against the tag — and that is the pair that has to
       # agree for `/plugin install` to deliver what the release page advertises. A v0.4.0
       # release built from a tree still saying 0.3.0 installs as 0.3.0 in every adopting
@@ -67,6 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           want="${TAG#v}"
+          pre_native_tags="plugin/.codex-plugin/pre-native-tags"
           plugin=$(git show "$TAG:plugin/.claude-plugin/plugin.json" | jq -r '.version')
           market=$(git show "$TAG:.claude-plugin/marketplace.json" | jq -r '.metadata.version')
           for got in "$plugin:plugin.json" "$market:marketplace.json"; do
@@ -75,7 +76,27 @@ jobs:
               exit 1
             fi
           done
-          echo "Both version files say $want"
+          if git cat-file -e "$TAG:plugin/.codex-plugin/plugin.json" 2>/dev/null; then
+            codex=$(git show "$TAG:plugin/.codex-plugin/plugin.json" | jq -r '.version')
+            if [ "$codex" != "$want" ]; then
+              echo "::error::codex-plugin.json says $codex, tag says $want"
+              exit 1
+            fi
+            for field in name description homepage repository author license keywords; do
+              claude=$(git show "$TAG:plugin/.claude-plugin/plugin.json" | jq -cS ".$field")
+              codex=$(git show "$TAG:plugin/.codex-plugin/plugin.json" | jq -cS ".$field")
+              if [ "$claude" != "$codex" ]; then
+                echo "::error::Claude and Codex manifests disagree on $field"
+                exit 1
+              fi
+            done
+          elif grep -qxF "$TAG" "$pre_native_tags"; then
+            echo "$TAG predates native Codex packaging; no Codex manifest to verify"
+          else
+            echo "::error::$TAG has no Codex manifest and is not an approved pre-native tag"
+            exit 1
+          fi
+          echo "All available version files say $want"
 
       # Fail rather than fall back to an empty or auto-generated body. A release published
       # with no notes cannot be un-published without deleting it, and the commit subjects a

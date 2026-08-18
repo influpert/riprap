@@ -6,14 +6,15 @@ Conventions that apply to everything in this repo. Read this first.
 
 ## Prose and scripts live apart
 
-- `.claude/` holds **markdown only** — instructions and skills. The single exception is
-  `settings.json`, because the harness requires that exact path.
+- `.riprap/instructions/` holds project guidance written by riprap skills.
+- `.claude/settings.json` remains host configuration on Claude Code; Codex configuration is
+  never written by riprap.
 - `bin/` holds **every executable**, with hooks under `bin/hooks/`.
 
 The rule has no other exceptions, which is what makes it enforceable:
 
 ```bash
-git ls-files '.claude/**' | grep -v -e '\.md$' -e '^\.claude/settings\.json$'  # must print nothing
+git ls-files '.riprap/instructions/**' | grep -v -e '\.md$'  # must print nothing
 ```
 
 **Check tracked files, not the directory.** A plain `find` over `.claude/` reports things
@@ -48,13 +49,13 @@ Delete that line once configured; `bin/riprap verify` reports what is outstandin
 
 ## Documentation structure
 
-**Never add large blocks of content to CLAUDE.md.** It is loaded into context every
+**Never add large blocks to the active host's root file: `CLAUDE.md` or `AGENTS.md`.** It is loaded into context every
 session; everything in it is paid for on every turn whether or not it is relevant.
 
 To add documentation:
 
-1. Create a file in `.claude/instructions/`.
-2. Register it in CLAUDE.md's index, **with a line-count estimate**.
+1. Create a file in `.riprap/instructions/`.
+2. Register it in the active host's root-file index, **with a line-count estimate**.
 3. Write the index entry so it states the actual rule, not just a topic. `Git — gh pr
    diff is authoritative, not git log` is useful on its own; `Git — git conventions` is
    not.
@@ -112,14 +113,18 @@ the old one coming back.** Otherwise the cleanup is temporary and you will do it
 
 Four layers, all of them:
 
-1. **An instruction doc** — `.claude/instructions/<topic>.md` stating the rule, the why,
-   the correct usage, and the exceptions. Registered in CLAUDE.md.
+1. **An instruction doc** — `.riprap/instructions/<topic>.md` stating the rule, the why,
+   the correct usage, and the exceptions. Registered in `CLAUDE.md` or `AGENTS.md`.
 2. **A pre-commit check** — a block in `bin/hooks/git/pre-commit` scanning staged
    additions, emitting `file:line` violations that point at the doc, exiting 1.
 3. **A PreToolUse hook** — `bin/hooks/claude/lint-<topic>.sh`, checking the same patterns
    at edit time, exiting 2 with the reason on **stderr**. Wired into `settings.json`.
 4. **A shared pattern library** — `bin/hooks/lib/<topic>-patterns.sh`, holding the
    forbidden patterns *and* the allow-list, sourced by both hooks above.
+
+Both hosts support all four layers through the shared native plugin hooks. Codex enables those
+hooks only after the user reviews and trusts them. Never mutate global Codex configuration to
+bypass that decision.
 
 All four paths are the project's own. riprap's copies live under `bin/hooks/riprap/` and
 are replaced wholesale on every update, so a rule written there lasts until the next one.
@@ -166,7 +171,8 @@ worse than no hook, because you stop thinking about what it was meant to cover.
 
 ## Committing
 
-- Changes under `.claude/` and to CLAUDE.md can go directly to the trunk branch.
+- Changes under `.riprap/instructions/` and to the active host's root instruction file can
+  go directly to the trunk branch.
 - Everything else goes through a branch and a PR. See [git.md](git.md).
 - Agent-authored commits should not be GPG-signed.
 - Before committing, check `git status` and `git diff --stat` — not `git diff`, which

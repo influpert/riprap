@@ -5,6 +5,12 @@ description: Interactive feature definition with stakeholder interviews, UI mock
 
 # Spec — Interactive Feature Definition
 
+## Shared guardrails
+
+Before starting, check whether riprap's router is already in context. If not, read
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
+
 Define new features through a structured 5-phase stakeholder interview. Challenge requests for value, redundancy, and complexity. Generate reviewable UI mockups, create a detailed feature document, and break the feature into phased work items for implementation planning.
 
 **Model**: Use Opus
@@ -15,13 +21,13 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
 1. **Startup**: Begin the feature-definition workflow and announce that a stakeholder feature interview is starting.
 
-2. **Refresh and re-read**: Review `CLAUDE.md` and any relevant files in `.claude/instructions/`, then re-read this skill file before proceeding so you are working from the current guidance.
+2. **Refresh and re-read**: Review the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) and any relevant files in `.riprap/instructions/`, then re-read this skill file before proceeding so you are working from the current guidance.
 
-3. **Greeting and context**: Ask the stakeholder for the feature name and a one-sentence description using `AskUserQuestion`. Establish what prompted this request.
+3. **Greeting and context**: Ask the stakeholder for the feature name and a one-sentence description using the structured choice UI defined in `interaction-preferences.md`. Establish what prompted this request.
 
-4. **Phase 1 — Vision & Problem** (4-5 questions via `AskUserQuestion`):
+4. **Phase 1 — Vision & Problem** (4-5 questions via that structured choice UI):
 
-   Ask these questions one batch at a time using `AskUserQuestion`. Adapt follow-ups based on answers.
+   Ask these questions one batch at a time using that structured choice UI. Adapt follow-ups based on answers.
 
    - What specific problem does this feature solve? Who experiences this problem?
    - Who requested or reported this? (user feedback, business need, competitor gap, internal observation)
@@ -110,7 +116,7 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
     e. Show the design to the stakeholder, saying which design system it was assembled from and which surface it lives on.
 
-    f. Ask for approval via `AskUserQuestion`:
+    f. Ask for approval via that structured choice UI:
     ```
     options:
       - label: "Approve design"
@@ -207,7 +213,7 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
     | Priority | [P0-P3] |
     | Recommended First Task | [Task title] |
 
-    Then — ALWAYS, as the final interaction of the run — ask via `AskUserQuestion` whether the created tasks should move to the next stage in your workflow or remain in backlog for later.
+    Then — ALWAYS, as the final interaction of the run — ask via that structured choice UI whether the created tasks should move to the next stage in your workflow or remain in backlog for later.
 
 16. **Notify and exit**:
     Record the completed feature-definition summary and exit the workflow.
@@ -249,7 +255,7 @@ Before proceeding past Phase 3, evaluate every feature request against these cri
 - **Planning only** — never create, modify, or delete source code. You MAY write files in a scratch area for feature documents, mockups, and task descriptions.
 - **Always challenge** — run the Challenge Framework after Phase 3. Never skip it.
 - **Document concerns even when overridden** — stakeholder's decision is final, but risks must be recorded.
-- **Ask, don't assume** — use `AskUserQuestion` for every phase. Never fill in answers yourself.
+- **Ask, don't assume** — use the structured choice UI defined in `interaction-preferences.md` for every phase. Never fill in answers yourself.
 - **Research competitors** — use `WebSearch` to validate the feature direction. Ask the stakeholder first which competitors to focus on.
 - **MVP first** — Phase 1 tasks should be the smallest slice that delivers value.
 - **Acceptance criteria required** — every task must have clear, testable acceptance criteria.

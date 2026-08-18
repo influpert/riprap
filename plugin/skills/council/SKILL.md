@@ -10,6 +10,12 @@ description: >
 
 # Council — Strategic Planning
 
+## Shared guardrails
+
+Before starting, check whether riprap's router is already in context. If not, read
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
+
 Build a deeply researched and adversarially critiqued plan on any topic.
 
 **Model**: use the most capable model available to you, with the largest context window. This skill runs several agents in parallel over a lot of material; a smaller model produces critics that agree with each other.
@@ -22,7 +28,7 @@ Call `EnterPlanMode`. The system will provide a plan file path — write your fi
 
 ### 2. Intake
 
-Use `AskUserQuestion` to ask (up to 4 questions per turn):
+Use the structured choice UI defined in `interaction-preferences.md` to ask (up to 4 questions per turn):
 - What is the topic or decision to plan?
 - What is the desired outcome / definition of success?
 - What constraints must the plan respect (time, budget, team size, tech stack, etc.)?
@@ -30,7 +36,7 @@ Use `AskUserQuestion` to ask (up to 4 questions per turn):
 
 ### 3. Clarification Loop
 
-Continue asking clarifying questions with `AskUserQuestion` until you genuinely have enough context to research effectively. Cover as needed:
+Continue asking clarifying questions with that structured choice UI until you genuinely have enough context to research effectively. Cover as needed:
 - Stakeholders affected and their interests
 - Prior attempts and why they failed or stalled
 - Known risks or non-starters

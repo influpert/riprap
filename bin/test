@@ -59,4 +59,8 @@ bin/check-skills --self-test
 bin/check-skills
 
 echo
+echo "--- Native Codex package and shared plugin surface ---"
+bin/check-codex-plugin
+
+echo
 echo "✅ bin/test passed"

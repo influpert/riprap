@@ -5,6 +5,12 @@ description: Turn a settled requirement into an implementation plan somebody els
 
 # Architect
 
+## Shared guardrails
+
+Before starting, check whether riprap's router is already in context. If not, read
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
+
 Design a change, and hand over a plan somebody else can execute.
 
 **A plan that makes its reader re-explore has moved the work, not done it.** They open it, find
@@ -79,10 +85,12 @@ the plugin updates, so a value set here is reverted the next time it moves — a
 that has quietly lost its scratch path writes plans nobody can find.
 
 **1. Read the stored answers first.** Look for a `## riprap:architect` section in the project's
-`.claude/instructions/riprap-skills.md`, and in `CLAUDE.md`. If it is there, say what you found
+`.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is there, say what you found
 and go straight to the steps — do not ask again.
+Use the router's per-section guidance precedence for migration. Neutral guidance wins;
+write every new or changed answer only to `.riprap/instructions/riprap-skills.md`.
 
-**2. Only if there is none, ask — once — with `AskUserQuestion`.** Work each answer out first and
+**2. Only if there is none, ask — once — with the structured choice UI defined in `interaction-preferences.md`.** Work each answer out first and
 offer it as the recommended option, so the ordinary case is a confirmation rather than a typed
 path:
 
@@ -101,7 +109,7 @@ or a daemon, and it is the one that must be recorded rather than assumed, becaus
 explicit that terminal output, an email and an error message someone reads are still interfaces.
 
 **3. Write the answers down**, so the next run does not ask. Append to the project's
-`.claude/instructions/riprap-skills.md`, creating it if absent:
+`.riprap/instructions/riprap-skills.md`, creating it if absent:
 
 ```markdown
 ## riprap:architect
@@ -116,8 +124,8 @@ explicit that terminal output, an email and an error message someone reads are s
 rewritten whenever an answer stops resolving, and a fact recorded outside this list is dropped by
 that rewrite without anything saying so.
 
-If `CLAUDE.md` does not already point at `.claude/instructions/`, add one line that does. The
-instructions file is the record; `CLAUDE.md` is what makes it findable.
+If the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) does not already point at `.riprap/instructions/`, add one line that does. The
+instructions file is the record; the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) is what makes it findable.
 
 **4. Re-ask when a stored answer stops resolving** — a renamed branch, a scratch path nothing
 ignores any more, a design surface this session cannot reach. Say so and ask again rather than

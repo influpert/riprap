@@ -5,8 +5,8 @@ can be wrong about its own project in ways no other repository would notice — 
 answers are written down here rather than worked out again each run, and the corrections
 below are stated where the skills actually read.
 
-Three of the skills ask a fixed set of questions and record the answers in a file exactly
-like this one. The rest read `.claude/instructions/` as ordinary project context, which is
+Five of the skills ask a fixed set of questions and record the answers in a file exactly
+like this one. The rest read `.riprap/instructions/` as ordinary project context, which is
 why the corrections live here too and not only in `CLAUDE.md`: a rule constraining a skill
 should not sit in the file that skill is licensed to rewrite and told to keep short.
 
@@ -14,12 +14,12 @@ should not sit in the file that skill is licensed to rewrite and told to keep sh
 
 - Release branch: `main`
 - Tag shape: `v` + semantic, e.g. `v0.4.0`
-- Version files: `plugin/.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
+- Version files: `plugin/.claude-plugin/plugin.json`, `plugin/.codex-plugin/plugin.json`, `.claude-plugin/marketplace.json`
 - Notes: `.github/releases/<tag>.md` — written and merged **before** the bump
 - Bump and tag: `bin/release <version> --start`, then `--finish` once it has merged — never by hand. `--finish` pushes the tag, so it is the command that publishes and the one to type deliberately; the plain two-run form is unchanged and still pushes nothing
 - Publishes: a workflow, on tag push — run nothing by hand; confirm with `bin/release --verify <version>`, or with no argument to sweep every `v*` tag on `origin` for ones with no release behind them
 
-**`bin/release` is not a convenience wrapper, and hand-editing the two version files
+**`bin/release` is not a convenience wrapper, and hand-editing the three version files
 instead of running it is not the same act.** It refuses a version that does not move
 forwards, refuses to tag unless `HEAD` is contained in the default branch, and reads the
 tag list from `origin` rather than the local cache — which a plain `git fetch --tags` will
@@ -62,9 +62,8 @@ that day and re-ask when the list changes.
 - Where a review lands: one batched pull request review — inline comments on the lines they
   concern, plus the summary and verdict in its body — or the reviewer's table handed over for
   the body when no pull request is open yet
-- Extra blast-radius paths: `plugin/**`, `.claude/**`, `.claude-plugin/**`, `bin/**`,
-  `.github/workflows/**` — every path CODEOWNERS gates, which is this repository having
-  already answered the question once
+- Extra blast-radius paths: none beyond the current `.github/CODEOWNERS`; read that file on
+  every run so a newly protected path cannot fall out of review.
 
 **A change under `plugin/` is a change to what every future adopter receives**, and that
 is what makes reviewing here different. There is no staging: the plugin loads live from
@@ -88,7 +87,7 @@ count checks to catch outside the sweep's window.
 ## riprap:learn
 
 **This skill's central rule inverts in this repository, and the wrong reading ships to
-everyone.** It says lessons belong in the project's own `.claude/instructions/` and never
+everyone.** It says lessons belong in the project's own `.riprap/instructions/` and never
 in riprap's, because in an adopting repo riprap's documents are a plugin cache that the
 next update overwrites. Here they are the same tree, and that reasoning does not transfer.
 
@@ -177,7 +176,7 @@ has to carry that one about an ordinary repository does not.
 **Name the sites a rule has already moved through, and the ones it has not.** A change under
 `plugin/` is rarely one edit. The behavioural and critical rules are stated in four places;
 the skill count and the hook count are each stated across `README.md`, `docs/`,
-`plugin/commands/install.md`, `docs/_config.yml` and `.claude-plugin/marketplace.json`.
+`plugin/skills/install/SKILL.md`, `docs/_config.yml` and `.claude-plugin/marketplace.json`.
 **Flatten newlines before grepping** — those counts are hard-wrapped mid-phrase, which is how
 one of them stayed wrong through a whole review. CI binds the skill count and the rule counts;
 it binds the hook count nowhere.

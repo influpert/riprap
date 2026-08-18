@@ -55,7 +55,7 @@ the near-misses — the form that looks right and is not is the one people actua
 *Which layers exist. Per [project-standards.md](project-standards.md), a real guardrail
 has four:*
 
-- **Doc** — this file, registered in CLAUDE.md's index.
+- **Doc** — this file, registered in the active host's `CLAUDE.md` or `AGENTS.md` index.
 - **Pre-commit** — the `<topic>` block in `bin/hooks/git/pre-commit`.
 - **PreToolUse hook** — `bin/hooks/claude/lint-<topic>.sh`, wired in `settings.json`.
 - **Shared patterns** — `bin/hooks/lib/<topic>-patterns.sh`, sourced by both hooks so
@@ -80,10 +80,10 @@ then it protects nothing at all.*
 
 ## Registering it
 
-*Add one line to CLAUDE.md's index that restates the rule itself, not just the topic:*
+*Add one line to `CLAUDE.md` or `AGENTS.md` that restates the rule itself, not just the topic:*
 
 ```markdown
-- **[<Rule name>](.claude/instructions/<topic>.md)** (~N lines) - <the actual rule, in a clause>
+- **[<Rule name>](.riprap/instructions/<topic>.md)** (~N lines) - <the actual rule, in a clause>
 ```
 
 *The index is read far more often than the file. An entry that carries the rule means

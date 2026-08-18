@@ -61,6 +61,21 @@ This covers every decision artifact, not just implementation plans:
 The test: **can the user reject part of this, and does that rejection bind?** If not, it
 is not a review surface.
 
+### Structured choices belong in the host UI
+
+Whenever the user must choose between alternatives, use the host's structured question UI:
+`AskUserQuestion` on Claude Code and `request_user_input` on Codex. Never turn the options
+into a numbered list and ask the user to type a number; the choice must be clickable.
+
+Codex exposes `request_user_input` only after the user has selected Plan mode; the agent cannot
+change modes itself. Before starting a Codex workflow with known choice checkpoints, ask the
+user to select Plan mode in the host's mode control. Collect every available decision there.
+For a choice-only checkpoint, the user returns through the same mode control; do not call
+`ExitPlanMode`, because that tool is reserved for an actual plan and carries the plan
+stress-test gate. If an unforeseen choice appears in Code mode, stop before it has consequences
+and ask for the same mode switch. Never silently choose or fall back to typed input. A mode
+switch is a transport requirement, not approval of a plan or of any option.
+
 ---
 
 ## Always stress-test a plan before presenting it
@@ -279,7 +294,7 @@ The one-line announcement costs nothing and buys a history shaped like the work.
 
 ## Capturing feedback
 
-**When corrected, write the correction into `.claude/instructions/` in the same turn** —
+**When corrected, write the correction into `.riprap/instructions/` in the same turn** —
 not at the end of the session, not in a later cleanup pass. The specifics that make a rule
 bind are gone by then, and what survives is a vague version that does not.
 
@@ -288,7 +303,7 @@ Where it goes depends on what kind of thing it is:
 | Kind | Home | Framing |
 |---|---|---|
 | How you should behave, anywhere | Memory | Personal: "how I should behave" |
-| How code in *this* repo is written | `.claude/instructions/<topic>.md` | Project: "how code in this repo is written" |
+| How code in *this* repo is written | `.riprap/instructions/<topic>.md` | Project: "how code in this repo is written" |
 
 The distinction matters because the second kind has to survive you. A project rule kept as
 a personal preference is invisible to the next reader and to your next session; a personal
@@ -296,7 +311,7 @@ preference written into the repo's instructions becomes a rule others must obey 
 knowing why.
 
 New rules take the shape in [guardrail-template.md](guardrail-template.md) and get
-registered in CLAUDE.md's index per [project-standards.md](project-standards.md).
+registered in `CLAUDE.md` or `AGENTS.md` per [project-standards.md](project-standards.md).
 
 ---
 

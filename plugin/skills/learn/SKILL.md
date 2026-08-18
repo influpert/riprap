@@ -1,15 +1,21 @@
 ---
 name: learn
-description: Review the current session and update CLAUDE.md and .claude/instructions/ with new learnings, patterns, or insights discovered. Use when the user runs /riprap:learn or asks to document what was learned this session.
+description: Review the current session and update the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) and .riprap/instructions/ with new learnings, patterns, or insights discovered. Use when the user runs /riprap:learn or asks to document what was learned this session.
 ---
 
 # Learn - Document Session Learnings
 
-Review the current session and update CLAUDE.md with any new learnings, patterns, or insights discovered.
+## Shared guardrails
+
+Before starting, check whether riprap's router is already in context. If not, read
+`${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
+lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
+
+Review the current session and update the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) with any new learnings, patterns, or insights discovered.
 
 ## Where lessons go
 
-**Always the project's own `.claude/instructions/` — never riprap's.** riprap's guardrail
+**Always the project's own `.riprap/instructions/` — never riprap's.** riprap's guardrail
 documents ship inside the plugin and are replaced wholesale whenever it updates, so a lesson
 written there survives until the next `/plugin update` and not one minute longer. It will
 disappear without warning and without a diff, which is worse than never recording it.
@@ -22,11 +28,11 @@ Do not edit the plugin's files in place.
 
 1. **Review session context**: Identify new patterns/conventions, model/controller/view structures, testing patterns, configuration details, common pitfalls, **and repeated permission prompts** (same tool + argument approved 2+ times in the session).
 
-2. **Read current CLAUDE.md** and `.claude/instructions/` files relevant to the session's domain.
+2. **Read the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex)** and `.riprap/instructions/` files relevant to the session's domain. If the neutral directory is absent, also read `.claude/instructions/` or `.codex/instructions/` as migration input. Neutral guidance wins.
 
 3. **Identify gaps**: What new information would help future sessions? What's missing or outdated?
 
-4. **Update documentation**: Add to `.claude/instructions/` or enhance existing files:
+4. **Update documentation**: Add to `.riprap/instructions/` or enhance existing files:
    - Keep additions concise and actionable
    - Follow existing document style
    - Group related information logically
@@ -47,9 +53,9 @@ Do not edit the plugin's files in place.
 
 ## Guidelines
 
-- Only add information that would genuinely help future Claude sessions
+- Only add information that would genuinely help future agent sessions
 - Prefer specific, actionable guidance over general observations
 - Keep entries concise — this is a reference document, not a journal
 - If no significant learnings *and* no repeated permission prompts, report that and skip the update
-- Keep CLAUDE.md small and refer to instructions from `.claude/instructions/`
+- Keep the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) small and refer to instructions from `.riprap/instructions/`
 - Permission suggestions are always user-approved — the skill proposes, the user decides

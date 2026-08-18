@@ -43,6 +43,7 @@
 # is here because a skill is licensed to edit it, and it now carries the corrections
 # that stop a skill writing into plugin/ and shipping to every adopter.
 /.claude/**              @influpert/code-reviewers
+/.riprap/**              @influpert/code-reviewers
 /CLAUDE.md               @influpert/code-reviewers
 /.claude-plugin/**       @influpert/code-reviewers
 /bin/**                  @influpert/code-reviewers

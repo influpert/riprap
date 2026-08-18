@@ -2,11 +2,11 @@
 title: What riprap tells the model
 eyebrow: Behaviour
 lede: >-
-  The rules injected into every fresh session, how they get there without touching your
-  CLAUDE.md, and what they cost you in context.
+  The shared rules both hosts inject at session start and skills load on demand,
+  how they avoid installation-time project edits, and what they cost in context.
 description: >-
-  riprap's seven behavioural rules and five critical rules, the SessionStart injection that
-  delivers them, the precedence rule when a project disagrees, and the context cost.
+  riprap's seven behavioural rules and five critical rules, their host-specific delivery,
+  the precedence rule when a project disagrees, and the context cost.
 ---
 
 <nav class="toc" markdown="1">
@@ -19,8 +19,10 @@ On this page
 
 ## How the rules reach the model
 
-riprap's documents are delivered by a **SessionStart hook**. Nothing is written to your
-`CLAUDE.md`, and nothing is written to `.claude/settings.json`.
+Both hosts deliver riprap's router through a **SessionStart hook**. Every riprap skill also
+loads the same router when it is absent, so disabling or declining native hooks does not make a
+skill lose the baseline. Installation writes neither `CLAUDE.md`, `AGENTS.md`,
+`.claude/settings.json`, nor global Codex configuration.
 
 Injecting is strictly better than writing a file into the project, for three reasons worth
 stating because the alternative looks easier:
@@ -32,7 +34,7 @@ stating because the alternative looks easier:
 - **A project that stopped using riprap would still be carrying it.** Uninstalling should
   actually uninstall.
 
-The same reasoning covers the skills. They are namespaced by the harness as `/riprap:learn`,
+The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
 `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:council`,
 `/riprap:branch-cleaner`, `/riprap:release`, `/riprap:reviewer` and `/riprap:handoff`, so a
 repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and nothing to collide with.
@@ -64,7 +66,7 @@ riprap cannot. Nothing riprap ships overrides a rule a project states for itself
 
 The corollary matters just as much: **riprap's documents are read-only, and are replaced
 whenever the plugin updates.** A lesson worth keeping goes in the project's own
-`.claude/instructions/`, never into riprap's copy, where the next update erases it. That is
+`.riprap/instructions/`, never into riprap's copy, where the next update erases it. That is
 what `/riprap:learn` is for — it writes into your project, deliberately.
 
 ## The seven behavioural rules
@@ -77,7 +79,7 @@ Use plan mode for verification steps too, not just for building.
 context clean. One task per subagent.
 
 **3. Capture corrections.** After any correction, write the lesson into the project's
-`.claude/instructions/` so it survives the session. A correction that only lives in the
+`.riprap/instructions/` so it survives the session. A correction that only lives in the
 conversation gets made again next week.
 
 **4. Verify before claiming done.** Never mark work complete without evidence: tests run,
@@ -162,15 +164,19 @@ ignores `tmp/` does not need riprap's opinion about it.
   path that resolves differently than expected is the most common cause of an agent editing
   the wrong copy of a file.
 
-## The nine skills
+## The ten skills
 
 These chain: `/riprap:spec` defines a feature, `/riprap:architect` turns it into an
 implementation plan, `/riprap:implement` builds that plan, and `/riprap:reviewer` reviews what
 comes out. Each also runs alone — the stage before it being absent changes where the input
 comes from, never whether the skill works.
 
+**`/riprap:install`** installs or refreshes the repository-side payload. It refuses a dirty
+tree, preserves an incumbent hook manager, proposes rather than guesses stack commands, reports
+overlapping guidance and hooks, and finishes by running `bin/riprap verify`.
+
 **`/riprap:learn`** reviews the session and writes what was learned into the *project's*
-`CLAUDE.md` or `.claude/instructions/`. Never into riprap's own documents, which are
+the active host's root instruction file or `.riprap/instructions/`. Never into riprap's own documents, which are
 replaced on update. This is the mechanism behind rule 3.
 
 **`/riprap:spec`** is interactive feature definition in five phases: stakeholder interviews,

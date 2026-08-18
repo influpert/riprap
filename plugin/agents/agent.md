@@ -31,8 +31,9 @@ matched by hand.
 Checked before the skill is invoked, and can turn step 3's "invoke" into "stop instead" —
 see below.
 
-- **release**: resolve the release branch the way `riprap:release` itself would — its
-  stored answer in `.claude/instructions/riprap-skills.md`, or ask once — then check for
+- **release**: resolve the release branch the way `riprap:release` itself would — first its
+  stored answer in `.riprap/instructions/riprap-skills.md`, then the active host's legacy
+  `.claude/instructions/` or `.codex/instructions/` answer during migration, or ask once — then check for
   in-flight pull requests against it: open, not yet merged, e.g. `gh pr list --base
   <release-branch> --state open`. Treat a failed or unreadable check (`gh` not
   authenticated, a network error, output you can't parse as a clean list) the same as "PRs
@@ -60,7 +61,8 @@ see below.
    Only treat it as unmapped if nothing in the table is a reasonable match.
 3. If it matches, apply any pre-invocation check listed for it under Role-specific rules
    above. If that check says to stop, stop there — do not invoke the skill. Otherwise,
-   invoke that skill with the `Skill` tool and follow its process exactly — don't skip its
-   gates or improvise around it.
+   invoke that skill with the `Skill` tool on Claude Code. On Codex, read the registered
+   `${CLAUDE_PLUGIN_ROOT}/skills/<name>/SKILL.md` file. Follow its process exactly on either
+   host — don't skip its gates or improvise around it.
 4. If the role doesn't match any entry, say so, then complete the task directly using
    ordinary engineering judgment — do not invent or guess a skill.

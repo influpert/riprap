@@ -55,6 +55,7 @@ cd "$ROOT"
 
 PLUGIN_JSON="plugin/.claude-plugin/plugin.json"
 CODEX_JSON="plugin/.codex-plugin/plugin.json"
+CODEX_PRE_NATIVE_TAGS="plugin/.codex-plugin/pre-native-tags"
 MARKET_JSON=".claude-plugin/marketplace.json"
 NOTES_DIR=".github/releases"
 CHANGELOG_FILE="CHANGELOG.md"
@@ -553,15 +554,14 @@ verify_one() {
     fi
   done
 
-  # Tags cut before riprap shipped a Codex manifest remain valid historical releases.
-  # The Claude manifest read above fetches the tag, so a locally present commit with no
-  # Codex path means the tag predates native Codex packaging rather than that the network
-  # failed. Any tag that does contain the file is held to the same exact version check.
+  # Only the explicit, immutable list of releases cut before native Codex packaging may
+  # omit this manifest. Treating every absent path as historical would let a future tag
+  # publish after accidentally deleting the Codex package; checking the allowlist before
+  # local git state also prevents a stale local tag from laundering a network failure.
   if got="$(tagged_file "$tag" "$CODEX_JSON" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)" &&
     [ -n "$got" ]; then
     [ "$got" = "$version" ] || { echo "  ❌ $tag: $CODEX_JSON says $got"; found=1; }
-  elif git cat-file -e "$tag^{commit}" 2>/dev/null &&
-    ! git cat-file -e "$tag:$CODEX_JSON" 2>/dev/null; then
+  elif grep -qxF "$tag" "$CODEX_PRE_NATIVE_TAGS"; then
     echo "  ℹ️  $tag predates native Codex packaging; no Codex manifest to verify"
   else
     echo "  ⚠️  $tag: could not read $CODEX_JSON from the tagged tree, over git or gh"

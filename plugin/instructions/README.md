@@ -18,6 +18,10 @@ or `.codex/instructions/` — and then its root file, `CLAUDE.md` or `AGENTS.md`
 updated guidance only under `.riprap/instructions/`, and add a short pointer from the active
 host's root file so later sessions can find it.
 
+Apply that precedence to each requested section or topic, not to whole directories or files.
+A neutral file containing one answer does not hide a different answer that still exists only
+in the active host's legacy guidance.
+
 ---
 
 ## Behavioral rules

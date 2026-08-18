@@ -14,8 +14,8 @@ lifecycle hooks are disabled or not yet trusted. Follow the router's document li
 Install riprap's repository-side half into the current project. Re-running this skill is the
 update path.
 
-Use the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input`
-on Codex) whenever the user must choose. Do not replace it with a request for a typed number.
+Use the structured choice UI defined in `interaction-preferences.md` whenever the user must
+choose. Do not replace it with a request for a typed number.
 
 The plugin root is available as `${CLAUDE_PLUGIN_ROOT}` on both supported plugin runtimes. Pass
 any user-requested `--force` or `--dry-run` option through to the installer.

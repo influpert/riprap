@@ -67,11 +67,14 @@ Whenever the user must choose between alternatives, use the host's structured qu
 `AskUserQuestion` on Claude Code and `request_user_input` on Codex. Never turn the options
 into a numbered list and ask the user to type a number; the choice must be clickable.
 
-Codex exposes `request_user_input` in Plan mode. Enter Plan mode before a workflow reaches a
-choice checkpoint, collect the selection there, and only then resume execution. If an
-unforeseen choice appears outside Plan mode, stop before the choice has consequences and ask
-the user to switch modes; do not silently choose and do not fall back to typed input. The mode
-switch is a transport requirement, not approval of the plan or of any option.
+Codex exposes `request_user_input` only after the user has selected Plan mode; the agent cannot
+change modes itself. Before starting a Codex workflow with known choice checkpoints, ask the
+user to select Plan mode in the host's mode control. Collect every available decision there.
+For a choice-only checkpoint, the user returns through the same mode control; do not call
+`ExitPlanMode`, because that tool is reserved for an actual plan and carries the plan
+stress-test gate. If an unforeseen choice appears in Code mode, stop before it has consequences
+and ask for the same mode switch. Never silently choose or fall back to typed input. A mode
+switch is a transport requirement, not approval of a plan or of any option.
 
 ---
 

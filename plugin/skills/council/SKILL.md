@@ -28,7 +28,7 @@ Call `EnterPlanMode`. The system will provide a plan file path — write your fi
 
 ### 2. Intake
 
-Use the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex) to ask (up to 4 questions per turn):
+Use the structured choice UI defined in `interaction-preferences.md` to ask (up to 4 questions per turn):
 - What is the topic or decision to plan?
 - What is the desired outcome / definition of success?
 - What constraints must the plan respect (time, budget, team size, tech stack, etc.)?
@@ -36,7 +36,7 @@ Use the host's structured choice UI (`AskUserQuestion` on Claude Code or `reques
 
 ### 3. Clarification Loop
 
-Continue asking clarifying questions with the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex) until you genuinely have enough context to research effectively. Cover as needed:
+Continue asking clarifying questions with that structured choice UI until you genuinely have enough context to research effectively. Cover as needed:
 - Stakeholders affected and their interests
 - Prior attempts and why they failed or stalled
 - Known risks or non-starters

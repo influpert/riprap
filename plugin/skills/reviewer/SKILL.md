@@ -107,12 +107,10 @@ reviewer that has quietly lost its base branch reports the whole history as new.
 **1. Read the stored answers first.** Look for a `## riprap:reviewer` section in the
 project's `.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is there, say
 what you found and go straight to the steps — do not ask again.
-If that section is absent from the neutral file, read the matching section in
-`.claude/instructions/riprap-skills.md` or `.codex/instructions/riprap-skills.md` for migration,
-then the root file. Neutral guidance wins for each section;
+Use the router's per-section guidance precedence for migration. Neutral guidance wins;
 write every new or changed answer only to `.riprap/instructions/riprap-skills.md`.
 
-**2. Only if there is none, ask — once — with the host's structured choice UI (`AskUserQuestion` on Claude Code or `request_user_input` on Codex).** Work each answer out
+**2. Only if there is none, ask — once — with the structured choice UI defined in `interaction-preferences.md`.** Work each answer out
 first and offer it as the recommended option, so the ordinary case is a confirmation rather
 than a typed path:
 

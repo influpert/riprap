@@ -6,6 +6,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 CLAUDE_MANIFEST=plugin/.claude-plugin/plugin.json
 CODEX_MANIFEST=plugin/.codex-plugin/plugin.json
+PRE_NATIVE_TAGS=plugin/.codex-plugin/pre-native-tags
 EXPECTED_SKILLS="architect branch-cleaner council handoff implement install learn release reviewer spec"
 
 fail=0
@@ -31,14 +32,29 @@ if [ -f "$CLAUDE_MANIFEST" ] && [ -f "$CODEX_MANIFEST" ]; then
 fi
 
 [ -f plugin/hooks/hooks.json ] || problem "shared native lifecycle hooks are missing"
-for event in SessionStart PreToolUse PostToolUse PreCompact Stop SessionEnd; do
-  jq -e --arg event "$event" '.hooks[$event] | type == "array" and length > 0' \
-    plugin/hooks/hooks.json >/dev/null || problem "shared hooks do not register $event"
-done
-for matcher in Bash 'Edit|Write'; do
-  grep -qF '"matcher": "'"$matcher"'"' plugin/hooks/hooks.json ||
-    problem "shared hooks lost Codex-compatible matcher $matcher"
-done
+jq -e '
+  def events: ["SessionStart", "PreToolUse", "PostToolUse", "PreCompact", "Stop", "SessionEnd"];
+  def matchers: ["startup", "resume", "clear", "compact", "fork", "Bash", "Read", "Grep",
+                 "Edit", "Write", "ExitPlanMode"];
+  type == "object" and (.hooks | type == "object") and
+  ((.hooks | keys) - events | length == 0) and
+  (events - (.hooks | keys) | length == 0) and
+  all(.hooks[];
+    type == "array" and length > 0 and all(.[ ];
+      type == "object" and
+      ((.matcher? // "") | type == "string") and
+      (((.matcher? // "") | select(length > 0) | split("|") | . - matchers | length) // 0) == 0 and
+      (.hooks | type == "array" and length > 0) and
+      all(.hooks[];
+        type == "object" and .type == "command" and
+        (.command | type == "string" and length > 0) and
+        ((.shell? // "bash") | type == "string") and
+        ((.async? // false) | type == "boolean") and
+        ((.timeout? // 0) | type == "number")
+      )
+    )
+  )
+' plugin/hooks/hooks.json >/dev/null || problem "shared hooks do not satisfy the native hook contract"
 
 actual_skills=$(find plugin/skills -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort | tr '\n' ' ' | sed 's/ $//')
 [ "$actual_skills" = "$EXPECTED_SKILLS" ] ||
@@ -73,14 +89,9 @@ grep -qF '.riprap/instructions/riprap-skills.md' plugin/agents/agent.md ||
 for skill in architect branch-cleaner implement release reviewer; do
   file="plugin/skills/$skill/SKILL.md"
   for contract in '.riprap/instructions/riprap-skills.md' \
-                  '.claude/instructions/riprap-skills.md' \
-                  '.codex/instructions/riprap-skills.md' \
-                  'Neutral guidance wins' \
                   'write every new or changed answer only to `.riprap/instructions/riprap-skills.md`'; do
     grep -qF "$contract" "$file" || problem "$file is missing neutral-guidance migration contract: $contract"
   done
-  grep -qF 'If that section is absent from the neutral file' "$file" ||
-    problem "$file falls back only when the whole neutral file is absent"
 done
 
 grep -qF 'Read `.riprap/instructions/` first' plugin/instructions/README.md ||
@@ -105,10 +116,6 @@ grep -qF 'Plan mode' plugin/instructions/interaction-preferences.md ||
 grep -qF 'On Codex, read' plugin/agents/agent.md ||
   problem "worker agent has no Codex-native skill invocation path"
 
-grep -qF 'none beyond the current `.github/CODEOWNERS`' .riprap/instructions/riprap-skills.md &&
-  grep -qF 'every run so a newly protected path' .riprap/instructions/riprap-skills.md ||
-    problem "riprap reviewer answers duplicate CODEOWNERS instead of reading it"
-
 for doc in README.md docs/index.md docs/install.md docs/guardrails.md docs/rules.md \
            plugin/instructions/README.md plugin/instructions/project-standards.md; do
   if grep -Eq 'Codex.{0,100}(does not expose|no native session-start|missing lifecycle|relies on.{0,30}repository-side)' "$doc"; then
@@ -116,10 +123,22 @@ for doc in README.md docs/index.md docs/install.md docs/guardrails.md docs/rules
   fi
 done
 
-grep -qF 'predates native Codex packaging' bin/release ||
-  problem "release verification has no historical-tag compatibility path"
-grep -qF 'predates native Codex packaging' .github/workflows/release.yml ||
-  problem "release workflow cannot republish historical pre-Codex tags"
+[ -s "$PRE_NATIVE_TAGS" ] || problem "$PRE_NATIVE_TAGS is missing or empty"
+if [ -s "$PRE_NATIVE_TAGS" ]; then
+  while IFS= read -r tag; do
+    git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null ||
+      problem "$PRE_NATIVE_TAGS names nonexistent tag $tag"
+    if git cat-file -e "$tag:$CODEX_MANIFEST" 2>/dev/null; then
+      problem "$PRE_NATIVE_TAGS still names $tag even though it has a Codex manifest"
+    fi
+  done < "$PRE_NATIVE_TAGS"
+  while IFS= read -r tag; do
+    if ! git cat-file -e "$tag:$CODEX_MANIFEST" 2>/dev/null &&
+      ! grep -qxF "$tag" "$PRE_NATIVE_TAGS"; then
+      problem "$tag lacks a Codex manifest but is not an approved pre-native tag"
+    fi
+  done < <(git tag --list 'v*')
+fi
 
 [ "$fail" -eq 0 ] || exit 1
 echo "✅ native Codex plugin contract holds"

@@ -164,7 +164,7 @@ loop having failed.
 gate 3 weigh a finding there against the whole population rather than against this repository.
 There is no staging: the plugin loads live from this working tree.
 
-## riprap:council
+## riprap:advise
 
 Nothing to record. It reads, argues and plans; it stores no answers and writes no files.
 

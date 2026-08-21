@@ -35,7 +35,7 @@ stating because the alternative looks easier:
   actually uninstall.
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
-`/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:council`,
+`/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
 `/riprap:branch-cleaner`, `/riprap:release`, `/riprap:reviewer` and `/riprap:handoff`, so a
 repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and nothing to collide with.
 
@@ -205,7 +205,7 @@ so two sessions cannot overwrite each other, and it never merges: the party that
 ran the review and wrote the summary is the party `merge-gates.md` exists to keep away from the
 merge button.
 
-**`/riprap:council`** is a planning council: intake, clarification, parallel research agents,
+**`/riprap:advise`** is a planning council: intake, clarification, parallel research agents,
 a draft, then parallel critic agents against that draft before anything reaches you. It is
 rule 2 and the stress-test rule applied to planning itself.
 

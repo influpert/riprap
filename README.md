@@ -170,7 +170,7 @@ document shape.
 
 ## Behavioral rules
 
-Seven. Both hosts inject them at session start; skills load the same router on demand if native
+Eight. Both hosts inject them at session start; skills load the same router on demand if native
 hooks are disabled. Neither installation path writes them into `CLAUDE.md` or `AGENTS.md`:
 
 | Rule | What it does |
@@ -182,6 +182,7 @@ hooks are disabled. Neither installation path writes them into `CLAUDE.md` or `A
 | **Prefer the simpler solution** | When two designs both work, ship the one with less code. Add structure at the second occurrence, not in anticipation of one. |
 | **Fix bugs autonomously** | Given a failing test or a red CI run, diagnose and fix it without a round trip. |
 | **Keep the handoff current** | One document per unit of work in `tmp/handoff/`, rewritten as the work moves. Write it before you need it — at compaction there is no turn left. |
+| **Clarify before you build** | When a change could be read more than one way, ask before starting — one question at a time — then state the understanding you landed on and begin unless stopped. Below that bar, asking is the failure mode. |
 
 Plus five restated in full because they cost the most when forgotten: never weaken code
 to make a test pass; always stress-test a plan before presenting it and again whenever it

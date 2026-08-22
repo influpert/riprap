@@ -222,6 +222,28 @@ Below the gate, asking *is* the failure mode. A confirmation request on a typo f
 a round trip to learn nothing and teaches the user that your questions are noise — which
 is what makes the important question get skimmed later.
 
+### Ask before you start, and one at a time
+
+The table above says how many questions a change is worth. Two things about *when* and *how*
+they get asked:
+
+**Before the work, not during it.** Once the code exists, a question about direction competes
+with the sunk cost of what is already written — yours to abandon and the reader's to re-read.
+An answer that arrives after the first commit gets applied as a patch to a shape that should
+have been chosen with it.
+
+**One at a time, each shaped by the last answer.** Three questions sent together are three
+guesses about what matters, all written before any of them was answered. Asked in sequence,
+the second is often not the question that was going to be asked, and the third sometimes turns
+out to be unnecessary. Batch only when the questions are genuinely independent *and* the round
+trips are expensive.
+
+Then close the loop: **state the understanding you arrived at and what you intend to do, and
+begin unless the user stops you.** That summary is not a request for approval. It is the last
+cheap moment to catch a wrong reading — while it is still a sentence rather than a diff.
+Waiting for an explicit yes on every task converts a correction point into a blocking gate,
+and a gate that costs more than it saves is one people learn to route around.
+
 ### Trigger words in your own draft
 
 Reread what you are about to send. If it contains any of these, **you have not decided

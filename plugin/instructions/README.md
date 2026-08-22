@@ -57,6 +57,16 @@ carries the goal, the plan, what is done, what is next, what done means, and how
 Write it *before* you need it — when the context actually runs out there is no turn left in
 which to summarise. → [handoffs.md](handoffs.md)
 
+**8. Clarify before you build.** When a request would change something *and* carries a
+reading that would change the outcome, ask before starting — one question at a time, each
+shaped by the last answer, through the host's structured choice UI wherever there is one.
+Then state the understanding you arrived at and what you intend to do, and begin unless the
+user stops you. Neither half is optional: questions batched up front cannot use what the
+first answer reveals, and an understanding never said out loud is one nobody can correct
+before it is code. Below that bar — a typo, an unambiguous single-file edit, a bug that *is*
+the task, a question that wants an answer rather than a change — asking *is* the failure mode.
+→ [interaction-preferences.md](interaction-preferences.md)
+
 ---
 
 ## Critical rules
@@ -125,7 +135,8 @@ beat one 215-line file when either would answer the question.
 **Starting work**
 
 - First session in a repo? → [project-standards.md](project-standards.md) (~175)
-- Proposing a plan, an approach, or an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
+- Handed a request that could be read more than one way? Proposing a plan, an approach, or
+  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
 - Planning anything a user will see? Mock it up first, in the project's design system → [design.md](design.md) (~250)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
   on the way? → [development-workflow.md](development-workflow.md) (~110)

@@ -67,6 +67,32 @@ allowed() {  # $1 = repo-relative path
     */hooks/lib/secret-patterns.sh|*/hooks/riprap/lib/secret-patterns.sh) return 0 ;;
     # This file necessarily contains every banned term, as data.
     */bin/scrub-check|bin/scrub-check) return 0 ;;
+    # The write skill's reference material, generated verbatim from a public
+    # third-party source by bin/refresh-style-guide. This is the one place a
+    # whole-file exemption is right rather than lazy, for three reasons:
+    #
+    #   1. Every scan below exists to catch riprap's OWN provenance leaking — the
+    #      private codebase it was distilled from, a contributor's handle, the
+    #      infrastructure it once ran on. Google's published style guide has no
+    #      access to any of that, so there is nothing here for the scans to find.
+    #      What they do find is upstream's teaching material: the RFC 5737
+    #      documentation ranges (192.0.2.0/24 and friends) on the page that tells
+    #      writers to use exactly those, and ISO dates on the page about
+    #      formatting ISO dates.
+    #   2. allowed_line() — normally the right tool, and what CLAUDE.md tells you
+    #      to reach for — cannot work here. Its entries are anchored to a path and
+    #      a string, and both move whenever Google edits a page. An exemption that
+    #      silently stops matching turns the next scheduled refresh red for a
+    #      reason nobody can act on, which is how a check gets deleted.
+    #   3. Editing the offending lines out is not available either: the next
+    #      refresh overwrites them. That overwrite is the point — it is what keeps
+    #      the copy honest — so the files cannot be a place where hand fixes live.
+    #
+    # The review surface is the generator and the refresh diff, which a human
+    # reads, not these files. Anything riprap actually asserts about writing is in
+    # plugin/instructions/writing-style.md and the skill's SKILL.md, and both are
+    # scanned normally.
+    plugin/skills/write/reference/*) return 0 ;;
     # The Required Notice names the copyright holder, and a licence is the one place that
     # name belongs — it is precisely what the Notices clause obliges every redistributor to
     # carry onward. The holder shares its name with the organisation the source-project scan

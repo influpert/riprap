@@ -36,7 +36,7 @@ good practice. Every rule is here because something broke first, and the inciden
 caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
-<em>from</em>. They are not what it ships. What it ships is 19 guardrail documents, ten
+<em>from</em>. They are not what it ships. What it ships is 20 guardrail documents, eleven
 skills, ten hooks and one agent — the inventory is on the
 <a href="reference.md">reference page</a>.</p>
 
@@ -68,7 +68,7 @@ riprap is one plugin for Claude Code and Codex. There is nothing to clone.
 ```
 
 These are the Claude Code commands; Codex installation is listed on the
-[installation page](install.md). Both hosts receive the same ten skills, worker agent, and
+[installation page](install.md). Both hosts receive the same eleven skills, worker agent, and
 payload workflow, and native lifecycle hooks.
 
 Run `/riprap:install` again any time. It is also the update path.
@@ -108,7 +108,7 @@ Improvements flow back as ordinary pull requests.
 Outside your repository, nothing to maintain.
 
 ```
-instructions/   19 guardrail documents, indexed by task.
+instructions/   20 guardrail documents, indexed by task.
                 A router is injected each session;
                 the rest are read on demand.
 skills/         /riprap:learn      /riprap:spec
@@ -183,7 +183,7 @@ native hooks are disabled. Installation writes neither `CLAUDE.md` nor `AGENTS.m
 
 | Rule | What it does |
 |---|---|
-| **Clarify, then plan** | Unless already 95% confident of exactly what is wanted, ask first — one question at a time — then summarize what made you confident and what you will do, and wait for the go-ahead. Then plan before any 3+ step or architectural task. |
+| **Clarify, then plan** | Unless already 95% confident of exactly what is being asked or asked for, ask first — one question at a time. A question then gets an answer; a task gets a summary and waits for the go-ahead; a task already over the bar just gets done. Then plan before any 3+ step or architectural task. |
 | **Use subagents** | Offload research and parallel analysis, one task each, to keep the main context clean. |
 | **Capture corrections** | After any correction, write the lesson into `.riprap/instructions/` so it outlives the session. |
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |

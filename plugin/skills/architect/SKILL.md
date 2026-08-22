@@ -11,6 +11,13 @@ Before starting, check whether riprap's router is already in context. If not, re
 `${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
 lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
 
+**Everything this skill writes is read by somebody who was not here.** Draft against
+[writing-style.md](../../instructions/writing-style.md) — voice, tense, prescriptive `must`/`can`/`might`,
+and the bar a task has to clear before another agent can pick it up. Then run `/riprap:write`
+over what you produced, before you publish it. Draft against the short standard and check
+against the full one: carrying seventy pages of style guidance through the whole run costs
+context on every step, and the only text that needs the depth is the text you finished.
+
 Design a change, and hand over a plan somebody else can execute.
 
 **A plan that makes its reader re-explore has moved the work, not done it.** They open it, find
@@ -237,7 +244,10 @@ The section that earns the artifact. One row per requirement: **what already exi
 ### 6. Draft it
 
 Plan mode's file, at this stage. The sufficiency test is one sentence: **a session that has read
-only this plan and the repository can start step 1 without asking a question.**
+only this plan and the repository can start step 1 without asking a question.** That is rule 1's
+95% bar written from the other side — see
+[writing-style.md](../../instructions/writing-style.md), which states it once so this skill,
+`implement` and `handoffs.md` are not three slightly different rules.
 
 ````markdown
 # <Task> — implementation plan

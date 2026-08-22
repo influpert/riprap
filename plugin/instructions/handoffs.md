@@ -65,7 +65,10 @@ Six questions, and a resuming agent should not have to open anything else to get
 3. **Done** — what has actually landed, with evidence: the commits, the files, the tests that
    ran and what they printed.
 4. **Next** — the immediate next action, specific enough to start on without deciding anything
-   first.
+   first. That is the same bar rule 1 sets for reading work, pointed the other way: written so
+   that whoever picks it up is already over 95% and does not have to come back and ask. See
+   [writing-style.md](writing-style.md). An action a resuming agent has to interpret is a
+   question you left for them, and they answer it with a guess you never see.
 5. **Done means** — the condition under which this work is finished. Written down because it is
    the first thing a fresh context invents for itself, usually smaller than the real one.
 6. **Resume from here** — the branch, the worktree path, the commands that get back to a

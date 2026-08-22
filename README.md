@@ -61,7 +61,7 @@ codex plugin add riprap@influpert
 ```
 
 Then ask Codex to run `/riprap:install` from the repository root. Both hosts install the
-same ten skills, worker agent, payload workflow, and native lifecycle hooks. Codex asks the
+same eleven skills, worker agent, payload workflow, and native lifecycle hooks. Codex asks the
 user to review and trust plugin hooks before enabling them; riprap does not mutate user-level
 Codex configuration.
 
@@ -105,7 +105,7 @@ Improvements flow back as ordinary pull requests.
 **From the plugin** — outside your repo, nothing to maintain:
 
 ```
-instructions/     19 guardrail documents, indexed by task. Both hosts inject the router;
+instructions/     20 guardrail documents, indexed by task. Both hosts inject the router;
                   skills also read it on demand if hooks are disabled.
 skills/           /riprap:learn  /riprap:spec  /riprap:architect
                   /riprap:implement  /riprap:council
@@ -175,7 +175,7 @@ hooks are disabled. Neither installation path writes them into `CLAUDE.md` or `A
 
 | Rule | What it does |
 |---|---|
-| **Clarify, then plan** | Unless already 95% confident of exactly what is wanted, ask first — one question at a time — then summarize what made you confident and what you will do, and wait for the go-ahead. Then plan before any 3+ step or architectural task. |
+| **Clarify, then plan** | Unless already 95% confident of exactly what is being asked or asked for, ask first — one question at a time. A question then gets an answer; a task gets a summary and waits for the go-ahead; a task already over the bar just gets done. Then plan before any 3+ step or architectural task. |
 | **Use subagents** | Offload research and parallel analysis, one task each, to keep the main context clean. |
 | **Capture corrections** | After any correction, write the lesson into `.riprap/instructions/` so it outlives the session. |
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |

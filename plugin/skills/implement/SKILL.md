@@ -11,6 +11,13 @@ Before starting, check whether riprap's router is already in context. If not, re
 `${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
 lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
 
+**Everything this skill writes is read by somebody who was not here.** Draft against
+[writing-style.md](../../instructions/writing-style.md) — voice, tense, prescriptive `must`/`can`/`might`,
+and the bar a task has to clear before another agent can pick it up. Then run `/riprap:write`
+over what you produced, before you publish it. Draft against the short standard and check
+against the full one: carrying seventy pages of style guidance through the whole run costs
+context on every step, and the only text that needs the depth is the text you finished.
+
 Turn an approved plan into a reviewed pull request, and stop three times on the way to be told
 you are wrong.
 

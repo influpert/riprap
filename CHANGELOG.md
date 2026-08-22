@@ -5,7 +5,36 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.10.0
+## v0.10.1
+
+Guardrails for Claude Code and Codex, enforced rather than suggested.
+
+This release fixes riprap's own tooling and closes a gap in the handoff guardrail —
+no new skills, no new hooks a fresh install would notice, other than the one described
+below.
+
+**Fixes**
+
+- **"Keep the handoff current" now has enforcement behind all six of the moments it
+  names, not three.** Scheduling a wakeup, creating a cron routine, launching a
+  background workflow or remote trigger, or spawning a background subagent could
+  previously happen with zero handoff in place, and a session could then run for hours
+  unattended with nothing asking for one. A new `PreToolUse` hook on those calls refuses
+  them when no real handoff exists yet for the branch — the one handoff hook that blocks
+  rather than nudges, because nothing can be reminded once nobody is watching.
+  `SessionEnd` also stopped being a no-op: a session that ends without ever writing a
+  handoff now gets the same last-resort capture `PreCompact` already wrote.
+- **The homepage's "Latest release" badge is wired into `bin/release` instead of being a
+  hand-maintained extra step.** `--finish` now writes and commits the version bump
+  locally right after confirming the release is live, and prints the `git push` for a
+  person to run — nothing is pushed automatically. CI backstops the field against the
+  newest tag in the meantime.
+- **The skill-count check in CI couldn't validate counts spelled past ten.** A doc
+  spelling out "eleven skills" was never even extracted as a candidate to check against
+  the real count. `word_for()` and the extraction regex now draw from one shared,
+  bounds-checked list instead of two independent ones that both stopped at ten.
+
+## v0.10.0 — 2026-08-22
 
 **What you get**
 

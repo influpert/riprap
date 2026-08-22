@@ -121,6 +121,40 @@ set_version() {
   fi
 }
 
+# docs/index.md's latest_release_version front matter drives the homepage's "latest
+# release" pill and its GitHub-release link. It isn't one of set_version()'s manifests
+# — YAML, not JSON, and it describes riprap.dev rather than an installable version —
+# so it gets its own small write, called from --finish (see below) right after
+# do_verify confirms the release is live. Mirrors set_version()'s write-verify-cleanup
+# shape, plus a version_in()-style duplicate-key guard: a sed with two matches
+# rewrites the wrong one exactly as version_in()'s comment warns, and nothing else
+# here would catch it. Returns rather than exits non-zero: called from a context that
+# must not fail the whole --finish run over a badge that's already been published
+# once by hand.
+#
+# Extracted verbatim by bin/tests/test-release-badge-bump.sh via a sed brace match —
+# keep the opening "set_release_badge() {" and the closing "}" at column 0.
+set_release_badge() {
+  local file="docs/index.md" want="$1" count
+  [ -f "$file" ] || {
+    echo "❌ $file is missing; cannot bump the release badge." >&2
+    return 1
+  }
+  count="$(grep -c '^latest_release_version:' "$file")"
+  if [ "$count" -ne 1 ]; then
+    echo "❌ $file has $count latest_release_version keys, expected 1. Fix by hand." >&2
+    return 1
+  fi
+  sed -i.bak -E "s/(latest_release_version:[[:space:]]*\")[^\"]*(\")/\1$want\2/" "$file"
+  rm -f "$file.bak"
+  local got
+  got="$(sed -n 's/^latest_release_version:[[:space:]]*"\([^"]*\)".*/\1/p' "$file")"
+  if [ "$got" != "$want" ]; then
+    echo "❌ $file still says \"$got\" after the edit; not committing." >&2
+    return 1
+  fi
+}
+
 # No leading zeros. 0.05.0 passes a naive digits-only check and is not semver: it
 # installs as a string no adopter's tooling equates with 0.5.0, and `sort -V` places it
 # above 0.4.0 — so one typo also blocks every later 0.x release behind a refusal that
@@ -1314,6 +1348,29 @@ if [ "$MODE" = finish ]; then
   echo
   echo "── verify ──"
   do_verify "$VERSION"
+
+  # The homepage's "latest release" pill is not fatal to a release: the release
+  # itself already succeeded by the time do_verify returns. Commits locally only
+  # — this never pushes on its own, same as everywhere else in this script a
+  # person is the one who types the push. ci.yml's ninth "site and repository
+  # agree" check backstops the drift until that push happens.
+  echo
+  if set_release_badge "$VERSION"; then
+    if git diff --quiet -- docs/index.md; then
+      echo "✅ docs/index.md already said $VERSION"
+    elif git add -- docs/index.md &&
+         git commit -q -m "Bump the homepage's latest-release badge to $VERSION"; then
+      echo "✅ committed the release-badge bump locally. Push it:"
+      echo "     git push origin $DEFAULT"
+    else
+      echo "⚠️  could not commit the release-badge bump. Fix docs/index.md by hand and commit it," >&2
+      echo "   or the CI check on the next pull request will catch it." >&2
+    fi
+  else
+    echo "⚠️  could not bump docs/index.md's latest_release_version. Fix it by hand and commit it," >&2
+    echo "   or the CI check on the next pull request will catch it." >&2
+  fi
+
   # Without this, a fully successful --finish falls into the plain-mode epilogue below
   # and ends with "Nothing has been pushed. This publishes it: git push origin $TAG" —
   # after it has pushed, watched and verified. The false line appeared ONLY on the

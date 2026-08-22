@@ -19,26 +19,38 @@ fi
 PASS=0
 FAIL=0
 
-# run_case DESC FIXTURE VERSION EXPECT_EXIT EXPECT_FIELD
+# run_case DESC FIXTURE VERSION EXPECT_EXIT EXPECT_FIELD [NO_FIXTURE_FILE] [EXPECT_MESSAGE]
 #
-# FIXTURE is docs/index.md's whole scratch content. Runs the extracted
-# set_release_badge() against a copy of it in a scratch directory, then checks:
+# FIXTURE is docs/index.md's whole scratch content, unless NO_FIXTURE_FILE is
+# "nofile" — then docs/index.md is never created at all, to exercise the
+# function's own missing-file guard rather than the "field absent from an
+# existing file" path FIXTURE_MISSING covers. EXPECT_MESSAGE, when non-empty, is
+# a substring the function's combined stdout+stderr must contain — exit code
+# alone doesn't distinguish a specific guard firing from a different code path
+# that happens to fail with the same exit code.
+#
+# Runs the extracted set_release_badge() against a copy of it in a scratch
+# directory, then checks:
 #   - the exit code
 #   - on success (EXPECT_EXIT 0): the resulting latest_release_version line equals
 #     EXPECT_FIELD, every OTHER line is byte-identical to the fixture (a write that
 #     bumps the field but mangles a neighbour — description:, title: — is not a
 #     pass), and no docs/index.md.bak survives (set_version()'s write-verify-cleanup
 #     shape, which this mirrors, always removes its backup file)
-#   - on failure (EXPECT_EXIT non-zero): the WHOLE file is byte-identical to the
-#     fixture — a function that fails loudly but still fabricates or half-writes the
-#     field is not a pass either
+#   - on failure (EXPECT_EXIT non-zero): with a fixture, the WHOLE file is
+#     byte-identical to it — a function that fails loudly but still fabricates or
+#     half-writes the field is not a pass either. With NO_FIXTURE_FILE, the file
+#     must still not exist — the guard must not create one on its way to failing.
 run_case() {
   local desc="$1" fixture="$2" version="$3" expect_exit="$4" expect_field="$5"
+  local no_fixture_file="${6:-}" expect_message="${7:-}"
   local dir rc got_field out
 
   dir="$(mktemp -d)"
   mkdir -p "$dir/docs"
-  printf '%s' "$fixture" > "$dir/docs/index.md"
+  if [ "$no_fixture_file" != "nofile" ]; then
+    printf '%s' "$fixture" > "$dir/docs/index.md"
+  fi
   printf '%s\n' "$FUNC_SRC" > "$dir/func.sh"
 
   set +e
@@ -54,9 +66,35 @@ run_case() {
     return
   fi
 
+  if [ -n "$expect_message" ]; then
+    case "$out" in
+      *"$expect_message"*) ;;
+      *)
+        FAIL=$((FAIL + 1))
+        printf 'FAIL: %s (expected output to contain %s; got: %s)\n' \
+          "$desc" "$expect_message" "$out"
+        rm -rf "$dir"
+        return
+        ;;
+    esac
+  fi
+
   if [ -e "$dir/docs/index.md.bak" ]; then
     FAIL=$((FAIL + 1))
     printf 'FAIL: %s (left docs/index.md.bak behind)\n' "$desc"
+    rm -rf "$dir"
+    return
+  fi
+
+  if [ "$no_fixture_file" = "nofile" ]; then
+    if [ -e "$dir/docs/index.md" ]; then
+      FAIL=$((FAIL + 1))
+      printf 'FAIL: %s (created docs/index.md when it should not have)\n' "$desc"
+      rm -rf "$dir"
+      return
+    fi
+    PASS=$((PASS + 1))
+    printf 'PASS: %s\n' "$desc"
     rm -rf "$dir"
     return
   fi
@@ -106,6 +144,8 @@ run_case "refuses a file with two latest_release_version keys rather than guessi
   "$FIXTURE_DUPLICATE" "0.11.0" 1 ""
 run_case "does not silently no-op on a single-quoted field it can't match" \
   "$FIXTURE_SINGLE_QUOTED" "0.11.0" 1 ""
+run_case "fails loudly when docs/index.md itself is missing, and does not create it" \
+  "" "0.11.0" 1 "" nofile "is missing; cannot bump the release badge"
 
 printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

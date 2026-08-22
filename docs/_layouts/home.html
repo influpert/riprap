@@ -5,6 +5,17 @@ layout: default
   <div class="container hero-grid">
     <div class="hero-copy">
       <p class="section-eyebrow section-eyebrow-dash gradient-text">{{ page.eyebrow }}</p>
+      {%- comment %}
+        latest_release_version is set in this page's own front matter (docs/index.md) and
+        is not touched by bin/release — bump it by hand on every release, alongside the
+        "eleven shared skills" copy nearby if the skill count also moved.
+      {%- endcomment %}
+      {%- if page.latest_release_version and page.latest_release_version != empty %}
+      <a class="hero-release" href="https://github.com/influpert/riprap/releases/tag/v{{ page.latest_release_version }}">
+        <span class="hero-release-dot" aria-hidden="true"></span>
+        Latest release — v{{ page.latest_release_version }}
+      </a>
+      {%- endif %}
       <h1 class="hero-title">{{ page.hero_title }}</h1>
       <p class="hero-lede">{{ page.hero_lede }}</p>
       <div class="hero-actions">

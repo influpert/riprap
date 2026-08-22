@@ -388,6 +388,25 @@ a:hover { color: var(--primary-strong); }
 }
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
 
+.hero-release {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 16px 7px 12px;
+  margin-bottom: 22px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-strong);
+  font-size: .8125rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color var(--transition), transform var(--transition);
+}
+.hero-release:hover { border-color: var(--border-strong); color: var(--text-strong); transform: translateY(-1px); }
+.hero-release-dot { width: 7px; height: 7px; min-width: 7px; border-radius: 50%; background: var(--gradient-primary); }
+
 .terminal {
   border: 1px solid var(--border);
   border-radius: var(--radius);

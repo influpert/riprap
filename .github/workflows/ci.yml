@@ -77,12 +77,22 @@ jobs:
           # Only the numbers riprap could plausibly reach are mapped; an unmapped count
           # fails loudly rather than skipping the check. Defined up here because both
           # the skill count and the rule counts need it.
+          #
+          # One array, not a case statement and a separate regex alternation each
+          # carrying their own copy of "up to ten" — that was the actual bug: riprap
+          # shipped an eleventh skill and neither hardcoded list was extended. "Add a
+          # word" is now the whole fix, here and in the regex a few lines down that
+          # reads NUMBER_WORD_ALT.
+          NUMBER_WORDS=(one two three four five six seven eight nine ten eleven twelve
+                        thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty)
+          NUMBER_WORD_ALT=$(IFS='|'; echo "${NUMBER_WORDS[*]}")
           word_for() {
-            case "$1" in
-              3) echo three ;; 4) echo four ;; 5) echo five ;; 6) echo six ;;
-              7) echo seven ;; 8) echo eight ;; 9) echo nine ;; 10) echo ten ;;
-              *) echo "UNMAPPED-$1" ;;
-            esac
+            local n="$1"
+            if [ "$n" -ge 1 ] 2>/dev/null && [ "$n" -le "${#NUMBER_WORDS[@]}" ]; then
+              echo "${NUMBER_WORDS[$((n - 1))]}"
+            else
+              echo "UNMAPPED-$n"
+            fi
           }
 
           # 1. The catalogue cannot rot, in either direction. A sixteenth document that
@@ -157,7 +167,7 @@ jobs:
             #    a sentence naming both counts wrongly, and buys back every sentence that
             #    legitimately names two.
             bad=$(tr '\n' ' ' <"$f" | tr -s ' ' \
-                    | grep -oiE "[^.]{0,60}\b(one|two|three|four|five|six|seven|eight|nine|ten|[0-9]+) +skills?\b[^.]{0,40}" \
+                    | grep -oiE "[^.]{0,60}\b($NUMBER_WORD_ALT|[0-9]+) +skills?\b[^.]{0,40}" \
                     | grep -iE "guardrail document|loaded every session|\bthe +[a-z0-9]+ +skills?\b" \
                     | grep -viE "\b($sw|$s) +skills?\b" || true)
             [ -z "$bad" ] || { echo "❌ $f: skill count is not $sw:"; echo "$bad"; fail=1; }
@@ -367,6 +377,34 @@ jobs:
             [ -n "$(git ls-files -- ":(glob)$probe" | head -1)" ] || {
               echo "❌ CODEOWNERS rule '$pat' matches no tracked file"; fail=1; }
           done < .github/CODEOWNERS
+
+          # 9. The homepage's "latest release" pill (docs/index.md's latest_release_version)
+          #    is written and committed locally by `bin/release --finish`, right after the
+          #    release it names is confirmed live (see set_release_badge() in bin/release) —
+          #    but that script never pushes on its own, so the commit still needs a person
+          #    to push it. This is the backstop for the window between that commit landing
+          #    locally and it reaching origin, and for the rarer case the write itself
+          #    failed. A failure here does not necessarily mean this PR broke anything: if a
+          #    release landed recently, that is very likely why, and the fix is to rebase
+          #    onto main (the bump may already be there, just not yet in this branch) or, if
+          #    it truly hasn't landed anywhere yet, wait for it rather than hunt through this
+          #    diff. fetch-depth: 0 on the checkout above means every tag is already local,
+          #    so no network call is needed here beyond that.
+          newest=$(git tag -l 'v*' \
+                     | sed -n 's/^v\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)$/\1/p' \
+                     | sort -V | tail -1)
+          if [ -z "$newest" ]; then
+            echo "❌ no v* semver tags found; cannot check the release badge"; fail=1
+          else
+            got=$(sed -n 's/^latest_release_version:[[:space:]]*"\([^"]*\)".*/\1/p' docs/index.md)
+            if [ "$got" != "$newest" ]; then
+              echo "❌ docs/index.md's latest_release_version is \"$got\", the newest tag is v$newest."
+              echo "   bin/release --finish commits this locally after a release publishes, but"
+              echo "   never pushes it — if v$newest landed recently, rebase onto main for the"
+              echo "   bump, or edit latest_release_version to \"$newest\" by hand and push it."
+              fail=1
+            fi
+          fi
 
           [ "$fail" -eq 0 ] && echo "✅ site, README and repository agree"
           exit "$fail"

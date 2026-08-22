@@ -175,7 +175,7 @@ hooks are disabled. Neither installation path writes them into `CLAUDE.md` or `A
 
 | Rule | What it does |
 |---|---|
-| **Clarify, then plan** | Unless already 95% confident of exactly what is being asked or asked for, ask first — one question at a time. A question then gets an answer; a task gets a summary and waits for the go-ahead; a task already over the bar just gets done. Then plan before any 3+ step or architectural task. |
+| **Clarify, then plan** | Unless already 95% confident of exactly what is being asked or asked for, ask first — one question at a time. A question then gets an answer; a task gets a summary and waits for the go-ahead; a task already over the bar just gets done. With nobody to answer, take the narrowest reading and record it. Then plan before any 3+ step or architectural task. |
 | **Use subagents** | Offload research and parallel analysis, one task each, to keep the main context clean. |
 | **Capture corrections** | After any correction, write the lesson into `.riprap/instructions/` so it outlives the session. |
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |

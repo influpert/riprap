@@ -38,7 +38,14 @@ what you are going to do*, and then you wait for the user's signal. **A task you
 you have nothing to ask and must not manufacture something. Only then plan: enter plan mode for
 anything non-trivial — 3+ steps, or any architectural decision — and use it for verification
 steps too, not just for building. If work goes sideways, stop and re-plan rather than pushing
-through. → [interaction-preferences.md](interaction-preferences.md)
+through.
+
+**With nobody to answer, proceed and record.** A question you cannot get answered is not
+permission to guess freely, and not a reason to produce nothing. Take the narrowest reading
+that could be right, and record the fork in the artifact itself — a pull request body, a
+handoff — not in a transcript nobody will read. The critical rules do not relax: unattended is
+not a licence to merge, to add a technology, or to open a pull request on a diff nobody
+reviewed. → [interaction-preferences.md](interaction-preferences.md)
 
 **2. Use subagents.** Offload research, exploration, and parallel analysis to keep the
 main context clean. One task per subagent. → [interaction-preferences.md](interaction-preferences.md)

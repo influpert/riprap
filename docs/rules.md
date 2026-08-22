@@ -91,6 +91,20 @@ Only then plan: enter plan mode for anything non-trivial — three or more steps
 architectural decision — and use it for verification steps too, not just for building. If work
 goes sideways, stop and re-plan rather than pushing through.
 
+**With nobody to answer — a scheduled run, a trigger, CI — proceed and record.** A question that
+cannot be answered is not permission to guess freely, and not a reason to produce nothing. Take
+the narrowest reading that could be right, because a too-narrow change is a follow-up and a
+too-broad one is a revert; then record the fork in the artifact itself — a pull request body, a
+handoff — rather than in a transcript nobody will read. The critical rules do not relax:
+unattended is not a licence to merge, to add a technology, or to open a pull request on a diff
+nobody reviewed.
+
+This is deliberately not what [tech-footprint.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/tech-footprint.md)
+does, and the difference is the point. That rule refuses outright when there is nobody to ask,
+because it gates *adding* something whose cost is permanent — refusing ends where you started.
+Rule 1 gates *understanding*, where refusing produces nothing, burns the run, and leaves the
+same ambiguity waiting next time.
+
 **2. Use subagents.** Offload research, exploration, and parallel analysis to keep the main
 context clean. One task per subagent.
 

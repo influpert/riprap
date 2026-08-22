@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 CLAUDE_MANIFEST=plugin/.claude-plugin/plugin.json
 CODEX_MANIFEST=plugin/.codex-plugin/plugin.json
 PRE_NATIVE_TAGS=plugin/.codex-plugin/pre-native-tags
-EXPECTED_SKILLS="architect branch-cleaner council handoff implement install learn release reviewer spec"
+EXPECTED_SKILLS="advise architect handoff implement install learn prune release review spec"
 
 fail=0
 problem() { echo "❌ $*" >&2; fail=1; }
@@ -78,7 +78,7 @@ for skill in plugin/skills/*/SKILL.md; do
     problem "${skill%/SKILL.md} does not load shared guardrails when the router is absent"
 done
 
-for mapping in architect implement reviewer release; do
+for mapping in architect implement review release; do
   grep -q "riprap:$mapping" plugin/agents/agent.md ||
     problem "worker agent lost its $mapping mapping"
 done
@@ -86,7 +86,7 @@ done
 grep -qF '.riprap/instructions/riprap-skills.md' plugin/agents/agent.md ||
   problem "worker agent does not use neutral stored answers"
 
-for skill in architect branch-cleaner implement release reviewer; do
+for skill in architect prune implement release review; do
   file="plugin/skills/$skill/SKILL.md"
   for contract in '.riprap/instructions/riprap-skills.md' \
                   'write every new or changed answer only to `.riprap/instructions/riprap-skills.md`'; do

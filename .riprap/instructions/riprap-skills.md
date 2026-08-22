@@ -45,7 +45,7 @@ Two things it does **not** do, which matter to an agent reading this:
   — because it is about to publish. Read the checks yourself either way and say what you
   found.
 
-## riprap:branch-cleaner
+## riprap:prune
 
 - Base branch: `main`
 - Never delete: `main`
@@ -54,7 +54,7 @@ Literal names only — a stored pattern protects nothing, because the filters ma
 lines exactly. If a family of long-lived branches ever appears here, list the names it has
 that day and re-ask when the list changes.
 
-## riprap:reviewer
+## riprap:review
 
 - Base branch: `main`
 - Forge: `gh`, and the GitHub MCP tools when the session has them — try both before
@@ -164,7 +164,7 @@ loop having failed.
 gate 3 weigh a finding there against the whole population rather than against this repository.
 There is no staging: the plugin loads live from this working tree.
 
-## riprap:council
+## riprap:advise
 
 Nothing to record. It reads, argues and plans; it stores no answers and writes no files.
 

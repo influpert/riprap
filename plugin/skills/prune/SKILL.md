@@ -1,9 +1,9 @@
 ---
-name: branch-cleaner
-description: Prune merged and stale Git branches and triage pull requests that have gone quiet, keeping the repository tidy. Use when the user runs /riprap:branch-cleaner or asks to prune, delete, clean up, or tidy old branches or stale PRs.
+name: prune
+description: Prune merged and stale Git branches and triage pull requests that have gone quiet, keeping the repository tidy. Use when the user runs /riprap:prune or asks to prune, delete, clean up, or tidy old branches or stale PRs.
 ---
 
-# Branch Cleaner
+# Prune
 
 ## Shared guardrails
 
@@ -31,11 +31,11 @@ work merges into**, and **the branches that must never be deleted**.
 
 Never edit them into this file. Skills ship from the plugin cache and are replaced
 wholesale when the plugin updates, so a value set here is reverted the next time it
-moves — and a branch cleaner that has quietly lost its protected list deletes
+moves — and a skill that has quietly lost its protected list deletes
 something it was told to keep. An answer stored in the project survives, and is the
 only kind that does.
 
-**1. Read the stored answers first.** Look for a `## riprap:branch-cleaner` section in the
+**1. Read the stored answers first.** Look for a `## riprap:prune` section in the
 project's `.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is
 there, say what you found and go straight to the steps. Do not ask again — a skill
 that re-interrogates the user every run trains them to answer without reading.
@@ -61,7 +61,7 @@ deleted. Offer the detected default first, marked as recommended.
 project's `.riprap/instructions/riprap-skills.md`, creating it if absent:
 
 ```markdown
-## riprap:branch-cleaner
+## riprap:prune
 
 - Base branch: `main`
 - Never delete: `main`, `release-2024`
@@ -519,7 +519,7 @@ scope and the number of prompts, never whether a prompt happens.
 ### Interactive (default)
 
 ```bash
-/riprap:branch-cleaner
+/riprap:prune
 ```
 
 Walks all categories and confirms each one.
@@ -527,7 +527,7 @@ Walks all categories and confirms each one.
 ### Dry run
 
 ```bash
-/riprap:branch-cleaner --dry-run
+/riprap:prune --dry-run
 ```
 
 Produces the reports and stops. Deletes nothing, prompts for nothing.
@@ -535,7 +535,7 @@ Produces the reports and stops. Deletes nothing, prompts for nothing.
 ### Single confirmation
 
 ```bash
-/riprap:branch-cleaner --yes
+/riprap:prune --yes
 ```
 
 Shows the complete plan and takes one confirmation covering all of it, instead
@@ -548,10 +548,10 @@ is a decision the user should make without seeing exactly what it applies to.
 ### Narrow the scope
 
 ```bash
-/riprap:branch-cleaner --merged-only    # Only branches merged into the base branch
-/riprap:branch-cleaner --stale-only     # Only branches past the staleness threshold
-/riprap:branch-cleaner --orphans-only   # Only branches whose upstream is gone
-/riprap:branch-cleaner --branches-only  # Skip the pull request steps
+/riprap:prune --merged-only    # Only branches merged into the base branch
+/riprap:prune --stale-only     # Only branches past the staleness threshold
+/riprap:prune --orphans-only   # Only branches whose upstream is gone
+/riprap:prune --branches-only  # Skip the pull request steps
 ```
 
 ## Safety Rules

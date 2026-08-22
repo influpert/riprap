@@ -68,11 +68,11 @@ Four smaller things, each because the owning document cannot see them:
 - **Plan-versus-tree.** git.md's staging rule keeps *somebody else's* work out of your commit.
   This one keeps *your own unplanned* work out, and only the plan can tell the two apart.
 - **The pull request body's assembly order** — which part comes from the plan, which from the
-  decisions record, and which is the table `/riprap:reviewer` hands over rather than one rebuilt
+  decisions record, and which is the table `/riprap:review` hands over rather than one rebuilt
   from memory.
 
 **It does not own how a review is conducted**, which angles run, how a finding is classified, or
-what a disposition means. It decides only what is handed to `/riprap:reviewer` and what happens
+what a disposition means. It decides only what is handed to `/riprap:review` and what happens
 to the verdict that comes back.
 
 What it defers. The session router names each absolute path.
@@ -253,7 +253,7 @@ in the tests-only commit, because gate 1 can only find what is in the diff to lo
 
 ### 4. Gate 1 — have the tests reviewed
 
-**Run `/riprap:reviewer`.** It owns the procedure and chooses its own angles. Hand it three
+**Run `/riprap:review`.** It owns the procedure and chooses its own angles. Hand it three
 things: the tests-only diff and the base it is taken against, the plan as the specification those
 tests are supposed to encode, and the fact that **no implementation exists yet**.
 
@@ -316,7 +316,7 @@ at the blocking tier — the classes are interaction-preferences.md's — and pu
 in the body with a disposition. The only thing this skill adds is *when*, which is now, before
 the push.
 
-Hand `/riprap:reviewer` the branch, its base, and the workspace it lives in. No pull request
+Hand `/riprap:review` the branch, its base, and the workspace it lives in. No pull request
 exists, so it emits its table and hands it over. **Keep that table.** It is what step 8's body is
 built from, and one rebuilt later from memory loses exactly the rows the rule exists for — the
 ones that were considered and dismissed.
@@ -369,7 +369,7 @@ this skill's:
 1. **Why**, in a paragraph, from the plan. Not a restatement of the diff — the diff is already
    attached.
 2. **The verification**: the command, and its quoted result.
-3. **The findings table `/riprap:reviewer` handed over at gate 2**, with the disposition column
+3. **The findings table `/riprap:review` handed over at gate 2**, with the disposition column
    filled in per its rules. **Take the table it gives you.** Its shape is not reproduced here,
    because a second copy in this file is a second definition of what a disposition means. This is
    also where `tmp/riprap/decisions-<slug>.md` graduates — the overrules recorded there become
@@ -388,7 +388,7 @@ this skill's:
 
 **This is not gate 2 again**, and saying why is what keeps it from reading as ceremony. What
 exists now and did not exist then is the diff as the forge will merge it, the body, the checks,
-and the fixes made since. Run `/riprap:reviewer` with the pull request number; it pins the head,
+and the fixes made since. Run `/riprap:review` with the pull request number; it pins the head,
 posts one review, and returns a verdict against that commit. Where the head moved because of gate
 2's fixes, its own rule makes this a remediation check rather than a fresh sweep — which is what
 keeps the total bounded.
@@ -406,7 +406,7 @@ Then the checkpoint.
 **Four things are confirmed, in this order.** Any one missing and the answer is not *merge later*
 — it is that this loop ends here and the user is told what is outstanding:
 
-1. `/riprap:reviewer` returned a clean verdict **against the current head** — or every surviving
+1. `/riprap:review` returned a clean verdict **against the current head** — or every surviving
    finding above the lowest tier is recorded in the body's disposition column as dismissed by the
    user, with their reason. Re-read the head and confirm the verdict names that commit. A verdict
    that is neither of those ends the loop here.
@@ -422,7 +422,7 @@ about and merge on a future event nobody is present for. Print the exact command
 in the squash-and-delete form git.md gives, and say plainly that you have not run it.
 
 Afterwards: say where the decisions record is, remove the workspace you created once the work has
-landed, and *offer* `/riprap:branch-cleaner` rather than running it.
+landed, and *offer* `/riprap:prune` rather than running it.
 
 ## The checkpoints, and the bound
 

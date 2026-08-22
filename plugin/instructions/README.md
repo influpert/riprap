@@ -26,9 +26,16 @@ in the active host's legacy guidance.
 
 ## Behavioral rules
 
-**1. Plan first.** Enter plan mode for anything non-trivial — 3+ steps, or any
-architectural decision. If work goes sideways, stop and re-plan rather than pushing
-through. Use plan mode for verification steps too, not just for building.
+**1. Clarify, then plan.** Unless you are already 95% confident of exactly what needs
+doing, ask before you answer, plan, or build anything. Ask **sequentially** — one question at
+a time, each shaped by the last answer, through the host's structured choice UI wherever there
+is one — until you reach that confidence. Then **summarize what made you confident and what
+you are going to do, and wait for the user's signal before doing it.** The 95% bar is what
+stops this taxing a typo: when you already know exactly what is wanted, asking spends a round
+trip to learn nothing and teaches the user that your questions are noise. Only then plan:
+enter plan mode for anything non-trivial — 3+ steps, or any architectural decision — and use
+it for verification steps too, not just for building. If work goes sideways, stop and re-plan
+rather than pushing through. → [interaction-preferences.md](interaction-preferences.md)
 
 **2. Use subagents.** Offload research, exploration, and parallel analysis to keep the
 main context clean. One task per subagent. → [interaction-preferences.md](interaction-preferences.md)
@@ -56,16 +63,6 @@ unattended stretch or an announced compaction, and whenever you stop with work u
 carries the goal, the plan, what is done, what is next, what done means, and how to resume.
 Write it *before* you need it — when the context actually runs out there is no turn left in
 which to summarise. → [handoffs.md](handoffs.md)
-
-**8. Clarify before you build.** When a request would change something *and* carries a
-reading that would change the outcome, ask before starting — one question at a time, each
-shaped by the last answer, through the host's structured choice UI wherever there is one.
-Then state the understanding you arrived at and what you intend to do, and begin unless the
-user stops you. Neither half is optional: questions batched up front cannot use what the
-first answer reveals, and an understanding never said out loud is one nobody can correct
-before it is code. Below that bar — a typo, an unambiguous single-file edit, a bug that *is*
-the task, a question that wants an answer rather than a change — asking *is* the failure mode.
-→ [interaction-preferences.md](interaction-preferences.md)
 
 ---
 

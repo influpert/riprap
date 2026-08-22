@@ -178,19 +178,18 @@ what you believe is enforced. [How a rule is made to hold](guardrails.md).
 
 ## Behavioral rules
 
-Eight rules. Both hosts inject them at session start; skills apply the same router on demand if
+Seven rules. Both hosts inject them at session start; skills apply the same router on demand if
 native hooks are disabled. Installation writes neither `CLAUDE.md` nor `AGENTS.md`:
 
 | Rule | What it does |
 |---|---|
-| **Plan first** | Plan before any 3+ step or architectural task. If work goes sideways, stop and re-plan rather than pushing through. |
+| **Clarify, then plan** | Unless already 95% confident of exactly what is wanted, ask first — one question at a time — then summarize what made you confident and what you will do, and wait for the go-ahead. Then plan before any 3+ step or architectural task. |
 | **Use subagents** | Offload research and parallel analysis, one task each, to keep the main context clean. |
 | **Capture corrections** | After any correction, write the lesson into `.riprap/instructions/` so it outlives the session. |
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |
 | **Prefer the simpler solution** | When two designs both work, ship the one with less code. Add structure at the second occurrence, not in anticipation of one. |
 | **Fix bugs autonomously** | Given a failing test or a red CI run, diagnose and fix it without a round trip. |
 | **Keep the handoff current** | One document per unit of work in `tmp/handoff/`, rewritten as the work moves. Write it before you need it — at compaction there is no turn left. |
-| **Clarify before you build** | When a change could be read more than one way, ask before starting — one question at a time — then state the understanding you landed on and begin unless stopped. Below that bar, asking is the failure mode. |
 
 Five more are restated in full because they cost the most when forgotten: never weaken code
 to make a test pass; always stress-test a plan before presenting it and again whenever it

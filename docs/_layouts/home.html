@@ -5,6 +5,12 @@ layout: default
   <div class="container hero-grid">
     <div class="hero-copy">
       <p class="section-eyebrow section-eyebrow-dash gradient-text">{{ page.eyebrow }}</p>
+      {%- if page.latest_release_version %}
+      <a class="hero-release" href="{{ page.latest_release_url }}">
+        <span class="hero-release-dot" aria-hidden="true"></span>
+        Latest release — v{{ page.latest_release_version }}
+      </a>
+      {%- endif %}
       <h1 class="hero-title">{{ page.hero_title }}</h1>
       <p class="hero-lede">{{ page.hero_lede }}</p>
       <div class="hero-actions">

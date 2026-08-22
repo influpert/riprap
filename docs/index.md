@@ -13,8 +13,10 @@ hero_commands:
   - /riprap:install
 hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
+latest_release_version: 0.10.0
+latest_release_url: https://github.com/influpert/riprap/releases/tag/v0.10.0
 description: >-
-  Guardrails, conventions, and enforcement for Claude Code and Codex. Ten shared skills,
+  Guardrails, conventions, and enforcement for Claude Code and Codex. Eleven shared skills,
   repository git enforcement, and shared native lifecycle hooks.
 ---
 

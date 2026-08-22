@@ -112,7 +112,7 @@ project it works out, confirms with you once, and writes into your own
 plugin updates.
 
 - **`/riprap:install`** — installs or refreshes the repository payload, wires git hooks without taking over another hook manager, proposes stack-seam configuration, reports overlaps, and verifies the result.
-- **`/riprap:learn`** — reviews the session and writes what was learned into *your* project's instructions, never riprap's, which are replaced on update.
+- **`/riprap:learn`** — reviews the session and writes what was learned into *your* project's instructions, never riprap's, which are replaced on update. Also proposes narrow `permissions.allow` entries for any tool-and-argument pattern approved twice or more in the session — always the narrowest rule that covers actual usage, always confirmed with you before it touches `settings.json`.
 - **`/riprap:spec`** — interactive feature definition: stakeholder interviews, mockups, phased work items, acceptance tests. Planning only; it writes no implementation.
 - **`/riprap:architect`** — turns a settled requirement into an implementation plan its reader can execute without re-exploring: what already exists with line references, what has to change, the files, the ordered steps and how each is verified. Planning only; it writes no source.
 - **`/riprap:implement`** — builds an approved plan: tests first, then three review passes — over the tests, the implementation and the pull request — each presented to you before anything is incorporated. Drives the checks green and hands the merge back to a person.

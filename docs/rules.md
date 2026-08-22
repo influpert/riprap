@@ -206,8 +206,11 @@ tree, preserves an incumbent hook manager, proposes rather than guesses stack co
 overlapping guidance and hooks, and finishes by running `bin/riprap verify`.
 
 **`/riprap:learn`** reviews the session and writes what was learned into the *project's*
-the active host's root instruction file or `.riprap/instructions/`. Never into riprap's own documents, which are
-replaced on update. This is the mechanism behind rule 3.
+own instructions — the active host's root instruction file or `.riprap/instructions/`. Never
+into riprap's own documents, which are replaced on update. This is the mechanism behind rule 3.
+It also proposes narrow `permissions.allow` entries for any tool-and-argument pattern approved
+twice or more in the session — the narrowest rule that covers actual usage, never a broad one
+granted once to save a prompt, and never applied without asking first.
 
 **`/riprap:spec`** is interactive feature definition in five phases: stakeholder interviews,
 UI mockups, phased work items, and acceptance tests. It is planning only — it writes no

@@ -76,9 +76,12 @@ if CURRENT=$(handoff_current) && [ -f "$CURRENT" ] && ! handoff_is_capture "$CUR
   exit 0
 fi
 
-MSG="About to leave this session unattended ($TOOL), and no handoff exists yet for this
-work. Write one now, before proceeding: goal, plan, what is done, what is next, what done
-means, and how to resume. It goes in tmp/handoff/ -- /riprap:handoff has the template.
+MSG="⛔ Blocked: no handoff exists yet for this branch, and $TOOL is about to leave the
+session unattended.
+
+Write one now, before proceeding: goal, plan, what is done, what is next, what done means,
+and how to resume. It goes in tmp/handoff/ -- /riprap:handoff has the template.
+
 Then retry $TOOL."
 
 if ! handoff_dir_is_ignored; then

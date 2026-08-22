@@ -39,7 +39,7 @@ git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 handoff_dir_is_ignored || exit 0
 
 if ! handoff_current >/dev/null 2>&1; then
-  handoff_write_capture "session-end-capture" "The session ended" || true
+  handoff_write_capture "session-end-capture" "The session ended" "at session end" || true
 fi
 
 exit 0

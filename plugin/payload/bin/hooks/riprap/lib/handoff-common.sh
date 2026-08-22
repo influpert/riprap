@@ -200,19 +200,34 @@ handoff_newer_change() {  # $1 = handoff path
 #
 # $1 = filename slug, distinct per caller so two callers active in the same session don't
 #      collide under the same date-stamped name (e.g. "precompact-capture",
-#      "session-end-capture")
+#      "session-end-capture"). A bare filename component, never a path -- it is
+#      interpolated straight into $out below with no validation.
 # $2 = one-line clause naming what triggered the capture, e.g. "The context was compacted"
+# $3 = a short clause naming the moment, appended to the "## Working tree" heading, e.g.
+#      "at compaction" or "at session end" — the two callers' triggers are different enough
+#      that a shared heading would misdescribe one of them
 #
-# Caller is responsible for `handoff_dir_is_ignored` and for deciding whether a capture is
-# even warranted (an existing real handoff or an existing capture already covers it) —
-# those two calls differ per caller, so neither belongs in here.
+# Caller is responsible for `handoff_dir_is_ignored`. Caller also decides whether a capture
+# is warranted at all, and the two existing callers differ ON PURPOSE: precompact treats an
+# existing capture the same as no handoff and refreshes it, because it needs the latest
+# state before the context is lost; session-end skips if EITHER a real handoff or an
+# existing capture is already there, because there is nothing later to refresh it with.
+# Neither condition generalizes to "what counts as covered" — read both call sites before
+# adding a third, rather than copying either one's check as if it were the rule.
 handoff_write_capture() {
-  local slug="$1" reason="$2" dir out stamp branch
+  local slug="$1" reason="$2" moment="$3" dir out stamp branch branch_display
   dir="$(handoff_dir)"
   mkdir -p "$dir" 2>/dev/null || return 1
   stamp=$(date '+%Y-%m-%d %H:%M')
   out="$dir/handoff-$(date '+%Y-%m-%d')-${slug}.md"
   branch=$(handoff_branch)
+  # Stripped for display only, never for the marker below: a git ref name may contain
+  # backticks (`git branch '```'` succeeds), and this is the one raw value in the body with
+  # no other prefix to stop it from closing the fence it sits inside early. The marker keeps
+  # the real, unstripped name, because handoff_branch_of matches it character-for-character
+  # against a live `git symbolic-ref` — stripping there would make a capture on such a
+  # branch permanently unable to match its own branch again.
+  branch_display=$(printf '%s' "${branch:-(detached)}" | tr -d '`')
   {
     echo "# NOT A HANDOFF — automatic capture at $stamp"
     # The same marker a real handoff carries, so this is found on the branch it belongs to
@@ -228,8 +243,11 @@ handoff_write_capture() {
     echo
     echo "## Branch"
     echo '```'
-    git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "(detached)"
-    git worktree list 2>/dev/null | head -10
+    echo "$branch_display"
+    # `git worktree list` names every worktree's branch too, in brackets -- the same
+    # fence-breaking risk as $branch_display above, on a value this function does not
+    # otherwise control.
+    git worktree list 2>/dev/null | head -10 | tr -d '`'
     echo '```'
     echo
     echo "## Recent commits"
@@ -237,7 +255,7 @@ handoff_write_capture() {
     git log --oneline -15 2>/dev/null
     echo '```'
     echo
-    echo "## Working tree at compaction"
+    echo "## Working tree $moment"
     echo '```'
     git status --short 2>/dev/null | head -60
     echo '```'

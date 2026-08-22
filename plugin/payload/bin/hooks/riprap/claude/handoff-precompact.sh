@@ -57,6 +57,6 @@ if [ -f "$CURRENT" ] && ! handoff_is_capture "$CURRENT"; then
 fi
 
 # No handoff. Record what is observable, and label it honestly.
-handoff_write_capture "precompact-capture" "The context was compacted" || true
+handoff_write_capture "precompact-capture" "The context was compacted" "at compaction" || true
 
 exit 0

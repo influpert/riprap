@@ -852,10 +852,15 @@ if [ -d "$P/tmp/handoff" ] && [ -n "$(ls -A "$P/tmp/handoff" 2>/dev/null)" ]; th
     *) bad "session-end capture carries no branch marker" ;; esac
   # Proves session-end actually calls the shared capture-writer (item 4/6 of the plan)
   # rather than a sparser, divergent inline implementation.
-  for section in "## Branch" "## Recent commits" "## Working tree at compaction"; do
+  # The heading names the actual moment, not precompact's -- proves the shared moment
+  # parameter (handoff_write_capture's $3) is actually threaded through, not hardcoded to
+  # precompact's own wording.
+  for section in "## Branch" "## Recent commits" "## Working tree at session end"; do
     case "$(cat "$F")" in *"$section"*) ok "the session-end capture records $section" ;;
       *) bad "the session-end capture is missing $section" ;; esac
   done
+  case "$(cat "$F")" in *"at compaction"*) bad "session-end capture wrongly claims to be at compaction" ;;
+    *) ok "session-end capture never claims to be at compaction" ;; esac
 else
   bad "expected session-end to write a capture when nothing existed at all"
 fi
@@ -917,14 +922,17 @@ O=$( (cd "$P" && printf '%s' '{}' | CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/session
 rm -rf "$P"
 
 # Without jq: session-end's own logic never needs it (handoff_current, handoff_is_capture,
-# and the shared capture-writer are all plain git/awk/bash), but it must still degrade
-# safely rather than crash if a project's context-usage.local.sh or similar happens to
-# assume jq is present.
+# and the shared capture-writer are all plain git/awk/bash), and this must prove that
+# affirmatively, not just that the hook didn't crash -- a stray `command -v jq || exit 0`
+# added by mistake would also exit 0 here while silently turning session-end into a no-op,
+# and a bare exit-code check would never catch it.
 P=$(new_project)
 SANDBOX=$(build_sandbox)
 O=$( (cd "$P" && printf '%s' '{}' \
       | PATH="$SANDBOX" CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/session-end.sh" 2>&1) ); R=$?
 [ "$R" -eq 0 ] && ok "session-end exits 0 without jq on PATH" || bad "session-end without jq: rc=$R out=$O"
+[ -n "$(ls -A "$P/tmp/handoff" 2>/dev/null)" ] && ok "session-end still writes its capture without jq on PATH" \
+  || bad "session-end silently did nothing without jq -- the missing dependency was treated as missing work"
 rm -rf "$SANDBOX" "$P"
 
 printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"

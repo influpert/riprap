@@ -5,7 +5,7 @@ lede: >-
   What riprap enforces out of the box, and how a rule is built so it cannot quietly stop
   enforcing.
 description: >-
-  The eleven hooks riprap registers, which of them can block, and the four-layer structure
+  The twelve hooks riprap registers, which of them can block, and the four-layer structure
   behind every rule — including the shared pattern library that stops enforcement drifting.
 redirect_from:
   - /guardrails.html
@@ -19,7 +19,7 @@ but *what will stop me working*. That answer is one table.
 
 ## What is enforced out of the box
 
-Eleven hooks are registered. Five of them can stop a tool call; the rest inject context,
+Twelve hooks are registered. Six of them can stop a tool call; the rest inject context,
 format what you just wrote, keep the handoff current, and mark the end of a session.
 
 | Hook | Runs on | What it does | Can block |
@@ -29,6 +29,7 @@ format what you just wrote, keep the handoff current, and mark the end of a sess
 | destructive-command blocker | Bash | Refuses a destructive command resolving outside the project directory | **yes** |
 | merge gate | Bash | Refuses an autonomous merge of a security-sensitive change | **yes** |
 | tech footprint | Write | Refuses a file whose language or toolchain nothing in the repository already uses | **yes** |
+| plan stress test | ExitPlanMode | Refuses to exit plan mode below a minimum floor of dispatched critic sub-agents | **yes** |
 | format on write | Edit, Write | Runs `bin/format` on the file just written | no |
 | plan approved | ExitPlanMode | Asks for the handoff to be written, or rewritten, from the plan just approved | no |
 | unattended stretch begins | ScheduleWakeup, CronCreate, Workflow, RemoteTrigger, a backgrounded Agent/Task | Refuses the call unless a handoff already exists for the branch — checks presence only, never staleness | **yes** |
@@ -96,9 +97,10 @@ when it cannot determine the working directory; the merge gate refuses when it c
 determine which files a PR touches. An unverifiable action is indistinguishable from an
 unsafe one, and treating them differently is how a guardrail becomes decorative.
 
-The same reasoning covers a missing dependency. Without `jq`, the four rule-enforcing
-blockers — secret hygiene, the destructive-command blocker, the merge gate, and tech
-footprint — refuse every call they inspect rather than waving it through, and say why.
+The same reasoning covers a missing dependency. Without `jq`, the five rule-enforcing
+blockers — secret hygiene, the destructive-command blocker, the merge gate, tech footprint,
+and the plan stress test — refuse every call they inspect rather than waving it through, and
+say why.
 
 **The handoff hooks that only ask deliberately fail the other way**, and it is worth being
 explicit about the asymmetry: they block nothing, so without `jq` they exit silently rather
@@ -107,7 +109,7 @@ plan into an error over a convenience dependency is how a hook gets switched off
 
 **The unattended-stretch gate sits in neither bucket, and that is deliberate too.** It can
 block — unlike the hooks that only ask — but it fails open on a missing dependency exactly
-like they do, rather than fail closed like the four rule-enforcing blockers above. It guards
+like they do, rather than fail closed like the five rule-enforcing blockers above. It guards
 a behavioural rule, not one of the five critical ones, and it can fire on nearly every tool
 call in a session: refusing to schedule work or dispatch a subagent because `jq` is absent
 would block far more than the guardrail it exists to enforce, which is a worse outcome than

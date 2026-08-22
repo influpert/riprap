@@ -84,6 +84,16 @@ assert_event() {  # $1 = label, $2 = expected hookEventName
   if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 — expected event $2, got '${got:-<invalid json>}'"; fi
 }
 
+# The inverse of assert_silent, for the one hook that actually blocks: exit 2 and a
+# message on stderr, same contract as the four rule-enforcing blockers elsewhere in this
+# payload. A dead hook (crashed before reaching its own refusal) is not a "blocked" hook
+# either, so this checks the exit code precisely rather than merely "non-zero".
+assert_blocked() {  # $1 = label
+  if [ "$RC" -ne 2 ]; then bad "$1 — expected exit 2 (blocked), got rc=$RC out=${OUT:-<empty>} err=${ERR:-<empty>}"
+  elif [ -z "$ERR" ]; then bad "$1 — blocked with no explanation on stderr"
+  else ok "$1"; fi
+}
+
 # A throwaway project with one commit, tmp/ ignored, and no handoff yet.
 new_project() {
   local dir
@@ -610,6 +620,191 @@ c=$(context_of); case "$c" in
   *"not git-ignored"*) bad "warned about tmp/ when it is ignored" ;;
   *) ok "no spurious warning once tmp/ is ignored" ;;
 esac
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: blocks on total absence ---"
+
+UNATTENDED_HOOK=require-handoff-before-unattended.sh
+
+# No handoff at all, for every tool this hook gates.
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600,"reason":"loop"}}'
+assert_blocked "ScheduleWakeup with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"CronCreate","tool_input":{}}'
+assert_blocked "CronCreate with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Workflow","tool_input":{}}'
+assert_blocked "Workflow with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"RemoteTrigger","tool_input":{}}'
+assert_blocked "RemoteTrigger with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Agent","tool_input":{"run_in_background":true}}'
+assert_blocked "a backgrounded Agent dispatch with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Task","tool_input":{"run_in_background":true}}'
+assert_blocked "a backgrounded Task dispatch with no handoff at all"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: never gates a foreground Agent/Task ---"
+
+# The whole reason this hook is narrower than "every subagent dispatch": riprap's own
+# skills (architect, plan mode's own Phase 1) dispatch foreground subagents before any
+# plan or handoff exists, as a matter of course.
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Agent","tool_input":{"run_in_background":false}}'
+assert_silent "a foreground Agent dispatch (run_in_background:false) is never gated"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Agent","tool_input":{}}'
+assert_silent "an Agent dispatch omitting run_in_background is treated as foreground"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Task","tool_input":{}}'
+assert_silent "a Task dispatch omitting run_in_background is treated as foreground"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: allows once a real handoff exists ---"
+
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+assert_silent "ScheduleWakeup allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"CronCreate","tool_input":{}}'
+assert_silent "CronCreate allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Workflow","tool_input":{}}'
+assert_silent "Workflow allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"RemoteTrigger","tool_input":{}}'
+assert_silent "RemoteTrigger allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Agent","tool_input":{"run_in_background":true}}'
+assert_silent "a backgrounded Agent dispatch allowed once a real handoff exists"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: a capture is not enough ---"
+
+# A precompact capture is raw git state, not a handoff anyone wrote — it must not
+# satisfy this gate, the same distinction handoff-stop.sh and handoff-plan-approved.sh
+# already make.
+P=$(new_project)
+mkdir -p "$P/tmp/handoff"
+printf '# NOT A HANDOFF — automatic capture\n\nstuff\n' >"$P/tmp/handoff/$CAPTURE"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+assert_blocked "a capture-only handoff does not satisfy the gate"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: other exemptions ---"
+
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"stop":true}}'
+assert_silent "ScheduleWakeup with stop:true ends a loop rather than starting one, exempt even with no handoff"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Bash","tool_input":{"command":"ls"}}'
+assert_silent "ignores a tool outside the matcher set, even with no handoff"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: message content ---"
+
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+case "$ERR" in
+  *"/riprap:handoff"*) ok "blocked message points at the handoff skill" ;;
+  *) bad "blocked message never mentions /riprap:handoff: $ERR" ;;
+esac
+case "$ERR" in
+  *"not git-ignored"*) bad "unexpected gitignore warning in an already-ignored project: $ERR" ;;
+  *) ok "no spurious gitignore warning when tmp/ is already ignored" ;;
+esac
+rm -rf "$P"
+
+# tmp/ not git-ignored at all.
+P=$(mktemp -d)
+( cd "$P" && git init -q . && git config user.email t@example.invalid && git config user.name Test
+  printf 'one\n' >tracked.txt && git add -A && git commit -qm init ) >/dev/null 2>&1
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+case "$ERR" in
+  *"not git-ignored"*) ok "blocked message warns when tmp/ is not git-ignored" ;;
+  *) bad "blocked message should warn about an unignored tmp/: $ERR" ;;
+esac
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: fails open, never blocks, on unverifiable state ---"
+
+# Unlike require-plan-stress-test.sh and block-unreviewed-merge.sh, this hook is
+# calibrated to fail OPEN: it guards a behavioural rule, not a critical one, and it can
+# fire on nearly every tool call in a session — refusing to schedule work because jq is
+# absent would be a worse outcome than a reminder that never arrives.
+P=$(new_project)
+SANDBOX=$(mktemp -d)
+for b in bash sh git sed awk grep ls head cat date mktemp rm mkdir find touch \
+         dirname basename pwd env; do
+  p=$(command -v "$b" 2>/dev/null) && ln -sf "$p" "$SANDBOX/$b"
+done
+O=$( (cd "$P" && printf '%s' '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}' \
+      | PATH="$SANDBOX" CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/$UNATTENDED_HOOK" 2>&1) ); R=$?
+{ [ -z "$O" ] && [ "$R" -eq 0 ]; } && ok "silent and exits 0 without jq, even with no handoff" \
+  || bad "without jq: rc=$R out=$O"
+rm -rf "$SANDBOX" "$P"
+
+P=$(mktemp -d)  # not a git repo at all
+O=$( (cd "$P" && printf '%s' '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}' \
+      | CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/$UNATTENDED_HOOK" 2>&1) ); R=$?
+{ [ -z "$O" ] && [ "$R" -eq 0 ]; } && ok "silent and exits 0 outside a git repo" \
+  || bad "outside a git repo: rc=$R out=$O"
+rm -rf "$P"
+
+echo
+echo "--- session-end.sh ---"
+
+P=$(new_project)
+run_hook session-end.sh "$P" '{}'
+[ "$RC" -eq 0 ] && ok "exits 0 on a project with no handoff and no tmp/handoff dir yet" \
+  || bad "session-end must never fail (rc=$RC)"
+if [ -d "$P/tmp/handoff" ] && [ -n "$(ls -A "$P/tmp/handoff" 2>/dev/null)" ]; then
+  F=$(ls "$P"/tmp/handoff/*.md | head -1)
+  case "$(head -1 "$F")" in *"NOT A HANDOFF"*) ok "writes a capture when nothing exists at all" ;;
+    *) bad "capture is not labelled NOT A HANDOFF" ;; esac
+  case "$(cat "$F")" in *"riprap:handoff branch="*) ok "session-end capture claims its branch" ;;
+    *) bad "session-end capture carries no branch marker" ;; esac
+else
+  bad "expected session-end to write a capture when nothing existed at all"
+fi
+rm -rf "$P"
+
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+run_hook session-end.sh "$P" '{}'
+N=$(find "$P/tmp/handoff" -name '*.md' | wc -l | tr -d ' ')
+[ "$N" = "1" ] && ok "writes nothing beside a real handoff" || bad "session-end touched a project with a real handoff (files: $N)"
+case "$(cat "$P/tmp/handoff/$WORK")" in *"Goal: something"*) ok "leaves the real handoff untouched" ;;
+  *) bad "session-end modified an existing real handoff" ;; esac
+rm -rf "$P"
+
+# The condition deliberately narrower than precompact's own: a capture already exists
+# (written by an earlier PreCompact in the same session, say), and a second one on
+# SessionEnd would add nothing but clutter.
+P=$(new_project); B=$(branch_of "$P")
+mkdir -p "$P/tmp/handoff"
+{
+  echo "# NOT A HANDOFF — automatic capture"
+  echo "<!-- riprap:handoff branch=$B -->"
+} >"$P/tmp/handoff/$CAPTURE"
+run_hook session-end.sh "$P" '{}'
+N=$(find "$P/tmp/handoff" -name '*.md' | wc -l | tr -d ' ')
+[ "$N" = "1" ] && ok "does not write a second capture beside an existing one" \
+  || bad "session-end wrote a redundant capture (files: $N)"
+rm -rf "$P"
+
+# tmp/ not git-ignored.
+P=$(mktemp -d)
+( cd "$P" && git init -q . && git config user.email t@example.invalid && git config user.name Test
+  printf 'one\n' >tracked.txt && git add -A && git commit -qm init ) >/dev/null 2>&1
+run_hook session-end.sh "$P" '{}'
+[ -d "$P/tmp/handoff" ] && bad "session-end wrote into an unignored tmp/ — that artifact can be committed" \
+  || ok "session-end writes nothing when tmp/ is not git-ignored"
+rm -rf "$P"
+
+# Outside a git repo: must still never fail the shutdown.
+P=$(mktemp -d)
+O=$( (cd "$P" && printf '%s' '{}' | CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/session-end.sh" 2>&1) ); R=$?
+[ "$R" -eq 0 ] && ok "session-end exits 0 outside a git repo" || bad "session-end must never fail shutdown (rc=$R)"
 rm -rf "$P"
 
 printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"

@@ -65,7 +65,8 @@ and trust plugin hooks before enabling them. Nothing lands in a repository until
 
 The shared skill surface is `/riprap:install`, `/riprap:learn`, `/riprap:spec`,
 `/riprap:architect`, `/riprap:implement`, `/riprap:council`, `/riprap:branch-cleaner`,
-`/riprap:release`, `/riprap:reviewer`, and `/riprap:handoff`. The names and behavior are
+`/riprap:release`, `/riprap:reviewer`, `/riprap:handoff`, and `/riprap:write`. The names and
+behavior are
 the same on both hosts.
 
 **`/riprap:install`** adds the half that has to live in the repo: the guardrail scripts,

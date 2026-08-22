@@ -66,6 +66,7 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:council` | Planning something hard, with research and adversarial critique. Stateless. |
 | `/riprap:reviewer` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
 | `/riprap:handoff` | Writing the handoff that carries work across a lost context, or resuming from one. Its answers file says what a handoff about `plugin/` must carry that one about an ordinary repository need not. |
+| `/riprap:write` | Reviewing or rewriting prose against riprap's writing standard. Its `reference/` is **generated** by `bin/refresh-style-guide` — edit `plugin/instructions/writing-style.md` instead, because the next refresh overwrites anything hand-written there. |
 
 **riprap's answers to its own skills live in [.riprap/instructions/riprap-skills.md](.riprap/instructions/riprap-skills.md).**
 The skills that store answers read that file before asking anything, so it is what stops them

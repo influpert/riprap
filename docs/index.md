@@ -116,6 +116,7 @@ skills/         /riprap:learn      /riprap:spec
                 /riprap:council    /riprap:branch-cleaner
                 /riprap:release    /riprap:reviewer
                 /riprap:handoff    /riprap:install
+                /riprap:write
 agents/         riprap:agent — a generic
                 role-based worker
 hooks/          shared native lifecycle hooks;

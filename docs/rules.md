@@ -36,7 +36,8 @@ stating because the alternative looks easier:
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
 `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:council`,
-`/riprap:branch-cleaner`, `/riprap:release`, `/riprap:reviewer` and `/riprap:handoff`, so a
+`/riprap:branch-cleaner`, `/riprap:release`, `/riprap:reviewer`, `/riprap:handoff` and
+`/riprap:write`, so a
 repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and nothing to collide with.
 
 ## What it costs you in context
@@ -264,6 +265,14 @@ handoff nobody updated is worse than none: it is confidently wrong about where t
 stopped. It is rule 7 made performable, and hooks stand behind it as they do behind no other
 skill, because the moment a context actually runs out is the one moment when there is no turn
 left in which to write anything down.
+
+**`/riprap:write`** reviews or rewrites a document, plan, pull request body or README against
+riprap's writing standard, and carries the full Google developer documentation style guide as
+reference — the word list, punctuation, tables, code and UI formatting. The standard ships in
+two tiers for a reason: `writing-style.md` binds every message and is short enough to be read
+every session, while the reference behind it is read only when this skill runs. It edits prose
+and never changes behaviour, because a document quietly edited into agreement with broken code
+has destroyed the only remaining evidence that they disagreed.
 
 ---
 

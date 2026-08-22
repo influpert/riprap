@@ -422,7 +422,7 @@ about and merge on a future event nobody is present for. Print the exact command
 in the squash-and-delete form git.md gives, and say plainly that you have not run it.
 
 Afterwards: say where the decisions record is, remove the workspace you created once the work has
-landed, and *offer* `/riprap:branch-cleaner` rather than running it.
+landed, and *offer* `/riprap:prune` rather than running it.
 
 ## The checkpoints, and the bound
 

@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 CLAUDE_MANIFEST=plugin/.claude-plugin/plugin.json
 CODEX_MANIFEST=plugin/.codex-plugin/plugin.json
 PRE_NATIVE_TAGS=plugin/.codex-plugin/pre-native-tags
-EXPECTED_SKILLS="advise architect branch-cleaner handoff implement install learn release reviewer spec"
+EXPECTED_SKILLS="advise architect handoff implement install learn prune release reviewer spec"
 
 fail=0
 problem() { echo "❌ $*" >&2; fail=1; }
@@ -86,7 +86,7 @@ done
 grep -qF '.riprap/instructions/riprap-skills.md' plugin/agents/agent.md ||
   problem "worker agent does not use neutral stored answers"
 
-for skill in architect branch-cleaner implement release reviewer; do
+for skill in architect prune implement release reviewer; do
   file="plugin/skills/$skill/SKILL.md"
   for contract in '.riprap/instructions/riprap-skills.md' \
                   'write every new or changed answer only to `.riprap/instructions/riprap-skills.md`'; do

@@ -90,7 +90,7 @@ session scratch and git-ignored ([handoffs.md](handoffs.md)), so anything left t
 anything left elsewhere has just become the repository's problem.
 
 **Suggest, do not perform, the cleanup that is not yours.** Merged local branches and stale
-worktrees accumulate, and `/riprap:branch-cleaner` exists to prune them — offer it and let the
+worktrees accumulate, and `/riprap:prune` exists for exactly this — offer it and let the
 user run it. It reports before it acts and confirms every deletion individually, which is the
 right posture for a destructive sweep over work you did not create.
 

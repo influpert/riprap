@@ -45,7 +45,7 @@ Two things it does **not** do, which matter to an agent reading this:
   — because it is about to publish. Read the checks yourself either way and say what you
   found.
 
-## riprap:branch-cleaner
+## riprap:prune
 
 - Base branch: `main`
 - Never delete: `main`

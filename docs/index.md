@@ -113,7 +113,7 @@ instructions/   19 guardrail documents, indexed by task.
                 the rest are read on demand.
 skills/         /riprap:learn      /riprap:spec
                 /riprap:architect  /riprap:implement
-                /riprap:advise    /riprap:branch-cleaner
+                /riprap:advise    /riprap:prune
                 /riprap:release    /riprap:reviewer
                 /riprap:handoff    /riprap:install
 agents/         riprap:agent — a generic

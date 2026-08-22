@@ -36,7 +36,7 @@ stating because the alternative looks easier:
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
 `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
-`/riprap:branch-cleaner`, `/riprap:release`, `/riprap:reviewer` and `/riprap:handoff`, so a
+`/riprap:prune`, `/riprap:release`, `/riprap:reviewer` and `/riprap:handoff`, so a
 repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and nothing to collide with.
 
 ## What it costs you in context
@@ -209,7 +209,7 @@ merge button.
 a draft, then parallel critic agents against that draft before anything reaches you. It is
 rule 2 and the stress-test rule applied to planning itself.
 
-**`/riprap:branch-cleaner`** prunes merged and stale branches and triages quiet pull
+**`/riprap:prune`** prunes merged and stale branches and triages quiet pull
 requests. It reports the entire plan first and never deletes, merges, or closes anything
 without per-action confirmation — the actions are cheap to approve and expensive to undo,
 which is exactly the shape that warrants a prompt.

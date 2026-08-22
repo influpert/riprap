@@ -114,7 +114,7 @@ instructions/   19 guardrail documents, indexed by task.
 skills/         /riprap:learn      /riprap:spec
                 /riprap:architect  /riprap:implement
                 /riprap:advise    /riprap:prune
-                /riprap:release    /riprap:reviewer
+                /riprap:release    /riprap:review
                 /riprap:handoff    /riprap:install
 agents/         riprap:agent — a generic
                 role-based worker

@@ -1,9 +1,9 @@
 ---
-name: reviewer
-description: Review a branch or a pull request across parallel angles and close with an explicit merge verdict against a named commit, posting inline comments and a summary. Use when the user runs /riprap:reviewer, or asks whether a change should merge or be held — "review PR 412", "review this branch before I push", "is this ready to merge". For a review that only needs findings, with no verdict and no merge gate, Claude Code's own /code-review is the lighter tool.
+name: review
+description: Review a branch or a pull request across parallel angles and close with an explicit merge verdict against a named commit, posting inline comments and a summary. Use when the user runs /riprap:review, or asks whether a change should merge or be held — "review PR 412", "review this branch before I push", "is this ready to merge". For a review that only needs findings, with no verdict and no merge gate, Claude Code's own /code-review is the lighter tool.
 ---
 
-# Reviewer
+# Review
 
 ## Shared guardrails
 
@@ -104,7 +104,7 @@ Never edit them into this file. Skills ship from the plugin cache and are replac
 when the plugin updates, so a value set here is reverted the next time it moves — and a
 reviewer that has quietly lost its base branch reports the whole history as new.
 
-**1. Read the stored answers first.** Look for a `## riprap:reviewer` section in the
+**1. Read the stored answers first.** Look for a `## riprap:review` section in the
 project's `.riprap/instructions/riprap-skills.md`, and in the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex). If it is there, say
 what you found and go straight to the steps — do not ask again.
 Use the router's per-section guidance precedence for migration. Neutral guidance wins;
@@ -139,7 +139,7 @@ formal pull request review, or in-session only for a project with no forge.
 `.riprap/instructions/riprap-skills.md`, creating it if absent:
 
 ```markdown
-## riprap:reviewer
+## riprap:review
 
 - Base branch: `main`
 - Forge: `gh`, authenticated

@@ -57,7 +57,7 @@ them and they would rot on every edit of every document.
 **Committing and merging**
 
 - [git.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git.md) — worktrees, branching, when to commit, and merging rules, plus the failure modes that cost the most to undo.
-- [code-review.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-review.md) — run `/riprap:reviewer` over the diff before the pull request opens, publish every finding in the body with a disposition and a reason, and stay with the pull request until it merges.
+- [code-review.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-review.md) — run `/riprap:review` over the diff before the pull request opens, publish every finding in the body with a disposition and a reason, and stay with the pull request until it merges.
 - [git-hooks.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git-hooks.md) — two hook families live under `bin/hooks/`. Telling them apart is the whole document.
 - [merge-gates.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/merge-gates.md) — some changes never merge autonomously, however clean the review and however green the CI.
 - [ci-hygiene.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/ci-hygiene.md) — how to re-run CI without corrupting the result or burning the budget.
@@ -117,7 +117,7 @@ plugin updates.
 - **`/riprap:advise`** — a planning council: parallel research agents, a draft, then parallel critics against it before anything is presented.
 - **`/riprap:prune`** — prunes merged and stale branches and triages quiet pull requests. Reports the whole plan first and never deletes, merges or closes without per-action confirmation.
 - **`/riprap:release`** — cuts a release: green checks, a confirmed version, notes drafted from what actually merged, the tag on the merged commit, and a final check that the release exists. A green pipeline is not a finished release.
-- **`/riprap:reviewer`** — reviews a branch or a pull request, yours or someone else's, across at least six angles including simplicity, maintainability and dependency creep. Posts inline comments on the lines they concern plus a summary carrying every finding, its class and a recommended fix, and closes with an explicit merge verdict against a named commit. It reports and never edits or merges.
+- **`/riprap:review`** — reviews a branch or a pull request, yours or someone else's, across at least six angles including simplicity, maintainability and dependency creep. Posts inline comments on the lines they concern plus a summary carrying every finding, its class and a recommended fix, and closes with an explicit merge verdict against a named commit. It reports and never edits or merges.
 - **`/riprap:handoff`** — writes the document that carries work across a lost context, and resumes from one. Goal, plan, what is done, what is next, what done means, how to resume: one document per unit of work, rewritten in place rather than appended to. Three hooks trigger it, because the moment the context runs out is the one moment there is no turn left in which to write anything.
 {: .doc-links}
 

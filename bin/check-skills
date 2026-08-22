@@ -43,8 +43,8 @@ ANSWERS=.riprap/instructions/riprap-skills.md
 # Skills that must exist. Without this the reviewer contract below sits behind a
 # path test that silently skips — the exact fail-open A7 condemns in ci.yml,
 # reproduced in the file condemning it. Verified: a five-line skill parked at
-# plugin/skills/review/ that approves and force-merges scored a clean pass.
-REQUIRED_SKILLS="reviewer"
+# plugin/skills/pr-lander/ that approves and force-merges scored a clean pass.
+REQUIRED_SKILLS="review"
 
 # Guardrail documents the reviewer must NAME. A1 proves a named document
 # resolves; it cannot prove one was named, and a skill deferring to nothing
@@ -616,7 +616,7 @@ check_never_edits() {
 # A6. No skill instructs a merge or an approval.
 #
 # This runs over EVERY skill, which is the half that was missing. The header
-# above records that "a five-line skill parked at plugin/skills/review/ that
+# above records that "a five-line skill parked at plugin/skills/pr-lander/ that
 # approves and force-merges scored a clean pass", and REQUIRED_SKILLS was the
 # answer — but that only closes the case where the REVIEWER skill disappears. A
 # skill sitting BESIDE it walked through untouched, because the main loop ran
@@ -876,7 +876,7 @@ EOF
   # fixture is the point — A9 exists to catch a half-finished move, and only the
   # real files can be half-finished.
   passes "A3/A9 rows have exactly one owner" \
-    check_moved_out reviewer plugin/skills/reviewer/SKILL.md
+    check_moved_out review plugin/skills/review/SKILL.md
 
   # A skill that never received them: the move was announced and not made.
   printf 'Review it, then post a comment.\n' >"$tmp/a9-missing.md"
@@ -889,7 +889,7 @@ EOF
   mkdir -p "$tmp/docs"
   { echo '# stale copy'; code_review_rows; } >"$tmp/docs/code-review.md"
   fires "A9 document kept a row that moved" "kept a row that moved into the skill" \
-    check_moved_out reviewer plugin/skills/reviewer/SKILL.md "$tmp/docs/code-review.md"
+    check_moved_out review plugin/skills/review/SKILL.md "$tmp/docs/code-review.md"
 
   # --- A4/A5/A6, one fixture per sub-assertion ------------------------------
   passes "A4-A6 canonical reviewer" check_reviewer_contract fx "$tmp/good.md"
@@ -999,7 +999,7 @@ EOF
   # and bullet-count cases went with the assertions they covered, which ci.yml
   # makes on every run.
   cat >"$tmp/answers-ok.md" <<'EOF'
-## riprap:reviewer
+## riprap:review
 
 - Base branch: `main`
 - Forge: `gh`
@@ -1008,29 +1008,29 @@ EOF
 EOF
   printf 'Read the stored answers in riprap-skills.md first.\n' >"$tmp/a7-ok.md"
   passes "A7 protocol present" \
-    check_stored_answers fx "$tmp/a7-ok.md" riprap:reviewer "$tmp/answers-ok.md"
+    check_stored_answers fx "$tmp/a7-ok.md" riprap:review "$tmp/answers-ok.md"
 
   printf 'Work the answers out fresh each run.\n' >"$tmp/a7-dropped.md"
   fires "A7 stored-answers protocol dropped" "the stored-answers protocol was dropped" \
-    check_stored_answers fx "$tmp/a7-dropped.md" riprap:reviewer "$tmp/answers-ok.md"
+    check_stored_answers fx "$tmp/a7-dropped.md" riprap:review "$tmp/answers-ok.md"
 
   # Two copies of the header, four bullets between them — the shape a merge
   # conflict resolved by keeping both sides produces. A sed range counts four.
   cat >"$tmp/answers-dup.md" <<'EOF'
-## riprap:reviewer
+## riprap:review
 
 - Base branch: `main`
 - Forge: `gh`
 
 ## other
 
-## riprap:reviewer
+## riprap:review
 
 - Where a review lands: a comment
 - Extra blast-radius paths: none
 EOF
   fires "A7 duplicated section counted once" "records 2 answers" \
-    check_stored_answers fx "$tmp/a7-ok.md" riprap:reviewer "$tmp/answers-dup.md"
+    check_stored_answers fx "$tmp/a7-ok.md" riprap:review "$tmp/answers-dup.md"
 
   echo
   if [ "$st" -eq 0 ]; then

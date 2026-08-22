@@ -109,7 +109,7 @@ instructions/     19 guardrail documents, indexed by task. Both hosts inject the
                   skills also read it on demand if hooks are disabled.
 skills/           /riprap:learn  /riprap:spec  /riprap:architect
                   /riprap:implement  /riprap:advise
-                  /riprap:prune  /riprap:release  /riprap:reviewer
+                  /riprap:prune  /riprap:release  /riprap:review
                   /riprap:handoff  /riprap:install
 agents/           riprap:agent — a generic role-based worker
 hooks/            shared native lifecycle hooks; repository git hooks are shared

@@ -54,7 +54,7 @@ Literal names only — a stored pattern protects nothing, because the filters ma
 lines exactly. If a family of long-lived branches ever appears here, list the names it has
 that day and re-ask when the list changes.
 
-## riprap:reviewer
+## riprap:review
 
 - Base branch: `main`
 - Forge: `gh`, and the GitHub MCP tools when the session has them — try both before

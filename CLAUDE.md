@@ -64,7 +64,7 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:architect` | Turning a requirement into an implementation plan. Plans only — it writes no source, and its output is what `/riprap:implement` reads. |
 | `/riprap:implement` | Building an approved plan, through three review gates to a pull request. **Its answers file records why a worktree is wrong here** — the plugin loads from this working tree, so a second checkout tests the wrong copy. |
 | `/riprap:advise` | Planning something hard, with research and adversarial critique. Stateless. |
-| `/riprap:reviewer` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
+| `/riprap:review` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
 | `/riprap:handoff` | Writing the handoff that carries work across a lost context, or resuming from one. Its answers file says what a handoff about `plugin/` must carry that one about an ordinary repository need not. |
 
 **riprap's answers to its own skills live in [.riprap/instructions/riprap-skills.md](.riprap/instructions/riprap-skills.md).**

@@ -36,7 +36,7 @@ stating because the alternative looks easier:
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
 `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
-`/riprap:prune`, `/riprap:release`, `/riprap:reviewer` and `/riprap:handoff`, so a
+`/riprap:prune`, `/riprap:release`, `/riprap:review` and `/riprap:handoff`, so a
 repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and nothing to collide with.
 
 ## What it costs you in context
@@ -127,7 +127,7 @@ lands on every future clone, every CI image, and every upgrade — and it is one
 practice, because reversing it means rewriting code that works.
 
 **Never open a pull request on a diff nobody reviewed, and never abandon one you opened.**
-Before it opens: `/riprap:reviewer` runs over the diff, every BLOCKER and MAJOR is fixed
+Before it opens: `/riprap:review` runs over the diff, every BLOCKER and MAJOR is fixed
 first, and every finding is published in the body with a disposition — implemented, deferred
 or ignored — and the reason behind it. A finding that was made and then dropped in
 silence is indistinguishable from a finding nobody made, so the reviewer repeats the search
@@ -167,7 +167,7 @@ ignores `tmp/` does not need riprap's opinion about it.
 ## The ten skills
 
 These chain: `/riprap:spec` defines a feature, `/riprap:architect` turns it into an
-implementation plan, `/riprap:implement` builds that plan, and `/riprap:reviewer` reviews what
+implementation plan, `/riprap:implement` builds that plan, and `/riprap:review` reviews what
 comes out. Each also runs alone — the stage before it being absent changes where the input
 comes from, never whether the skill works.
 
@@ -196,7 +196,7 @@ plan rather than only into the conversation.
 
 **`/riprap:implement`** builds an approved plan and stops three times to be told it is wrong.
 The tests come first and land as their own commit, because a tests-only diff is a specification
-somebody can read; then `/riprap:reviewer` runs over the tests, again over the implementation,
+somebody can read; then `/riprap:review` runs over the tests, again over the implementation,
 and again over the pull request, with the findings presented to you before anything is
 incorporated. The three exist because each catches what the others structurally cannot — a wrong
 specification while it is still four assertions, wrong code before anyone else has read it, and
@@ -224,7 +224,7 @@ that merged. Its last step verifies the release exists, because the failure it i
 against is a model watching a pipeline go green and reporting a release complete that was
 never published.
 
-**`/riprap:reviewer`** reviews a branch before a pull request exists, or a pull request
+**`/riprap:review`** reviews a branch before a pull request exists, or a pull request
 after one does, and closes with an explicit merge verdict against a named commit. It
 reports: it never edits the branch, never merges, and never writes anything shaped like an
 approval. The failure it is written against is a review that lists findings and stops —

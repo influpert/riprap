@@ -2,10 +2,12 @@
 # Where a handoff lives, which one is current, and what makes it stale.
 # Sourced, never executed.
 #
-# Three hooks need these answers and they must agree: one writes a capture when
+# Five hooks need these answers and they must agree: one writes a capture when
 # the context is about to be compacted, one asks for an update when a plan is
-# approved, one notices at the end of a turn that the document has fallen behind.
-# Three copies of "which file is the handoff" would drift into three different
+# approved, one notices at the end of a turn that the document has fallen behind,
+# one refuses to leave the session unattended with nothing written down, and one
+# writes a last-resort capture if a session ends with nothing written down either.
+# Five copies of "which file is the handoff" would drift into five different
 # files, and the failure would look like a hook that simply never fires.
 #
 # There is a fourth copy, and it cannot be removed: plugin/hooks/session-start
@@ -202,7 +204,10 @@ handoff_newer_change() {  # $1 = handoff path
 #      collide under the same date-stamped name (e.g. "precompact-capture",
 #      "session-end-capture"). A bare filename component, never a path -- it is
 #      interpolated straight into $out below with no validation.
-# $2 = one-line clause naming what triggered the capture, e.g. "The context was compacted"
+# $2 = one-line clause naming what triggered the capture, e.g. "The context was compacted".
+#      Must read naturally as the subject of "X with no handoff in place, so this is raw
+#      state..." below — check the rendered sentence, not just the clause, before adding a
+#      third caller.
 # $3 = a short clause naming the moment, appended to the "## Working tree" heading, e.g.
 #      "at compaction" or "at session end" — the two callers' triggers are different enough
 #      that a shared heading would misdescribe one of them

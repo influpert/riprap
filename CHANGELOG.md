@@ -5,7 +5,60 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.9.0
+## v0.10.0
+
+**What you get**
+
+- 21 guardrail documents, 11 skills, and a role-based worker agent shared by Claude Code
+  and Codex
+- Native lifecycle hooks on both hosts, plus the same repository payload and git enforcement
+  from a plain clone
+- Host-neutral project guidance under `.riprap/instructions/`
+
+**Breaking**
+
+- **Three shipped skills were renamed to read as verbs:** `riprap:reviewer` →
+  `riprap:review`, `riprap:branch-cleaner` → `riprap:prune`, `riprap:council` →
+  `riprap:advise`. Update any script or muscle memory that types the old command names.
+  If your project already ran one of these skills, its stored answers live under a
+  `.riprap/instructions/riprap-skills.md` section headed with the old name; after
+  upgrading, the renamed skill won't find that section and will harmlessly re-ask its
+  questions once, then store the answer under the new heading. Nothing else about the
+  skills changed.
+
+**New**
+
+- **`/riprap:write`**, riprap's eleventh skill: reviews or rewrites a document, plan, PR
+  body, or README against a distilled writing standard, and never changes what the prose
+  describes — only how it reads. The standard itself ships in two tiers: a short
+  distillation (`plugin/instructions/writing-style.md`) read every session, and a full
+  69-page reference read only when `/riprap:write` runs. The reference is generated from
+  the Google developer documentation style guide (CC BY 4.0) and refreshed weekly by a
+  workflow that opens a pull request on drift, so a person reads the diff before it ships.
+- **A single gate for when riprap asks versus proceeds.** Unless already 95% confident
+  what's being asked, riprap now asks — one question at a time, each shaped by the last
+  answer. Once over that bar: answer a question and stop, summarize a task and wait for
+  the signal, or just do a task that was already unambiguous. An unattended run (no one to
+  ask) takes the narrowest reading instead of deadlocking, and records the fork it took in
+  the pull request body or handoff rather than a transcript nobody reads — the critical
+  rules (no autonomous merge, no new technology, no PR on an unreviewed diff) still don't
+  relax there. `architect` and `handoffs.md` now cite this one definition instead of
+  restating it.
+
+**Internal**
+
+- `bin/check-skills`' A1 check now also resolves a skill's own bundled reference files
+  (like `write`'s `reference/*.md`), not just files under `plugin/instructions/`, so a
+  skill that ships supporting documents alongside `SKILL.md` doesn't read as dangling
+  deferrals.
+- `bin/check-codex-plugin`'s `EXPECTED_SKILLS` and all six cross-checked documents now
+  include `write`, and the guardrail-document and skill counts move to 21 and 11
+  everywhere they're stated.
+- `bin/scrub-check` gained its first whole-file exemption, for the generated writing-style
+  reference: the page telling writers to use RFC 5737 documentation addresses and ISO
+  dates otherwise trips riprap's own provenance scans on its own examples.
+
+## v0.9.0 — 2026-08-18
 
 **What you get**
 

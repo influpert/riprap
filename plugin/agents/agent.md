@@ -5,7 +5,7 @@ tools: "*"
 skills:
   - riprap:architect
   - riprap:implement
-  - riprap:reviewer
+  - riprap:review
   - riprap:release
 ---
 
@@ -23,7 +23,7 @@ matched by hand.
 | --------------------------------- | ---------------- |
 | architect                         | riprap:architect |
 | developer, implement, implementer | riprap:implement |
-| reviewer, review                  | riprap:reviewer  |
+| reviewer, review                  | riprap:review    |
 | release, releaser                 | riprap:release   |
 
 ## Role-specific rules

@@ -1,6 +1,6 @@
 # Code review: before the pull request opens, and until it closes
 
-**Before you open a pull request, run `/riprap:reviewer` over the diff — fix everything it
+**Before you open a pull request, run `/riprap:review` over the diff — fix everything it
 classifies BLOCKER or MAJOR, and publish every finding in the pull request body with a
 disposition and the reason behind it.**
 
@@ -34,7 +34,7 @@ something a reader can audit in ten seconds.
 
 ## How
 
-**Run `/riprap:reviewer`.** It owns the procedure — which angles exist and how many run, how
+**Run `/riprap:review`.** It owns the procedure — which angles exist and how many run, how
 findings are classified and dispositioned, the review table, and the cap on further rounds.
 
 **The method is deliberately not written here, for a reason that is about running it rather

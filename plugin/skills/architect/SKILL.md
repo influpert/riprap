@@ -233,7 +233,7 @@ The section that earns the artifact. One row per requirement: **what already exi
   it, without the context that would have settled it correctly.
 - **New technology is decided here**, at plan time, which tech-footprint.md says is the only
   cheap moment. Unattended, that document's carve-out inverts and the answer is no.
-- **Hand to `/riprap:council` only when a fork survives exploration and needs research rather
+- **Hand to `/riprap:advise` only when a fork survives exploration and needs research rather
   than a preference.** Its output is an input to the plan, not the plan;
   interaction-preferences.md states exactly what a council run leaves owing, and that is where to
   read it. Never route a settled task there — it reopens intake and turns a two-file change into

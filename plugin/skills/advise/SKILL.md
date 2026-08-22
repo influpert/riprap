@@ -1,14 +1,14 @@
 ---
-name: council
+name: advise
 description: >
   Strategic planning council — structured intake, parallel research, and multi-perspective
-  stress-testing before presenting a refined plan. Use when the user invokes /riprap:council
+  stress-testing before presenting a refined plan. Use when the user invokes /riprap:advise
   or wants a rigorously critiqued, well-researched plan on any topic (product, technical
   architecture, business strategy, personal decisions). Runs intake → clarification → parallel
   research agents → draft → parallel critic agents → refined final plan via Plan Mode.
 ---
 
-# Council — Strategic Planning
+# Advise — Strategic Planning
 
 ## Shared guardrails
 

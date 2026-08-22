@@ -61,7 +61,7 @@ handoff_dir_is_ignored() {
 # The branch this session is on, or nothing when HEAD is detached.
 #
 # symbolic-ref rather than `git branch --show-current`: the latter needs git
-# 2.22 and appears nowhere else in this repository, and branch-cleaner's skill
+# 2.22 and appears nowhere else in this repository, and the prune skill
 # already records why symbolic-ref is the right one in a worktree.
 handoff_branch() {
   git symbolic-ref --quiet --short HEAD 2>/dev/null || true

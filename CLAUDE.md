@@ -58,15 +58,22 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 |---|---|
 | `/riprap:install` | Installing or refreshing the repository-side payload. **Do not run it in riprap itself**; this repository develops the payload but does not adopt it. |
 | `/riprap:release` | Cutting a release. See **Cutting a release** below for what is specific to riprap. |
-| `/riprap:branch-cleaner` | Pruning merged and stale branches, and triaging quiet pull requests. |
+| `/riprap:prune` | Pruning merged and stale branches, and triaging quiet pull requests. |
 | `/riprap:learn` | Recording what a session taught. **Read the note in the answers file first** — this skill's central rule inverts here. |
 | `/riprap:spec` | Defining a feature. It writes into `tmp/`; nothing it generates may land under `plugin/`, and `docs/` is the public site, not a scratch area. |
 | `/riprap:architect` | Turning a requirement into an implementation plan. Plans only — it writes no source, and its output is what `/riprap:implement` reads. |
 | `/riprap:implement` | Building an approved plan, through three review gates to a pull request. **Its answers file records why a worktree is wrong here** — the plugin loads from this working tree, so a second checkout tests the wrong copy. |
-| `/riprap:council` | Planning something hard, with research and adversarial critique. Stateless. |
-| `/riprap:reviewer` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
+| `/riprap:advise` | Planning something hard, with research and adversarial critique. Stateless. |
+| `/riprap:review` | Reviewing a branch or a pull request, and closing with a verdict. Reports only — it never edits or merges. Its answers file records what makes reviewing *this* repo different. |
 | `/riprap:handoff` | Writing the handoff that carries work across a lost context, or resuming from one. Its answers file says what a handoff about `plugin/` must carry that one about an ordinary repository need not. |
 | `/riprap:write` | Reviewing or rewriting prose against riprap's writing standard. Its `reference/` is **generated** by `bin/refresh-style-guide` — edit `plugin/instructions/writing-style.md` instead, because the next refresh overwrites anything hand-written there. |
+
+**Skill names are verbs.** `/riprap:review`, `/riprap:prune`, `/riprap:advise` name the action, not
+the role or the output — a noun name drifts back toward describing what ran it rather than what to
+type, which is exactly how `reviewer`, `branch-cleaner` and `council` got here. `spec` and
+`handoff` are the deliberate exceptions — nouns already used verbally in practice. A new skill
+directory under `plugin/skills/` gets a verb name before
+anything else about it is decided.
 
 **riprap's answers to its own skills live in [.riprap/instructions/riprap-skills.md](.riprap/instructions/riprap-skills.md).**
 The skills that store answers read that file before asking anything, so it is what stops them

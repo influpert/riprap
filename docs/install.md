@@ -41,7 +41,7 @@ On this page
 - **A git repository** with a clean working tree, for `/riprap:install`. The clean-tree
   requirement is what makes `git checkout --` the undo button, so nothing is backed up to
   `.orig` files that then need cleaning up.
-- **`jq`**, for the native hooks, and for `/riprap:reviewer` when it posts a batched pull
+- **`jq`**, for the native hooks, and for `/riprap:review` when it posts a batched pull
   request review. `brew install jq` or `apt-get install jq`.
 
 > **Install `jq` before anything else.** The hooks read the tool payload as JSON on stdin,
@@ -49,7 +49,7 @@ On this page
 > the merge gate, tech footprint — **refuse every call they inspect**, with a message telling you to install
 > it. That is deliberate: a guardrail that waved things through because a dependency was
 > missing would be worse than one that stops you. The git hooks and `bin/riprap` do not need
-> `jq`. `/riprap:reviewer` does, but only to post inline comments — without it the review
+> `jq`. `/riprap:review` does, but only to post inline comments — without it the review
 > still publishes, as a single summary comment.
 {: .callout .callout-warn}
 
@@ -64,8 +64,8 @@ and trust plugin hooks before enabling them. Nothing lands in a repository until
 `/riprap:install` runs.
 
 The shared skill surface is `/riprap:install`, `/riprap:learn`, `/riprap:spec`,
-`/riprap:architect`, `/riprap:implement`, `/riprap:council`, `/riprap:branch-cleaner`,
-`/riprap:release`, `/riprap:reviewer`, `/riprap:handoff`, and `/riprap:write`. The names and
+`/riprap:architect`, `/riprap:implement`, `/riprap:advise`, `/riprap:prune`,
+`/riprap:release`, `/riprap:review`, `/riprap:handoff`, and `/riprap:write`. The names and
 behavior are
 the same on both hosts.
 

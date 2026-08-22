@@ -491,7 +491,7 @@ jobs:
           #                   branch. A tag typed by hand skips that and cannot be undone.
           # `gh release create` — the release workflow publishes on tag push. A second
           #                   publisher collides with it and reads as a tooling bug.
-          # `git branch -D` — branch-cleaner's job, and it confirms before deleting.
+          # `git branch -D` — prune's job, and it confirms before deleting.
           for pat in 'git tag ' 'gh release create' 'git branch -D'; do
             if grep -qF -- "$pat" CLAUDE.md; then
               echo "❌ CLAUDE.md contains '$pat' — that act belongs to bin/release or a skill."

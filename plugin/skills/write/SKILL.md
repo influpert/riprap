@@ -30,7 +30,7 @@ the rule is what gives way.
 - **Quote the original.** A finding that says "tone issue in paragraph 3" costs the author the
   search you already did.
 - **Leave the argument alone.** You are editing how it is said. If you find yourself changing
-  what is claimed, stop — that is a review, and `/riprap:reviewer` owns it.
+  what is claimed, stop — that is a review, and `/riprap:review` owns it.
 
 ## What this owns, and what it defers
 

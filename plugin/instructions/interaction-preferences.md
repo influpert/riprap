@@ -158,7 +158,7 @@ condition for self-review.
 
 The unattended carve-out stated above applies here unchanged.
 
-`/riprap:council` runs a critic roster of this shape and is a reasonable starting point, but
+`/riprap:advise` runs a critic roster of this shape and is a reasonable starting point, but
 it is not a substitute for the rule: its roster can come to four, none of its critics is the
 devil's advocate — its Alternative Proponent is asked for *other ways to achieve the same
 objective*, which presupposes the objective — and it classifies findings its own way rather

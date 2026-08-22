@@ -37,7 +37,7 @@ stating because the alternative looks easier:
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
 `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
 `/riprap:prune`, `/riprap:release`, `/riprap:review` and `/riprap:handoff`, so a
-repository with its own `/learn` or `/reviewer` keeps it. There is nothing to merge and nothing to collide with.
+repository with its own `/learn` or `/review` keeps it. There is nothing to merge and nothing to collide with.
 
 ## What it costs you in context
 

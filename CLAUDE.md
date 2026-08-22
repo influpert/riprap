@@ -68,8 +68,10 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:handoff` | Writing the handoff that carries work across a lost context, or resuming from one. Its answers file says what a handoff about `plugin/` must carry that one about an ordinary repository need not. |
 
 **Skill names are verbs.** `/riprap:review`, `/riprap:prune`, `/riprap:advise` name the action, not
-the role or the output; `spec` and `handoff` are the deliberate exceptions — nouns already used
-verbally in practice. A new skill directory under `plugin/skills/` gets a verb name before
+the role or the output — a noun name drifts back toward describing what ran it rather than what to
+type, which is exactly how `reviewer`, `branch-cleaner` and `council` got here. `spec` and
+`handoff` are the deliberate exceptions — nouns already used verbally in practice. A new skill
+directory under `plugin/skills/` gets a verb name before
 anything else about it is decided.
 
 **riprap's answers to its own skills live in [.riprap/instructions/riprap-skills.md](.riprap/instructions/riprap-skills.md).**

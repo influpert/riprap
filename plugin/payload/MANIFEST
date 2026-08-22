@@ -34,6 +34,7 @@ namespaced	bin/hooks/riprap/claude/handoff-stop.sh
 namespaced	bin/hooks/riprap/claude/lint-example.sh
 namespaced	bin/hooks/riprap/claude/lint-secrets.sh
 namespaced	bin/hooks/riprap/claude/lint-tech-footprint.sh
+namespaced	bin/hooks/riprap/claude/require-handoff-before-unattended.sh
 namespaced	bin/hooks/riprap/claude/require-plan-stress-test.sh
 namespaced	bin/hooks/riprap/claude/session-end.sh
 namespaced	bin/hooks/riprap/git/pre-commit

@@ -19,12 +19,20 @@
     "lint-example.sh is deliberately absent: it is an inert template, and wiring a",
     "rule that never fires teaches people to ignore the wiring.",
     "",
-    "The handoff hooks are wired to three different events because no single one",
+    "The handoff hooks are wired to four different events because no single one",
     "covers the moment that matters. PreCompact is the only warning that context is",
     "about to be lost, and it is the one event that cannot say anything to the model:",
     "it can only block, and blocking a compaction that is already necessary wedges",
     "the session. So it writes to disk, and SessionStart on `compact` is what points",
-    "the next context at what it wrote.",
+    "the next context at what it wrote. SessionEnd does the same, as a last-resort",
+    "net for a session that never went through PreCompact at all.",
+    "",
+    "A fifth angle blocks rather than asks: PreToolUse on ScheduleWakeup, CronCreate,",
+    "Workflow, RemoteTrigger and a backgrounded Agent/Task refuses the call outright",
+    "when no handoff exists yet for the branch. Every other handoff hook only asks,",
+    "because nothing else here can compel a model to write anything -- but a session",
+    "about to become unattended cannot be asked again once it is, so this is the one",
+    "case where refusing the call is the only mechanism that can still work.",
     "",
     "SessionStart matches `resume` and `fork` as well. Those are not new features —",
     "they are two of the five documented matcher values, and omitting them meant a",
@@ -57,6 +65,12 @@
         "matcher": "ExitPlanMode",
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook require-plan-stress-test.sh" }
+        ]
+      },
+      {
+        "matcher": "ScheduleWakeup|CronCreate|Workflow|RemoteTrigger|Agent|Task",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook require-handoff-before-unattended.sh" }
         ]
       },
       {

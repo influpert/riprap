@@ -32,10 +32,19 @@ if [ -f "$CLAUDE_MANIFEST" ] && [ -f "$CODEX_MANIFEST" ]; then
 fi
 
 [ -f plugin/hooks/hooks.json ] || problem "shared native lifecycle hooks are missing"
+# ScheduleWakeup, CronCreate, Workflow and RemoteTrigger are Claude Agent SDK tools with
+# no confirmed Codex equivalent, added here on the same basis as every other matcher: a
+# PreToolUse matcher for a tool name a host never produces simply never fires there, the
+# same shape every other host-specific matcher in this list already has. If Codex's native
+# loader turns out to validate matcher tokens against its own known tool set rather than
+# treating an unrecognized one as "never matches", that is a stronger claim than this
+# allowlist can verify from a text file, and would need to be confirmed against a real
+# Codex install, not assumed from here.
 jq -e '
   def events: ["SessionStart", "PreToolUse", "PostToolUse", "PreCompact", "Stop", "SessionEnd"];
   def matchers: ["startup", "resume", "clear", "compact", "fork", "Bash", "Read", "Grep",
-                 "Edit", "Write", "ExitPlanMode"];
+                 "Edit", "Write", "ExitPlanMode", "ScheduleWakeup", "CronCreate", "Workflow",
+                 "RemoteTrigger", "Agent", "Task"];
   type == "object" and (.hooks | type == "object") and
   ((.hooks | keys) - events | length == 0) and
   (events - (.hooks | keys) | length == 0) and

@@ -142,7 +142,7 @@ nothing to install separately.
 
 ## What is enforced
 
-Ten hooks are registered, four of which can stop a tool call. The table naming each one,
+Eleven hooks are registered, five of which can stop a tool call. The table naming each one,
 what triggers it and whether it blocks is on
 [guardrail architecture](guardrails.md#what-is-enforced-out-of-the-box), rather than
 repeated here.

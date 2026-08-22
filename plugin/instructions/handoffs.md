@@ -56,6 +56,26 @@ get to use: there is no turn left in which to summarise. A handoff written while
 is still in front of you costs a minute; reconstructed afterwards from a diff, it costs the
 session.
 
+## Before the session hands off control
+
+The "long unattended stretch" milestone above is enforced, not just stated: before the session
+hands control to something that will keep running without it — a scheduled wakeup, a cron
+routine, a background workflow or subagent — a handoff must already exist for the branch, or the
+call is refused. Unlike every other check in this document, this one blocks rather than asks:
+nothing can be reminded once nobody is watching, so refusing the call is the only mechanism left
+that still works at that exact moment.
+
+It checks presence only, never quality or currency — the same floor the plan-stress-test
+guardrail holds itself to. A placeholder handoff satisfies it as readily as a real one; what
+happens after that is still on the six questions below, not on this check. And it only ever asks
+for a first handoff to exist: once one does, keeping it current as the tree moves is the Stop
+hook's job, described above, not this one's.
+
+If a session ends without ever writing one at all — a crash, an abrupt exit, anything that
+skipped the Stop hook's own nudge cleanly — a last-resort capture of the observable git state is
+recorded on the way out, the same idea as the pre-compaction capture and labelled the same way:
+raw material, not a handoff, with a heading that says so.
+
 ## What one has to answer
 
 Six questions, and a resuming agent should not have to open anything else to get through them:

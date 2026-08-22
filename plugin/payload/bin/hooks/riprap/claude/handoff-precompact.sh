@@ -57,42 +57,6 @@ if [ -f "$CURRENT" ] && ! handoff_is_capture "$CURRENT"; then
 fi
 
 # No handoff. Record what is observable, and label it honestly.
-#
-# The directory is created here rather than above, because the stamp branch does
-# not need it: creating it unconditionally left an empty tmp/handoff/ behind in
-# every repository whose handoff still lives in the pre-rename directory.
-DIR="$(handoff_dir)"
-mkdir -p "$DIR" 2>/dev/null || exit 0
-OUT="$DIR/handoff-$(date '+%Y-%m-%d')-precompact-capture.md"
-BRANCH=$(handoff_branch)
-{
-  echo "# NOT A HANDOFF — automatic capture at $STAMP"
-  # The same marker a real handoff carries, so this is found on the branch it
-  # belongs to and nowhere else. Omitted when HEAD is detached: an unmarked file
-  # is only ever treated as current when it is the sole handoff present, which
-  # is the right answer for a capture nobody can attribute to a branch.
-  [ -z "$BRANCH" ] || echo "${HANDOFF_MARKER_OPEN}${BRANCH} -->"
-  echo
-  echo "The context was compacted with no handoff in place, so this is raw state a hook"
-  echo "could observe. It does not say what the work is for, what was agreed, or what done"
-  echo "means — nobody wrote those down. Treat it as raw material: reconstruct the goal"
-  echo "with the user, then replace this file with a real handoff."
-  echo
-  echo "## Branch"
-  echo '```'
-  git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "(detached)"
-  git worktree list 2>/dev/null | head -10
-  echo '```'
-  echo
-  echo "## Recent commits"
-  echo '```'
-  git log --oneline -15 2>/dev/null
-  echo '```'
-  echo
-  echo "## Working tree at compaction"
-  echo '```'
-  git status --short 2>/dev/null | head -60
-  echo '```'
-} >"$OUT" 2>/dev/null || true
+handoff_write_capture "precompact-capture" "The context was compacted" || true
 
 exit 0

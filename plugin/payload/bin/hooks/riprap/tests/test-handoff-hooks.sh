@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Regression tests for the three handoff hooks.
+# Regression tests for the handoff hooks: handoff-plan-approved.sh, handoff-precompact.sh,
+# handoff-stop.sh, session-end.sh, and the one that blocks, require-handoff-before-unattended.sh.
 #
-# These do not use test-support.sh. Its contract is "pipe a payload in, assert
-# the exit code", which is right for a guardrail that blocks — and says nothing
-# about these, which always exit 0 and communicate entirely through stdout. What
-# has to be asserted here is the CALIBRATION: the cases where a hook stays silent
-# are as load-bearing as the case where it speaks, because a hook that nags on a
-# correct tree is one that gets switched off.
+# These do not use test-support.sh. Its contract is "pipe a payload in, assert the exit
+# code", which is right for a guardrail that blocks — and says nothing about the four that
+# only ask, which always exit 0 and communicate entirely through stdout (or, for
+# session-end.sh, through a file on disk rather than either channel). What has to be
+# asserted for those four is the CALIBRATION: the cases where a hook stays silent are as
+# load-bearing as the case where it speaks, because a hook that nags on a correct tree is
+# one that gets switched off. The one hook that blocks gets the inverse discipline instead —
+# see assert_blocked below — but the same principle: a case that should stay silent and
+# doesn't is exactly as much a regression as one that should speak and doesn't.
 #
 # THREE THINGS THIS HARNESS LEARNED FROM MUTATION TESTING, each of which left an
 # earlier version of the whole suite green:

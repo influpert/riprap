@@ -193,6 +193,57 @@ handoff_newer_change() {  # $1 = handoff path
       done
 }
 
+# Write a "NOT A HANDOFF" capture recording what a shell can still observe: the branch,
+# recent commits, and the working tree. For when a hook needs to leave something behind but
+# no real handoff exists to stamp instead — precompact when nothing exists at all, and
+# session-end as a last-resort net for a session that ends without one either.
+#
+# $1 = filename slug, distinct per caller so two callers active in the same session don't
+#      collide under the same date-stamped name (e.g. "precompact-capture",
+#      "session-end-capture")
+# $2 = one-line clause naming what triggered the capture, e.g. "The context was compacted"
+#
+# Caller is responsible for `handoff_dir_is_ignored` and for deciding whether a capture is
+# even warranted (an existing real handoff or an existing capture already covers it) —
+# those two calls differ per caller, so neither belongs in here.
+handoff_write_capture() {
+  local slug="$1" reason="$2" dir out stamp branch
+  dir="$(handoff_dir)"
+  mkdir -p "$dir" 2>/dev/null || return 1
+  stamp=$(date '+%Y-%m-%d %H:%M')
+  out="$dir/handoff-$(date '+%Y-%m-%d')-${slug}.md"
+  branch=$(handoff_branch)
+  {
+    echo "# NOT A HANDOFF — automatic capture at $stamp"
+    # The same marker a real handoff carries, so this is found on the branch it belongs to
+    # and nowhere else. Omitted when HEAD is detached: an unmarked file is only ever treated
+    # as current when it is the sole handoff present, which is the right answer for a
+    # capture nobody can attribute to a branch.
+    [ -z "$branch" ] || echo "${HANDOFF_MARKER_OPEN}${branch} -->"
+    echo
+    echo "$reason with no handoff in place, so this is raw state a hook could observe. It"
+    echo "does not say what the work is for, what was agreed, or what done means — nobody"
+    echo "wrote those down. Treat it as raw material: reconstruct the goal with the user,"
+    echo "then replace this file with a real handoff."
+    echo
+    echo "## Branch"
+    echo '```'
+    git symbolic-ref --quiet --short HEAD 2>/dev/null || echo "(detached)"
+    git worktree list 2>/dev/null | head -10
+    echo '```'
+    echo
+    echo "## Recent commits"
+    echo '```'
+    git log --oneline -15 2>/dev/null
+    echo '```'
+    echo
+    echo "## Working tree at compaction"
+    echo '```'
+    git status --short 2>/dev/null | head -60
+    echo '```'
+  } >"$out" 2>/dev/null || return 1
+}
+
 # Emit a hook JSON response carrying context for the model.
 #
 # jq builds it rather than a printf template, because the text contains paths and

@@ -71,4 +71,8 @@ echo "--- Native Codex package and shared plugin surface ---"
 bin/check-codex-plugin
 
 echo
+echo "--- The homepage release badge bumps correctly, in isolation ---"
+bin/tests/test-release-badge-bump.sh
+
+echo
 echo "✅ bin/test passed"

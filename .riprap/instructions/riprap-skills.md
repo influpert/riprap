@@ -18,6 +18,14 @@ should not sit in the file that skill is licensed to rewrite and told to keep sh
 - Notes: `.github/releases/<tag>.md` — written and merged **before** the bump
 - Bump and tag: `bin/release <version> --start`, then `--finish` once it has merged — never by hand. `--finish` pushes the tag, so it is the command that publishes and the one to type deliberately; the plain two-run form is unchanged and still pushes nothing
 - Publishes: a workflow, on tag push — run nothing by hand; confirm with `bin/release --verify <version>`, or with no argument to sweep every `v*` tag on `origin` for ones with no release behind them
+- Homepage badge: `docs/index.md`'s `latest_release_version` front matter is written
+  and committed **locally** by `--finish`, right after `do_verify` confirms the
+  release is live — no manual editing. It is not pushed automatically: `--finish`
+  prints `git push origin main` and that push is still a deliberate act, same as
+  every other push this script makes. `.github/workflows/ci.yml`'s "site and
+  repository agree" step backstops the field against the newest tag in the meantime,
+  and for the rarer case the write itself fails; its message says so rather than
+  reading as something the next pull request broke.
 
 **`bin/release` is not a convenience wrapper, and hand-editing the three version files
 instead of running it is not the same act.** It refuses a version that does not move

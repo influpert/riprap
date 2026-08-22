@@ -26,9 +26,26 @@ in the active host's legacy guidance.
 
 ## Behavioral rules
 
-**1. Plan first.** Enter plan mode for anything non-trivial — 3+ steps, or any
-architectural decision. If work goes sideways, stop and re-plan rather than pushing
-through. Use plan mode for verification steps too, not just for building.
+**1. Clarify, then plan.** **Unless you are already 95% confident of exactly what is being
+asked or asked for, ask** — before you answer, before you plan, before you build. Ask
+**sequentially**: one question at a time, each shaped by the last answer, through the host's
+structured choice UI wherever there is one. Never ask what you could read; research first, and
+spend questions on what research cannot settle. Once you are over the bar, what happens next
+depends on what you were handed. **A question** gets an answer, and stops there — answering is
+not a licence to start building on it. **A task** gets a summary of *what made you confident and
+what you are going to do*, and then you wait for the user's signal. **A task you were already
+95% sure of** gets done: the bar is a floor on confidence, not a quota on questions, so at 95%
+you have nothing to ask and must not manufacture something. Only then plan: enter plan mode for
+anything non-trivial — 3+ steps, or any architectural decision — and use it for verification
+steps too, not just for building. If work goes sideways, stop and re-plan rather than pushing
+through.
+
+**With nobody to answer, proceed and record.** A question you cannot get answered is not
+permission to guess freely, and not a reason to produce nothing. Take the narrowest reading
+that could be right, and record the fork in the artifact itself — a pull request body, a
+handoff — not in a transcript nobody will read. The critical rules do not relax: unattended is
+not a licence to merge, to add a technology, or to open a pull request on a diff nobody
+reviewed. → [interaction-preferences.md](interaction-preferences.md)
 
 **2. Use subagents.** Offload research, exploration, and parallel analysis to keep the
 main context clean. One task per subagent. → [interaction-preferences.md](interaction-preferences.md)
@@ -125,7 +142,11 @@ beat one 215-line file when either would answer the question.
 **Starting work**
 
 - First session in a repo? → [project-standards.md](project-standards.md) (~175)
-- Proposing a plan, an approach, or an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
+- Handed a request that could be read more than one way? Proposing a plan, an approach, or
+  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
+- Writing anything a person reads — a reply, a plan, a task, a commit message, a pull request
+  body? → [writing-style.md](writing-style.md) (~110). Checking a finished document against the
+  full standard? → `/riprap:write`
 - Planning anything a user will see? Mock it up first, in the project's design system → [design.md](design.md) (~250)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
   on the way? → [development-workflow.md](development-workflow.md) (~110)

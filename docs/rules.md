@@ -36,8 +36,9 @@ stating because the alternative looks easier:
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
 `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
-`/riprap:prune`, `/riprap:release`, `/riprap:review` and `/riprap:handoff`, so a
-repository with its own `/learn` or `/review` keeps it. There is nothing to merge and nothing to collide with.
+`/riprap:prune`, `/riprap:release`, `/riprap:review`, `/riprap:handoff` and `/riprap:write`,
+so a repository with its own `/learn` or `/review` keeps it. There is nothing to merge and
+nothing to collide with.
 
 ## What it costs you in context
 
@@ -50,7 +51,7 @@ replayed transcript. It is never silence, and it is never a guess: without that 
 or after a plugin update moves the rules, the full router goes out as before.
 
 What arrives at session start is a **router of roughly 150 lines** — the seven rules, a
-task-to-document map, and five rules restated in full. It is not the 19 guardrail documents
+task-to-document map, and five rules restated in full. It is not the 20 guardrail documents
 themselves. Those are read when they are needed and not before, which is why the router
 carries a line count beside each entry: two 80-line files usually beat one 215-line file
 when either would answer the question.
@@ -71,9 +72,38 @@ what `/riprap:learn` is for — it writes into your project, deliberately.
 
 ## The seven behavioural rules
 
-**1. Plan first.** Enter plan mode for anything non-trivial — three or more steps, or any
-architectural decision. If work goes sideways, stop and re-plan rather than pushing through.
-Use plan mode for verification steps too, not just for building.
+**1. Clarify, then plan.** **Unless you are already 95% confident of exactly what is being asked
+or asked for, ask** — before answering, before planning, before building. Ask sequentially: one
+question at a time, each shaped by the last answer, through the host's structured choice UI
+wherever there is one. Never ask what could be read instead; research first, and spend questions
+on what research cannot settle.
+
+Once over the bar, what happens next depends on what was handed over. **A question** gets an
+answer and stops there — answering is not a licence to start building on it. **A task** gets a
+summary of *what made you confident and what you are going to do*, and then waits for the user's
+signal. **A task already over the bar** gets done: the bar is a floor on confidence, not a quota
+on questions, so at 95% there is nothing to ask and nothing should be manufactured. That last
+case is what stops the rule taxing a typo — asking there spends a round trip to learn nothing and
+teaches the user that these questions are noise, which is what makes the important one get
+skimmed later.
+
+Only then plan: enter plan mode for anything non-trivial — three or more steps, or any
+architectural decision — and use it for verification steps too, not just for building. If work
+goes sideways, stop and re-plan rather than pushing through.
+
+**With nobody to answer — a scheduled run, a trigger, CI — proceed and record.** A question that
+cannot be answered is not permission to guess freely, and not a reason to produce nothing. Take
+the narrowest reading that could be right, because a too-narrow change is a follow-up and a
+too-broad one is a revert; then record the fork in the artifact itself — a pull request body, a
+handoff — rather than in a transcript nobody will read. The critical rules do not relax:
+unattended is not a licence to merge, to add a technology, or to open a pull request on a diff
+nobody reviewed.
+
+This is deliberately not what [tech-footprint.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/tech-footprint.md)
+does, and the difference is the point. That rule refuses outright when there is nobody to ask,
+because it gates *adding* something whose cost is permanent — refusing ends where you started.
+Rule 1 gates *understanding*, where refusing produces nothing, burns the run, and leaves the
+same ambiguity waiting next time.
 
 **2. Use subagents.** Offload research, exploration, and parallel analysis to keep the main
 context clean. One task per subagent.
@@ -164,7 +194,7 @@ ignores `tmp/` does not need riprap's opinion about it.
   path that resolves differently than expected is the most common cause of an agent editing
   the wrong copy of a file.
 
-## The ten skills
+## The eleven skills
 
 These chain: `/riprap:spec` defines a feature, `/riprap:architect` turns it into an
 implementation plan, `/riprap:implement` builds that plan, and `/riprap:review` reviews what
@@ -249,6 +279,14 @@ handoff nobody updated is worse than none: it is confidently wrong about where t
 stopped. It is rule 7 made performable, and hooks stand behind it as they do behind no other
 skill, because the moment a context actually runs out is the one moment when there is no turn
 left in which to write anything down.
+
+**`/riprap:write`** reviews or rewrites a document, plan, pull request body or README against
+riprap's writing standard, and carries the full Google developer documentation style guide as
+reference — the word list, punctuation, tables, code and UI formatting. The standard ships in
+two tiers for a reason: `writing-style.md` binds every message and is short enough to be read
+every session, while the reference behind it is read only when this skill runs. It edits prose
+and never changes behaviour, because a document quietly edited into agreement with broken code
+has destroyed the only remaining evidence that they disagreed.
 
 ---
 

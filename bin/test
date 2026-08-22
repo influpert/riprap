@@ -28,6 +28,14 @@ echo "--- Manifest matches the payload, and stays namespaced ---"
 bin/build-manifest --check
 
 echo
+# Offline on purpose. The network refresh belongs to the scheduled workflow; what
+# this asserts is that the copy in the tree is complete and still carries the
+# attribution its licence requires — a failed fetch that truncated a file, or a
+# hand-edit that dropped the banner, both fail here rather than shipping.
+echo "--- Style guide reference is complete and attributed ---"
+bin/refresh-style-guide --check
+
+echo
 echo "--- CHANGELOG.md matches .github/releases/*.md ---"
 bin/release --changelog --check
 

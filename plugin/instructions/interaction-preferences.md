@@ -222,6 +222,69 @@ Below the gate, asking *is* the failure mode. A confirmation request on a typo f
 a round trip to learn nothing and teaches the user that your questions are noise — which
 is what makes the important question get skimmed later.
 
+### The 95% bar, and the sequence that follows from it
+
+The table above sizes the questions. What decides whether to ask at all is a single threshold:
+**unless you are already 95% confident of exactly what needs doing, ask.** Not "is this
+ambiguous" — that question is too easy to answer optimistically at the moment you most want to
+start. Ask instead what you would bet on getting the shape right, and treat anything short of
+near-certainty as a question you owe.
+
+Four beats, in order, and the order is the point:
+
+**1. Ask before the work, not during it.** Before answering, before planning, before building.
+Once code exists a question about direction competes with the sunk cost of what is already
+written — yours to abandon and the reader's to re-read. An answer that arrives after the first
+commit gets applied as a patch to a shape that should have been chosen with it.
+
+**2. Ask sequentially — one question at a time, each shaped by the last answer.** Three
+questions sent together are three guesses about what matters, all written before any of them
+was answered. Asked in sequence, the second is often not the question that was going to be
+asked, and the third sometimes turns out to be unnecessary. Strategically, too: spend each
+question on the fork that would change the most work.
+
+**3. Summarize what made you confident and what you are going to do.** Both halves. The plan
+alone hides which answers it turned on, so a wrong reading stays invisible until it is code —
+and the reader cannot check reasoning they were never shown.
+
+**4. Wait for the signal.** The summary is not a status update to talk past. Stop there, and
+start only when the user says to.
+
+The bar is a floor on confidence, not a quota on questions. At 95% you have nothing to ask, so
+do not manufacture something: that is the same failure the gate above describes, arriving by a
+different route.
+
+### When there is nobody to answer
+
+A scheduled run, a trigger, a CI job: the question gets asked and no answer comes back. **Do not
+detect this.** A rule that branches on "am I unattended?" needs a heuristic, and the heuristic
+fails in the expensive direction — decide *unattended* while a person is watching, and you guess
+at something they would have answered in ten seconds.
+
+Phrase it by outcome instead, and it needs no detection at all: **ask, and if no answer is
+available, proceed and record.** The environment tells you by not answering, and the rule
+degrades correctly in both directions.
+
+Proceeding is bounded by three things:
+
+- **Take the reversible reading.** Where interpretations differ in blast radius, take the one
+  that is cheapest to undo. A change that turns out too narrow is a follow-up; one that turns
+  out too broad is a revert, and reverts cost other people's time as well as yours.
+- **Record the fork where a human lands.** The pull request body, the handoff document — not the
+  transcript. Nobody reads the transcript of an overnight run, so an assumption recorded only
+  there is one nobody will ever see, and it will be discovered as a defect rather than as a
+  decision.
+- **The critical rules do not relax.** Unattended is not a licence to merge a security-sensitive
+  change, to add a technology, or to open a pull request on a diff nobody reviewed. Those gates
+  already state what to do with nobody present, and this one does not override them.
+
+Why proceed at all, when [tech-footprint.md](tech-footprint.md) refuses outright in the same
+situation? Because the two gates protect against opposite failures. That rule gates *adding*
+something whose cost is permanent and lands on every future clone, so refusing ends where you
+started — genuinely safe. This one gates *understanding*, where refusing produces nothing, burns
+the run, and leaves the identical ambiguity waiting for the next one. Copying its answer here
+would be taking the shape of a rule without the reason for it.
+
 ### Trigger words in your own draft
 
 Reread what you are about to send. If it contains any of these, **you have not decided

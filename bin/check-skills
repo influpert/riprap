@@ -304,8 +304,21 @@ check_doc_mentions_resolve() {
                echo "❌ $label names $m, which does not exist"; bad=1; } ;;
            esac ;;
       *) case "$NOT_A_GUARDRAIL_DOC" in *" $m "*) continue ;; esac
-         [ -f "$INSTRUCTIONS/$m" ] || {
-           echo "❌ $label names $m, which is not in $INSTRUCTIONS/"
+         # A skill may bundle its own markdown beside SKILL.md — reference
+         # material too large to inline and too specific to be a guardrail
+         # document. A basename that resolves inside the skill's own directory
+         # is not a dangling deferral: it points somewhere real, which is the
+         # only thing this assertion is about. Resolving it against
+         # plugin/instructions/ and reporting it missing describes the wrong
+         # problem, and the fix it implies — moving reference material into the
+         # guardrail documents — is the opposite of what should happen, because
+         # those are read on demand by every session and this is not.
+         #
+         # This is not a way past A1. The file has to actually exist, under that
+         # one skill; a typo still fails, and it fails naming the skill.
+         [ -f "$INSTRUCTIONS/$m" ] || \
+         [ -n "$(find "$(dirname "$file")" -type f -name "$m" -print -quit 2>/dev/null)" ] || {
+           echo "❌ $label names $m, which is not in $INSTRUCTIONS/ or beside the skill"
            echo "   A deferral that does not resolve sends the model nowhere and reads as green."
            bad=1; } ;;
     esac
@@ -785,6 +798,18 @@ CLAUDE.md points at it. Notes go in .github/releases/v0.5.0.md, or in
 .github/releases/<tag>.md where <tag> is the version being cut.
 EOF
   passes "A1 paths and non-docs" check_doc_mentions_resolve fx "$tmp/a1-ok.md"
+
+  # A skill's own bundled reference resolves; a typo in one still does not. Both
+  # halves are asserted, because a check that stopped failing would look exactly
+  # like a check that started accepting bundled files.
+  mkdir -p "$tmp/a1-skill/reference"
+  echo 'x' >"$tmp/a1-skill/reference/word-list.md"
+  echo 'See word-list.md for specific terms.' >"$tmp/a1-skill/SKILL.md"
+  passes "A1 bundled skill reference" check_doc_mentions_resolve fx "$tmp/a1-skill/SKILL.md"
+  echo 'See word-liste.md for specific terms.' >"$tmp/a1-skill/SKILL.md"
+  fires "A1 typo in a bundled reference" "which is not in" \
+    check_doc_mentions_resolve fx "$tmp/a1-skill/SKILL.md"
+
   passes "A1b allowlist is honest" check_allowlist_is_honest
 
   # --- A2 -------------------------------------------------------------------

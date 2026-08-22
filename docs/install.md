@@ -58,14 +58,15 @@ On this page
 **`/plugin marketplace add influpert/riprap`** registers this repository as a plugin
 marketplace. The repository is its own marketplace, so there is no directory to go through.
 
-**The host's plugin-install command** installs 19 guardrail documents, ten skills, the
+**The host's plugin-install command** installs 20 guardrail documents, eleven skills, the
 worker agent, shared lifecycle hooks, and the shared installer. Codex asks the user to review
 and trust plugin hooks before enabling them. Nothing lands in a repository until
 `/riprap:install` runs.
 
 The shared skill surface is `/riprap:install`, `/riprap:learn`, `/riprap:spec`,
 `/riprap:architect`, `/riprap:implement`, `/riprap:advise`, `/riprap:prune`,
-`/riprap:release`, `/riprap:review`, and `/riprap:handoff`. The names and behavior are
+`/riprap:release`, `/riprap:review`, `/riprap:handoff`, and `/riprap:write`. The names and
+behavior are
 the same on both hosts.
 
 **`/riprap:install`** adds the half that has to live in the repo: the guardrail scripts,
@@ -110,7 +111,7 @@ that already has its own instructions, skills, and hooks cannot clobber any of t
 
 | Capability | Claude Code | Codex |
 |---|---|---|
-| Ten `/riprap:*` skills | Native | Native |
+| Eleven `/riprap:*` skills | Native | Native |
 | `riprap:agent` worker | Native | Native |
 | `/riprap:install` and shared payload | Native | Native |
 | Repository pre-commit and pre-push enforcement | After install | After install |

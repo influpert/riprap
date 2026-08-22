@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Engineering guardrails for Claude Code and Codex, enforced rather than suggested.",
-    "version": "0.10.0"
+    "version": "0.10.1"
   },
   "plugins": [
     {

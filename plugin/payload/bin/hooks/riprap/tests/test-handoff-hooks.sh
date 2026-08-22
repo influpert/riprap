@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# Regression tests for the three handoff hooks.
+# Regression tests for the handoff hooks: handoff-plan-approved.sh, handoff-precompact.sh,
+# handoff-stop.sh, session-end.sh, and the one that blocks, require-handoff-before-unattended.sh.
 #
-# These do not use test-support.sh. Its contract is "pipe a payload in, assert
-# the exit code", which is right for a guardrail that blocks — and says nothing
-# about these, which always exit 0 and communicate entirely through stdout. What
-# has to be asserted here is the CALIBRATION: the cases where a hook stays silent
-# are as load-bearing as the case where it speaks, because a hook that nags on a
-# correct tree is one that gets switched off.
+# These do not use test-support.sh. Its contract is "pipe a payload in, assert the exit
+# code", which is right for a guardrail that blocks — and says nothing about the four that
+# only ask, which always exit 0 and communicate entirely through stdout (or, for
+# session-end.sh, through a file on disk rather than either channel). What has to be
+# asserted for those four is the CALIBRATION: the cases where a hook stays silent are as
+# load-bearing as the case where it speaks, because a hook that nags on a correct tree is
+# one that gets switched off. The one hook that blocks gets the inverse discipline instead —
+# see assert_blocked below — but the same principle: a case that should stay silent and
+# doesn't is exactly as much a regression as one that should speak and doesn't.
 #
 # THREE THINGS THIS HARNESS LEARNED FROM MUTATION TESTING, each of which left an
 # earlier version of the whole suite green:
@@ -84,6 +88,32 @@ assert_event() {  # $1 = label, $2 = expected hookEventName
   if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 — expected event $2, got '${got:-<invalid json>}'"; fi
 }
 
+# The inverse of assert_silent, for the one hook that actually blocks: exit 2 and a
+# message on stderr, same contract as the four rule-enforcing blockers elsewhere in this
+# payload. A dead hook (crashed before reaching its own refusal) is not a "blocked" hook
+# either, so this checks the exit code precisely rather than merely "non-zero".
+assert_blocked() {  # $1 = label
+  if [ "$RC" -ne 2 ]; then bad "$1 — expected exit 2 (blocked), got rc=$RC out=${OUT:-<empty>} err=${ERR:-<empty>}"
+  elif [ -z "$ERR" ]; then bad "$1 — blocked with no explanation on stderr"
+  else ok "$1"; fi
+}
+
+# assert_context_says' counterpart for the one hook that speaks on stderr instead of
+# through additionalContext.
+assert_err_says() {  # $1 = label, $2 = needle
+  case "$ERR" in
+    *"$2"*) ok "$1" ;;
+    *) bad "$1 — stderr did not mention '$2': ${ERR:-<empty>}" ;;
+  esac
+}
+
+assert_err_lacks() {  # $1 = label, $2 = needle that must NOT appear
+  case "$ERR" in
+    *"$2"*) bad "$1 — stderr unexpectedly mentioned '$2': $ERR" ;;
+    *) ok "$1" ;;
+  esac
+}
+
 # A throwaway project with one commit, tmp/ ignored, and no handoff yet.
 new_project() {
   local dir
@@ -102,6 +132,34 @@ new_project() {
 }
 
 branch_of() { git -C "$1" symbolic-ref --quiet --short HEAD; }
+
+# A project with a real commit but no .gitignore at all — for the "tmp/ is not
+# git-ignored" cases three different hooks now need to check.
+new_unignored_project() {
+  local dir
+  dir=$(mktemp -d)
+  (
+    cd "$dir" || exit 1
+    git init -q .
+    git config user.email t@example.invalid
+    git config user.name Test
+    printf 'one\n' >tracked.txt
+    git add -A
+    git commit -qm init
+  ) >/dev/null 2>&1
+  printf '%s' "$dir"
+}
+
+# A minimal coreutils PATH with jq excluded, for a hook's fail-open-without-jq case.
+build_sandbox() {
+  local dir b p
+  dir=$(mktemp -d)
+  for b in bash sh git sed awk grep ls head cat date mktemp rm mkdir find touch \
+           dirname basename pwd env; do
+    p=$(command -v "$b" 2>/dev/null) && ln -sf "$p" "$dir/$b"
+  done
+  printf '%s' "$dir"
+}
 
 # A handoff claiming a branch. The marker binds it to a unit of work; without one
 # it is invisible to every hook, which is itself a tested case below.
@@ -611,6 +669,271 @@ c=$(context_of); case "$c" in
   *) ok "no spurious warning once tmp/ is ignored" ;;
 esac
 rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: blocks on total absence ---"
+
+# Every other hook in this file is passed to run_hook as a literal (handoff-stop.sh alone
+# appears nearly 30 times that way) — this one is long enough, and repeated often enough
+# across this many sections, that a variable is worth the one departure from that
+# convention. Each tool name below is still asserted individually rather than via a loop:
+# every one is its own branch in the hook's tool_name matcher, and collapsing them would
+# stop catching a typo in any single branch's pattern.
+UNATTENDED_HOOK=require-handoff-before-unattended.sh
+
+# No handoff at all, for every tool this hook gates.
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600,"reason":"loop"}}'
+assert_blocked "ScheduleWakeup with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"CronCreate","tool_input":{}}'
+assert_blocked "CronCreate with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Workflow","tool_input":{}}'
+assert_blocked "Workflow with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"RemoteTrigger","tool_input":{}}'
+assert_blocked "RemoteTrigger with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Agent","tool_input":{"run_in_background":true}}'
+assert_blocked "a backgrounded Agent dispatch with no handoff at all"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Task","tool_input":{"run_in_background":true}}'
+assert_blocked "a backgrounded Task dispatch with no handoff at all"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: never gates a foreground Agent/Task ---"
+
+# The whole reason this hook is narrower than "every subagent dispatch": riprap's own
+# skills (architect, plan mode's own Phase 1) dispatch foreground subagents before any
+# plan or handoff exists, as a matter of course.
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Agent","tool_input":{"run_in_background":false}}'
+assert_silent "a foreground Agent dispatch (run_in_background:false) is never gated"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Agent","tool_input":{}}'
+assert_silent "an Agent dispatch omitting run_in_background is treated as foreground"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Task","tool_input":{}}'
+assert_silent "a Task dispatch omitting run_in_background is treated as foreground"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: allows once a real handoff exists ---"
+
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+assert_silent "ScheduleWakeup allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"CronCreate","tool_input":{}}'
+assert_silent "CronCreate allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Workflow","tool_input":{}}'
+assert_silent "Workflow allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"RemoteTrigger","tool_input":{}}'
+assert_silent "RemoteTrigger allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Agent","tool_input":{"run_in_background":true}}'
+assert_silent "a backgrounded Agent dispatch allowed once a real handoff exists"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Task","tool_input":{"run_in_background":true}}'
+assert_silent "a backgrounded Task dispatch allowed once a real handoff exists"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: a handoff for a different branch doesn't count ---"
+
+# The same distinction handoff-stop.sh's own tests make (see "a handoff claiming another
+# branch is not this work's" above) — adopting a real handoff that belongs to a different
+# unit of work is the exact failure mode the branch marker exists to prevent, and it would
+# be easy for an implementation to get this wrong by checking "any real file exists in
+# tmp/handoff/" instead of routing through the branch-aware handoff_current.
+P=$(new_project)
+write_handoff "$P" "$OTHER" "some-other-branch" >/dev/null
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+assert_blocked "a real handoff claiming a different branch does not satisfy the gate"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: presence is enough, staleness is not this hook's job ---"
+
+# Keeping a handoff CURRENT as the tree moves stays handoff-stop.sh's job — a soft nudge
+# that fires every time it's stale, never blocks. A per-call block on staleness would
+# refuse nearly every iteration of a running /loop, since "stale" means any file changed
+# since the handoff was last written; this hook checks presence only.
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+printf 'changed\n' >>"$P/tracked.txt"; touch -t "$NEW" "$P/tracked.txt"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+assert_silent "a stale-but-present handoff still satisfies the gate"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: a capture is not enough ---"
+
+# A precompact capture is raw git state, not a handoff anyone wrote — it must not
+# satisfy this gate, the same distinction handoff-stop.sh and handoff-plan-approved.sh
+# already make.
+P=$(new_project)
+mkdir -p "$P/tmp/handoff"
+printf '# NOT A HANDOFF — automatic capture\n\nstuff\n' >"$P/tmp/handoff/$CAPTURE"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+assert_blocked "a capture-only handoff does not satisfy the gate"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: other exemptions ---"
+
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"stop":true}}'
+assert_silent "ScheduleWakeup with stop:true ends a loop rather than starting one, exempt even with no handoff"
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"Bash","tool_input":{"command":"ls"}}'
+assert_silent "ignores a tool outside the matcher set, even with no handoff"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: message content ---"
+
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+assert_err_says "blocked message names the triggering tool (ScheduleWakeup)" "ScheduleWakeup"
+assert_err_says "blocked message points at the handoff skill" "/riprap:handoff"
+assert_err_lacks "no spurious gitignore warning when tmp/ is already ignored" "not git-ignored"
+rm -rf "$P"
+
+# The named tool changes with the call — proves it isn't a hardcoded string.
+P=$(new_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"CronCreate","tool_input":{}}'
+assert_err_says "the tool named in the message tracks the actual call (CronCreate)" "CronCreate"
+rm -rf "$P"
+
+# tmp/ not git-ignored at all.
+P=$(new_unignored_project)
+run_hook "$UNATTENDED_HOOK" "$P" '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}'
+assert_err_says "blocked message warns when tmp/ is not git-ignored" "not git-ignored"
+rm -rf "$P"
+
+echo
+echo "--- require-handoff-before-unattended.sh: fails open, never blocks, on unverifiable state ---"
+
+# Unlike require-plan-stress-test.sh and block-unreviewed-merge.sh, this hook is
+# calibrated to fail OPEN: it guards a behavioural rule, not a critical one, and it can
+# fire on nearly every tool call in a session — refusing to schedule work because jq is
+# absent would be a worse outcome than a reminder that never arrives.
+P=$(new_project)
+SANDBOX=$(build_sandbox)
+O=$( (cd "$P" && printf '%s' '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}' \
+      | PATH="$SANDBOX" CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/$UNATTENDED_HOOK" 2>&1) ); R=$?
+{ [ -z "$O" ] && [ "$R" -eq 0 ]; } && ok "silent and exits 0 without jq, even with no handoff" \
+  || bad "without jq: rc=$R out=$O"
+rm -rf "$SANDBOX" "$P"
+
+# git itself absent from PATH, as opposed to merely running outside a repository — jq is
+# still present, so this exercises the second fail-open guard rather than the first.
+P=$(new_project)
+SANDBOX=$(build_sandbox)
+rm -f "$SANDBOX/git"
+O=$( (cd "$P" && printf '%s' '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}' \
+      | PATH="$SANDBOX" CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/$UNATTENDED_HOOK" 2>&1) ); R=$?
+{ [ -z "$O" ] && [ "$R" -eq 0 ]; } && ok "silent and exits 0 without git on PATH" \
+  || bad "without git: rc=$R out=$O"
+rm -rf "$SANDBOX" "$P"
+
+P=$(mktemp -d)  # not a git repo at all
+O=$( (cd "$P" && printf '%s' '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":600}}' \
+      | CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/$UNATTENDED_HOOK" 2>&1) ); R=$?
+{ [ -z "$O" ] && [ "$R" -eq 0 ]; } && ok "silent and exits 0 outside a git repo" \
+  || bad "outside a git repo: rc=$R out=$O"
+rm -rf "$P"
+
+echo
+echo "--- session-end.sh ---"
+
+P=$(new_project)
+run_hook session-end.sh "$P" '{}'
+[ "$RC" -eq 0 ] && ok "exits 0 on a project with no handoff and no tmp/handoff dir yet" \
+  || bad "session-end must never fail (rc=$RC)"
+if [ -d "$P/tmp/handoff" ] && [ -n "$(ls -A "$P/tmp/handoff" 2>/dev/null)" ]; then
+  F=$(ls "$P"/tmp/handoff/*.md | head -1)
+  case "$(head -1 "$F")" in *"NOT A HANDOFF"*) ok "writes a capture when nothing exists at all" ;;
+    *) bad "capture is not labelled NOT A HANDOFF" ;; esac
+  case "$(cat "$F")" in *"riprap:handoff branch="*) ok "session-end capture claims its branch" ;;
+    *) bad "session-end capture carries no branch marker" ;; esac
+  # Proves session-end actually calls the shared capture-writer (item 4/6 of the plan)
+  # rather than a sparser, divergent inline implementation.
+  # The heading names the actual moment, not precompact's -- proves the shared moment
+  # parameter (handoff_write_capture's $3) is actually threaded through, not hardcoded to
+  # precompact's own wording.
+  for section in "## Branch" "## Recent commits" "## Working tree at session end"; do
+    case "$(cat "$F")" in *"$section"*) ok "the session-end capture records $section" ;;
+      *) bad "the session-end capture is missing $section" ;; esac
+  done
+  case "$(cat "$F")" in *"at compaction"*) bad "session-end capture wrongly claims to be at compaction" ;;
+    *) ok "session-end capture never claims to be at compaction" ;; esac
+else
+  bad "expected session-end to write a capture when nothing existed at all"
+fi
+rm -rf "$P"
+
+P=$(new_project); B=$(branch_of "$P")
+write_handoff "$P" "$WORK" "$B" >/dev/null
+run_hook session-end.sh "$P" '{}'
+N=$(find "$P/tmp/handoff" -name '*.md' | wc -l | tr -d ' ')
+[ "$N" = "1" ] && ok "writes nothing beside a real handoff" || bad "session-end touched a project with a real handoff (files: $N)"
+case "$(cat "$P/tmp/handoff/$WORK")" in *"Goal: something"*) ok "leaves the real handoff untouched" ;;
+  *) bad "session-end modified an existing real handoff" ;; esac
+rm -rf "$P"
+
+# A handoff exists, but for a DIFFERENT branch — nothing satisfies this branch's own
+# absence check, so a capture must still be written, the session-end analogue of the
+# unattended hook's "a handoff for a different branch doesn't count" case above.
+P=$(new_project)
+write_handoff "$P" "$OTHER" "some-other-branch" >/dev/null
+run_hook session-end.sh "$P" '{}'
+N=$(find "$P/tmp/handoff" -name '*.md' | wc -l | tr -d ' ')
+[ "$N" = "2" ] && ok "still writes a capture when only a different branch's handoff exists" \
+  || bad "session-end should have written a capture beside the other branch's handoff (files: $N)"
+rm -rf "$P"
+
+# The condition deliberately narrower than precompact's own: a capture already exists
+# (written by an earlier PreCompact in the same session, say), and a second one on
+# SessionEnd would add nothing but clutter.
+P=$(new_project); B=$(branch_of "$P")
+mkdir -p "$P/tmp/handoff"
+{
+  echo "# NOT A HANDOFF — automatic capture"
+  echo "<!-- riprap:handoff branch=$B -->"
+} >"$P/tmp/handoff/$CAPTURE"
+BEFORE=$(cat "$P/tmp/handoff/$CAPTURE")
+run_hook session-end.sh "$P" '{}'
+N=$(find "$P/tmp/handoff" -name '*.md' | wc -l | tr -d ' ')
+[ "$N" = "1" ] && ok "does not write a second capture beside an existing one" \
+  || bad "session-end wrote a redundant capture (files: $N)"
+# A file-count check alone would miss a bug where session-end reuses precompact's own
+# filename slug and silently overwrites the existing capture in place instead of
+# skipping the write entirely — count would still read 1.
+AFTER=$(cat "$P/tmp/handoff/$CAPTURE")
+[ "$BEFORE" = "$AFTER" ] && ok "the existing capture's content is untouched, not just its count" \
+  || bad "session-end modified the existing capture in place instead of leaving it alone"
+rm -rf "$P"
+
+# tmp/ not git-ignored.
+P=$(new_unignored_project)
+run_hook session-end.sh "$P" '{}'
+[ -d "$P/tmp/handoff" ] && bad "session-end wrote into an unignored tmp/ — that artifact can be committed" \
+  || ok "session-end writes nothing when tmp/ is not git-ignored"
+rm -rf "$P"
+
+# Outside a git repo: must still never fail the shutdown.
+P=$(mktemp -d)
+O=$( (cd "$P" && printf '%s' '{}' | CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/session-end.sh" 2>&1) ); R=$?
+[ "$R" -eq 0 ] && ok "session-end exits 0 outside a git repo" || bad "session-end must never fail shutdown (rc=$R)"
+rm -rf "$P"
+
+# Without jq: session-end's own logic never needs it (handoff_current, handoff_is_capture,
+# and the shared capture-writer are all plain git/awk/bash), and this must prove that
+# affirmatively, not just that the hook didn't crash -- a stray `command -v jq || exit 0`
+# added by mistake would also exit 0 here while silently turning session-end into a no-op,
+# and a bare exit-code check would never catch it.
+P=$(new_project)
+SANDBOX=$(build_sandbox)
+O=$( (cd "$P" && printf '%s' '{}' \
+      | PATH="$SANDBOX" CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/session-end.sh" 2>&1) ); R=$?
+[ "$R" -eq 0 ] && ok "session-end exits 0 without jq on PATH" || bad "session-end without jq: rc=$R out=$O"
+[ -n "$(ls -A "$P/tmp/handoff" 2>/dev/null)" ] && ok "session-end still writes its capture without jq on PATH" \
+  || bad "session-end silently did nothing without jq -- the missing dependency was treated as missing work"
+rm -rf "$SANDBOX" "$P"
 
 printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

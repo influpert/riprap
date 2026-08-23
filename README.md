@@ -222,27 +222,6 @@ about it:
 
 ---
 
-## Recommended tools
-
-All optional, all configured in your user-level `~/.claude/`, not by this repo.
-
-**[Superpowers](https://claude.com/plugins/superpowers)** — process skills (brainstorming,
-systematic debugging, TDD, writing plans, verification) that pair naturally with the rules
-above.
-
-```
-/plugin marketplace add anthropics/claude-plugins-official
-/plugin install superpowers@claude-plugins-official
-```
-
-**[RTK](https://github.com/rtk-ai/rtk)** — a token-optimized CLI proxy that wraps noisy dev
-commands and filters their output. `settings.json` allowlists `Bash(rtk *)`.
-
-**[Peon Ping](https://www.peonping.com/)** — character-voice audio notifications, so you
-hear when Claude needs you instead of watching the terminal.
-
----
-
 ## License
 
 **Source-available** under [PolyForm Perimeter 1.0.1](LICENSE). In plain words:

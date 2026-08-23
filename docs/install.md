@@ -267,15 +267,6 @@ rm -rf bin/hooks/riprap bin/riprap
 Then uninstall the plugin through `/plugin`. Your seed files — the git hook entry points
 and the four stack commands — are yours, and deleting them is your call.
 
-## Optional companions
-
-All optional and configured outside riprap; none is changed by installation.
-
-- [Superpowers](https://claude.com/plugins/superpowers) — process skills (brainstorming, systematic debugging, TDD, writing plans, verification) that pair naturally with riprap's rules.
-- [RTK](https://github.com/rtk-ai/rtk) — a token-optimised CLI proxy that wraps noisy dev commands and filters their output.
-- [Peon Ping](https://www.peonping.com/) — character-voice audio notifications, so you hear when Claude needs you instead of watching the terminal.
-{: .doc-links}
-
 ---
 
 - [The feature cycle](workflow.md) — how spec, architect, implement, review and release chain together

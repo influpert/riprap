@@ -169,6 +169,7 @@ half, cross-checking the registration list against the shipped hooks in both dir
 ---
 
 - [Installing riprap](install.md) — the three commands, and what lands where
+- [The feature cycle](workflow.md) — how spec, architect, implement, review and release chain together
 - [What riprap tells the model](rules.md) — the rules behind the enforcement
 - [Reference](reference.md) — every hook and pattern library, catalogued
 - [Source on GitHub](https://github.com/influpert/riprap)

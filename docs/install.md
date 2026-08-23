@@ -259,6 +259,7 @@ All optional and configured outside riprap; none is changed by installation.
 
 ---
 
+- [The feature cycle](workflow.md) — how spec, architect, implement, review and release chain together
 - [Guardrail architecture](guardrails.md) — what is enforced, and how a rule is made to hold
 - [What riprap tells the model](rules.md) — the rules, and what they cost you in context
 - [Reference](reference.md) — every document, skill, hook and file, catalogued

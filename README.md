@@ -67,6 +67,10 @@ Codex configuration.
 
 Run `/riprap:install` again any time. It is the update path.
 
+Claude Desktop and the ChatGPT desktop app (Codex) can add riprap's marketplace and install
+it without a terminal, from each app's Plugins settings — see
+[Desktop apps](https://riprap.dev/install/#desktop-apps) on the installation page.
+
 Full instructions — requirements, fresh clones, coexisting with an existing hook manager —
 are at [riprap.dev/install/](https://riprap.dev/install/).
 

@@ -74,6 +74,10 @@ payload workflow, and native lifecycle hooks.
 
 Run `/riprap:install` again any time. It is also the update path.
 
+Claude Desktop and the ChatGPT desktop app (Codex) can add riprap's marketplace and install
+it from their own Plugins settings, with no terminal — see
+[Desktop apps](install.md#desktop-apps).
+
 Full instructions — requirements, teammates, and what to do when another tool already owns
 your git hooks — are in [installing riprap](install.md).
 

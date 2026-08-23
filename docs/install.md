@@ -27,6 +27,25 @@ codex plugin add riprap@influpert
 Then ask Codex to run `/riprap:install` from the repository root. Both routes install the
 same plugin package and project payload.
 
+## Desktop apps
+
+Both desktop apps can add riprap's marketplace and install it from their own plugin
+settings, with no terminal.
+
+### Claude Desktop
+
+1. **Settings → Plugins → Add → Add Marketplace → Add from a repository.**
+2. Enter `influpert/riprap` as the source, then **Sync**.
+3. **Add plugin** to install riprap from the marketplace that just appeared.
+4. Ask Claude to run `/riprap:install` from the repository root, in a desktop session.
+
+### ChatGPT Desktop (Codex)
+
+1. **Codex → Settings → Plugins → Add → Add a marketplace.**
+2. Set **Source** to `influpert/riprap`, then **Add marketplace**.
+3. Install riprap from the marketplace, then ask Codex to run `/riprap:install` from the
+   repository root.
+
 <nav class="toc" markdown="1">
 On this page
 {: .toc-title}

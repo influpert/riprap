@@ -251,6 +251,7 @@ scanners will flag, because PolyForm has no SPDX identifier. If your organisatio
 ## Further reading
 
 - [Installing riprap](install.md) — the three commands, the requirements, and what lands where
+- [The feature cycle](workflow.md) — how spec, architect, implement, review and release chain together
 - [Guardrail architecture](guardrails.md) — what is enforced, and how a rule is made to hold
 - [What riprap tells the model](rules.md) — the rules, how they reach the model, what they cost
 - [Reference](reference.md) — every document, skill, hook and stack seam, catalogued

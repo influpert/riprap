@@ -269,6 +269,7 @@ and the four stack commands — are yours, and deleting them is your call.
 
 ---
 
+- [The feature cycle](workflow.md) — how spec, architect, implement, review and release chain together
 - [Guardrail architecture](guardrails.md) — what is enforced, and how a rule is made to hold
 - [What riprap tells the model](rules.md) — the rules, and what they cost you in context
 - [Reference](reference.md) — every document, skill, hook and file, catalogued

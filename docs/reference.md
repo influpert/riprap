@@ -127,7 +127,9 @@ plugin updates.
 {: .doc-links}
 
 Fuller descriptions, and what each one costs you in context, are on
-[what riprap tells the model](rules.md).
+[what riprap tells the model](rules.md). How the five that carry a feature from a
+stakeholder ask to a published release chain together — what each hands the next, and
+where "deploy" fits — is on [the feature cycle](workflow.md).
 
 ## The agent
 

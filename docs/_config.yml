@@ -61,6 +61,8 @@ plugins:
 nav:
   - title: Install
     url: /install/
+  - title: Workflow
+    url: /workflow/
   - title: Guardrails
     url: /guardrails/
   - title: Rules

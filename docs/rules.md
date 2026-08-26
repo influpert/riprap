@@ -51,7 +51,7 @@ replayed transcript. It is never silence, and it is never a guess: without that 
 or after a plugin update moves the rules, the full router goes out as before.
 
 What arrives at session start is a **router of roughly 150 lines** — the seven rules, a
-task-to-document map, and five rules restated in full. It is not the 20 guardrail documents
+task-to-document map, and five rules restated in full. It is not the 21 guardrail documents
 themselves. Those are read when they are needed and not before, which is why the router
 carries a line count beside each entry: two 80-line files usually beat one 215-line file
 when either would answer the question.

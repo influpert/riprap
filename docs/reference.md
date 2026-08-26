@@ -5,12 +5,12 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 20 guardrail documents, eleven skills, twelve hook
+  The complete riprap catalogue: 21 guardrail documents, eleven skills, twelve hook
   registrations, one agent, four stack seams, and everything the installer writes into a
   repository.
 ---
 
-riprap is two halves. The plugin carries **20 guardrail documents**, **eleven skills**,
+riprap is two halves. The plugin carries **21 guardrail documents**, **eleven skills**,
 **twelve hook registrations** and **one agent**, and puts no file in your repository.
 `/riprap:install` adds the half that has to live in the repo: the guardrail scripts,
 their shared pattern libraries, the git hooks, and the four stack commands the hooks call.
@@ -39,6 +39,7 @@ them and they would rot on every edit of every document.
 - [development-workflow.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/development-workflow.md) — when to stop and plan, how to scope a bug fix, what to clean up, and what "done" has to mean.
 - [handoffs.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/handoffs.md) — session handoffs always go in `tmp/handoff/`, never in `docs/` or the repo root.
 - [writing-style.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/writing-style.md) — the writing standard that governs every reply, plan, task, commit message and pull request body: voice, tense, prescriptive verbs, and the bar a task has to clear before somebody else can pick it up. Distilled from the Google developer documentation style guide.
+- [communication-preferences.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/communication-preferences.md) — how long a conversational reply should be and what it should not contain: answer first, no preamble or recap, no hedging filler, prose over bullets, and length matched to the question.
 {: .doc-links}
 
 **Writing code**
@@ -75,7 +76,7 @@ them and they would rot on every edit of every document.
 - [guardrail-template.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/guardrail-template.md) — the shape every guardrail document follows. Copy it, fill in the sections, delete the guidance.
 {: .doc-links}
 
-### All 20 guardrail documents, alphabetically
+### All 21 guardrail documents, alphabetically
 
 The other view: what to scan when you want to be sure you have seen everything.
 
@@ -84,6 +85,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `ci-hygiene.md` | Re-running CI without corrupting the result or burning the budget |
 | `code-review.md` | Reviewing a diff before the pull request, and staying with it after |
 | `code-style.md` | Naming, structure, comments — what a formatter cannot decide |
+| `communication-preferences.md` | How long a conversational reply should be, and what to cut |
 | `design.md` | Mocking up a UI change before building it, inside the existing design system |
 | `design-principles.md` | How much structure to build, and when |
 | `development-workflow.md` | When to plan, how to scope a fix, cleaning up, what "done" has to mean |

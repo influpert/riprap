@@ -109,7 +109,7 @@ Improvements flow back as ordinary pull requests.
 **From the plugin** — outside your repo, nothing to maintain:
 
 ```
-instructions/     20 guardrail documents, indexed by task. Both hosts inject the router;
+instructions/     21 guardrail documents, indexed by task. Both hosts inject the router;
                   skills also read it on demand if hooks are disabled.
 skills/           /riprap:learn  /riprap:spec  /riprap:architect
                   /riprap:implement  /riprap:advise

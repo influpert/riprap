@@ -5,7 +5,32 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.10.1
+## v0.11.0
+
+Guardrails for Claude Code and Codex, enforced rather than suggested.
+
+**Features**
+
+- **New guardrail document: `communication-preferences.md`.** Chat replies had no
+  guidance distinct from `writing-style.md`'s prose mechanics or
+  `interaction-preferences.md`'s decision workflow — leading with the answer, matching
+  reply length to the question, no preamble or recap, prose over bullets, cutting
+  hedging filler. It ships to every adopting project and is routed from `README.md`
+  alongside the other "Starting work" entries.
+
+**Docs**
+
+- **Documented the spec → architect → implement → review → release cycle.** A new
+  `docs/workflow.md` explains how the five skills chain together — what each reads and
+  writes, the three fixed human checkpoints, how to enter the chain partway through, and
+  where "deploy" fits since riprap ships no separate deploy skill.
+- **Documented desktop-app installation** for Claude Desktop and Codex, alongside the
+  existing CLI instructions.
+- **Removed the "Recommended tools" / "Optional companions" sections** from the README
+  and install docs. Those pointed at third-party plugins unrelated to what riprap
+  itself installs or enforces.
+
+## v0.10.1 — 2026-08-22
 
 Guardrails for Claude Code and Codex, enforced rather than suggested.
 

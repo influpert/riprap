@@ -147,6 +147,7 @@ beat one 215-line file when either would answer the question.
 - Writing anything a person reads — a reply, a plan, a task, a commit message, a pull request
   body? → [writing-style.md](writing-style.md) (~110). Checking a finished document against the
   full standard? → `/riprap:write`
+- How long should this reply be, and does it need bullets? → [communication-preferences.md](communication-preferences.md) (~60)
 - Planning anything a user will see? Mock it up first, in the project's design system → [design.md](design.md) (~250)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
   on the way? → [development-workflow.md](development-workflow.md) (~110)

@@ -33,7 +33,6 @@ On this page
 | Build | `/riprap:implement` | an approved plan | a pull request, stopped at three review gates on the way | merge |
 | Judge | `/riprap:review` | a branch or a pull request | inline comments, a summary, and a merge verdict against a named commit | edit or merge |
 | Ship | `/riprap:release` | a merged, green default branch | a version bump, drafted notes, a tag, and a published release | tag an unmerged commit |
-{: .doc-links}
 
 Each row's **Writes** column is the only thing the next skill is allowed to assume. `architect`
 does not re-interview the stakeholder `spec` already talked to; it reads the work item.

@@ -503,12 +503,6 @@ a:hover { color: var(--primary-strong); }
 .prose thead th { background: var(--code-bg); color: var(--text-strong); }
 .prose td code, .prose th code { white-space: nowrap; }
 
-/* kramdown cannot wrap a table, so site.js adds this. Without JS the table may overflow on
- * a narrow screen, which is the acceptable failure: `table { display: block }` would break
- * column sizing on every screen instead of only narrow ones. */
-.table-scroll { overflow-x: auto; }
-.prose .table-scroll + * { margin-top: 20px; }
-
 /* The two-tier table is the one place asymmetry is the whole point: one row is riprap's and
  * one is yours. Matching borders make it read as two equivalent options. */
 .prose .tiers tbody tr:first-child { background: var(--tag-bg); }
@@ -736,6 +730,44 @@ h2:hover > .heading-anchor, h3:hover > .heading-anchor, .heading-anchor:focus { 
   .nav-source span, .nav-source { display: none; }
   .prose { padding: 32px 0 56px; }
   .prose h2 { margin-top: 40px; }
+
+  /* A table read on a phone stops being a table: swiping sideways to follow a row is a
+   * worse reading motion than scrolling down, no matter how well-signposted the scroll is.
+   * Each row becomes a card instead, and each cell a labelled field — the label is each
+   * column's header, copied onto a data-label attribute by site.js, since kramdown has no
+   * way to attach one from plain pipe-table syntax. */
+  .prose table { display: block; }
+  .prose thead { display: none; }
+  .prose tbody { display: block; }
+  .prose tr {
+    display: block;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-alt);
+    box-shadow: var(--shadow-sm);
+  }
+  .prose tr + tr { margin-top: 12px; }
+  .prose td {
+    display: block;
+    padding: 7px 0;
+    border: none;
+    border-top: 1px solid var(--border);
+  }
+  /* The first cell is the row's identity (a stage, a hook) — it reads as the card's title,
+   * not another labelled field. */
+  .prose td:first-child { padding-top: 0; border-top: none; font-weight: 600; color: var(--text-strong); }
+  .prose td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 2px;
+    font-size: .72rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .prose td:first-child::before { content: none; }
 }
 
 @media (max-width: 520px) {

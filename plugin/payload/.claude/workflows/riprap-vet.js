@@ -219,9 +219,10 @@ ${cycle > 1 ? `
 Blocking findings from earlier cycles:
 ${[...seen.keys()].map((k) => `  - ${k}`).join('\n')}
 Judge whether each was genuinely resolved, not whether a change was made near it.
-${headBefore ? `The head at the end of the previous cycle was ${headBefore}. If it is
-unchanged, no fix was pushed: say so plainly rather than re-reporting the same findings as
-though the cycle had done work.` : ''}` : ''}
+${headBefore ? `The previous cycle's review was pinned to ${headBefore} — that is the head as it
+stood BEFORE that cycle's remediation turn, so a head still reading ${headBefore} means nothing
+was pushed. Say so plainly rather than re-reporting the same findings as though the cycle had
+done work.` : ''}` : ''}
 
 Do not fix anything in this turn: the skill reports and never edits.
 
@@ -237,7 +238,11 @@ defect — a slug that drifts cannot detect recurrence, which is the only thing 
   history.push({ cycle, verdict: review.verdict, blocking: review.blocking, keys: review.findingKeys })
   log(`cycle ${cycle}: ${review.verdict} — ${review.blocking} blocking`)
 
-  for (const k of review.findingKeys) seen.set(k, (seen.get(k) ?? 0) + 1)
+  // Deduped per cycle. The schema asks for one slug per blocking finding, but the
+  // guard must not depend on the model honouring it: a slug repeated inside one
+  // cycle would otherwise advance the counter twice, and three is the threshold
+  // that stops the loop and calls a converging review non-converging.
+  for (const k of new Set(review.findingKeys)) seen.set(k, (seen.get(k) ?? 0) + 1)
   const stuck = [...seen.entries()].filter(([, n]) => n >= 3).map(([k]) => k)
   if (stuck.length > 0) {
     log(`not converging: ${stuck.join(', ')}`)

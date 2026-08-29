@@ -61,7 +61,7 @@ codex plugin add riprap@influpert
 ```
 
 Then ask Codex to run `/riprap:install` from the repository root. Both hosts install the
-same eleven skills, worker agent, payload workflow, and native lifecycle hooks. Codex asks the
+same twelve skills, worker agent, payload workflow, and native lifecycle hooks. Codex asks the
 user to review and trust plugin hooks before enabling them; riprap does not mutate user-level
 Codex configuration.
 

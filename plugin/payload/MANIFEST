@@ -21,6 +21,7 @@
 #
 # Format: tier<TAB>path
 
+seed	.claude/workflows/riprap-review-loop.js
 seed	bin/format
 seed	bin/hooks/git/pre-commit
 seed	bin/hooks/git/pre-push

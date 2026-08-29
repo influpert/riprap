@@ -78,7 +78,7 @@ On this page
 **`/plugin marketplace add influpert/riprap`** registers this repository as a plugin
 marketplace. The repository is its own marketplace, so there is no directory to go through.
 
-**The host's plugin-install command** installs 21 guardrail documents, eleven skills, the
+**The host's plugin-install command** installs 21 guardrail documents, twelve skills, the
 worker agent, shared lifecycle hooks, and the shared installer. Codex asks the user to review
 and trust plugin hooks before enabling them. Nothing lands in a repository until
 `/riprap:install` runs.

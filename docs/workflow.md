@@ -10,7 +10,7 @@ description: >-
   "deploy" fits when your project calls it that.
 ---
 
-Five of riprap's eleven skills form a line: a stakeholder ask goes in one end, a merged and
+Five of riprap's twelve skills form a line: a stakeholder ask goes in one end, a merged and
 released change comes out the other. Each stage is a separate skill because each ends in a
 different kind of mistake if it runs unattended, and each is a separate context window
 because carrying the interview transcript into the code review is a cost nobody downstream

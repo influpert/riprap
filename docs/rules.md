@@ -36,7 +36,8 @@ stating because the alternative looks easier:
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
 `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
-`/riprap:prune`, `/riprap:release`, `/riprap:review`, `/riprap:handoff` and `/riprap:write`,
+`/riprap:prune`, `/riprap:release`, `/riprap:review`, `/riprap:review-loop`,
+`/riprap:handoff` and `/riprap:write`,
 so a repository with its own `/learn` or `/review` keeps it. There is nothing to merge and
 nothing to collide with.
 
@@ -194,7 +195,7 @@ ignores `tmp/` does not need riprap's opinion about it.
   path that resolves differently than expected is the most common cause of an agent editing
   the wrong copy of a file.
 
-## The eleven skills
+## The twelve skills
 
 These chain: `/riprap:spec` defines a feature, `/riprap:architect` turns it into an
 implementation plan, `/riprap:implement` builds that plan, and `/riprap:review` reviews what
@@ -274,6 +275,20 @@ be run against a branch or somebody else's pull request, and a document cannot b
 writing the procedure in both places would make it two definitions of one rule, drifting. The
 severity classes stay in `interaction-preferences.md`, shared with the plan stress-test, so a
 BLOCKER means one thing everywhere.
+
+**`/riprap:review-loop`** drives that review and the fixes it asks for through a bounded
+number of cycles, and stops at the merge gate. It exists because `/riprap:review` reports and
+stops by design, so somebody still has to apply the fixes, push them, and ask again — and
+done by hand that loop reliably loses one of three things: the fix is never pushed, so the
+next pass reads code it cannot see and reports the finding again; or review and remediation
+collapse into one turn, and the findings become indistinguishable from the changes made in
+response to them; or nobody notices that the same finding has now been raised three times,
+which is not a review converging but two parties disagreeing.
+
+**It ends by handing over, never by merging**, and that is the whole shape of it. A loop
+that ends in a merge is the arrangement `merge-gates.md` was written against — the same party
+writing, judging and merging — with more rounds in front of it, and more rounds do not fix a
+blind spot that is structural.
 
 **`/riprap:handoff`** writes the document that lets a piece of work survive a lost context,
 and resumes from one. Goal, plan, what is done, what is next, what done means, how to resume

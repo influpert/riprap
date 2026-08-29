@@ -28,6 +28,12 @@ is_seed() {
     # A project that already ignores tmp/ its own way keeps that. Refreshing this
     # one would overwrite whatever else they had put in it.
     tmp/.gitignore) return 0 ;;
+    # The Claude-side half of the review-loop skill. Seeded rather than
+    # namespaced for two reasons: `.claude/workflows/` is the host's directory
+    # and may already hold the adopter's own scripts, and the two numbers worth
+    # tuning — how many cycles to run, and the cap — are arguments in this file.
+    # A namespaced copy would revert that tuning on every install.
+    .claude/workflows/riprap-review-loop.js) return 0 ;;
     *) return 1 ;;
   esac
 }

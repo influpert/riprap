@@ -5,12 +5,12 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 21 guardrail documents, eleven skills, twelve hook
+  The complete riprap catalogue: 21 guardrail documents, twelve skills, twelve hook
   registrations, one agent, four stack seams, and everything the installer writes into a
   repository.
 ---
 
-riprap is two halves. The plugin carries **21 guardrail documents**, **eleven skills**,
+riprap is two halves. The plugin carries **21 guardrail documents**, **twelve skills**,
 **twelve hook registrations** and **one agent**, and puts no file in your repository.
 `/riprap:install` adds the half that has to live in the repo: the guardrail scripts,
 their shared pattern libraries, the git hooks, and the four stack commands the hooks call.
@@ -104,7 +104,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `testing.md` | Writing tests first, reading failures, the four costly mistakes |
 | `writing-style.md` | Voice, tense and word choice for everything riprap writes |
 
-## The eleven skills
+## The twelve skills
 
 Namespaced by the harness, so a repository with its own `/learn` keeps it.
 
@@ -122,6 +122,7 @@ plugin updates.
 - **`/riprap:prune`** — prunes merged and stale branches and triages quiet pull requests. Reports the whole plan first and never deletes, merges or closes without per-action confirmation.
 - **`/riprap:release`** — cuts a release: green checks, a confirmed version, notes drafted from what actually merged, the tag on the merged commit, and a final check that the release exists. A green pipeline is not a finished release.
 - **`/riprap:review`** — reviews a branch or a pull request, yours or someone else's, across at least six angles including simplicity, maintainability and dependency creep. Posts inline comments on the lines they concern plus a summary carrying every finding, its class and a recommended fix, and closes with an explicit merge verdict against a named commit. It reports and never edits or merges.
+- **`/riprap:review-loop`** — drives `/riprap:review` and the fixes it asks for through a bounded number of cycles, keeping review and remediation in separate turns so the separation the review skill depends on still holds. Pushes between cycles, because a review reads the pull request and an unpushed fix is invisible to it. Stops when the findings stop, when one survives three cycles and is therefore not converging, or at the cycle cap — then hands over. It never merges.
 - **`/riprap:write`** — reviews or rewrites a document, plan, pull request body or README against riprap's writing standard, and carries the full Google developer documentation style guide as reference: the word list, punctuation, tables, code and UI formatting. It edits prose and never changes behaviour.
 - **`/riprap:handoff`** — writes the document that carries work across a lost context, and resumes from one. Goal, plan, what is done, what is next, what done means, how to resume: one document per unit of work, rewritten in place rather than appended to. Three hooks trigger it, because the moment the context runs out is the one moment there is no turn left in which to write anything.
 {: .doc-links}

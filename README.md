@@ -114,7 +114,8 @@ instructions/     21 guardrail documents, indexed by task. Both hosts inject the
 skills/           /riprap:learn  /riprap:spec  /riprap:architect
                   /riprap:implement  /riprap:advise
                   /riprap:prune  /riprap:release  /riprap:review
-                  /riprap:handoff  /riprap:install  /riprap:write
+                  /riprap:review-loop  /riprap:handoff  /riprap:install
+                  /riprap:write
 agents/           riprap:agent — a generic role-based worker
 hooks/            shared native lifecycle hooks; repository git hooks are shared
 ```

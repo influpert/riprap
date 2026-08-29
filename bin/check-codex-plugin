@@ -7,7 +7,7 @@ cd "$(git rev-parse --show-toplevel)"
 CLAUDE_MANIFEST=plugin/.claude-plugin/plugin.json
 CODEX_MANIFEST=plugin/.codex-plugin/plugin.json
 PRE_NATIVE_TAGS=plugin/.codex-plugin/pre-native-tags
-EXPECTED_SKILLS="advise architect handoff implement install learn prune release review spec write"
+EXPECTED_SKILLS="advise architect handoff implement install learn prune release review review-loop spec write"
 
 fail=0
 problem() { echo "❌ $*" >&2; fail=1; }

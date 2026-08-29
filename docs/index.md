@@ -120,6 +120,7 @@ skills/         /riprap:learn      /riprap:spec
                 /riprap:architect  /riprap:implement
                 /riprap:advise    /riprap:prune
                 /riprap:release    /riprap:review
+                /riprap:review-loop
                 /riprap:handoff    /riprap:install
                 /riprap:write
 agents/         riprap:agent — a generic

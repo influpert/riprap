@@ -68,15 +68,22 @@
     });
   }
 
-  /* ---- Wide tables scroll in their own box ------------------------------
-   * kramdown cannot emit a wrapper, and `table { display: block }` would break column
-   * sizing on every screen to fix only narrow ones. */
+  /* ---- Table rows become labelled cards on narrow screens ---------------
+   * screen.css turns each row into a card below 760px, with each cell's column header
+   * shown as a caption above its value — kramdown has no way to attach that label from
+   * plain pipe-table syntax, so it's copied from <thead> onto a data-label attribute here.
+   * Harmless above 760px: the CSS that reads it only applies under that breakpoint. */
   var tables = document.querySelectorAll('.prose > table');
   Array.prototype.forEach.call(tables, function (table) {
-    var box = document.createElement('div');
-    box.className = 'table-scroll';
-    table.parentNode.insertBefore(box, table);
-    box.appendChild(table);
+    var headers = Array.prototype.map.call(table.querySelectorAll('thead th'), function (th) {
+      return th.textContent.trim();
+    });
+    var rows = table.querySelectorAll('tbody tr');
+    Array.prototype.forEach.call(rows, function (row) {
+      Array.prototype.forEach.call(row.children, function (cell, i) {
+        if (headers[i]) cell.setAttribute('data-label', headers[i]);
+      });
+    });
   });
 
   /* ---- Linkable headings -----------------------------------------------

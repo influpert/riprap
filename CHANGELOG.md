@@ -7,13 +7,53 @@ per-version file, never this one: `bin/release --changelog` regenerates it, and
 
 ## v0.12.0
 
-TODO: rewrite this. Every line below is a pull request title, which is what the
-author called the change — not what a reader needs to decide whether to upgrade.
+Guardrails for Claude Code and Codex, enforced rather than suggested.
 
-Merged since v0.11.0:
+**Features**
 
-- Add review-loop: bounded review cycles that stop at the merge gate (#46)
-- Bump the homepage's latest-release badge to 0.11.0 (#45)
+- **New skill: `/riprap:vet`.** It drives `/riprap:review` and the fixes that review asks
+  for through a bounded number of cycles, and stops at the merge gate with the pull request
+  ready for a human. `/riprap:review` reports once and stops by design, so somebody still
+  has to apply the fixes, push them, and ask again — and done by hand that loop reliably
+  loses one of three things. The fix is never pushed, so the next pass reads code it cannot
+  see and reports the finding again. Or review and remediation collapse into one turn, and
+  the findings become indistinguishable from the changes made in response to them. Or
+  nobody notices that the same finding has now been raised three times, which is not a
+  review converging but two parties disagreeing.
+
+  **It ends by handing over, never by merging.** A loop that ends in a merge is the
+  arrangement `merge-gates.md` was written against — the same party writing, judging and
+  merging — with more rounds in front of it, and more rounds do not fix a blind spot that
+  is structural.
+
+  **It is expensive**: on the order of twenty agents and more than an hour for a single
+  pull request, because every cycle fans the review angles out into their own contexts. A
+  deliberate choice for a change worth that, not a default.
+
+- **The first workflow riprap ships into a repository.** On Claude Code the skill is backed
+  by `.claude/workflows/riprap-vet.js`, which carries the parts a model cannot be relied on
+  to hold across a long turn: the cycle count as a loop bound rather than an intention, the
+  recurrence test as arithmetic over finding slugs rather than recall, and review and
+  remediation in genuinely separate contexts. It also dispatches the review angles itself,
+  one agent per angle, because a single context that has just cleared correctness is not an
+  independent reader of simplicity — it has already decided the change is sound. Codex has
+  no workflow runtime today and runs the skill directly.
+
+**Internal**
+
+- **`.claude/workflows/riprap-*` is now inside riprap's namespace**, in the manifest builder
+  and the installer alike — including the prune walk, so a workflow riprap stops shipping is
+  removed rather than left in place. A root that installs as owned but prunes as a seed is a
+  half-namespace, and the file it leaves behind goes on running with nobody aware of it.
+- **`bin/test` now parses every payload workflow** under the same wrapping the host's
+  runtime applies. Nothing else in the tree reads these files, so a syntax error would pass
+  lint, pass the manifest check, pass CI, and surface for the first time in somebody else's
+  repository.
+- **The tech-footprint guardrail exempts `riprap-vet.js`.** It is the only file riprap
+  installs whose extension carries a technology signal. Without the exemption, installing
+  riprap either refuses its own first commit in a repository with an established stack, or —
+  in one with no stack yet — establishes `js` permanently and waves through every `.js` added
+  afterwards.
 
 ## v0.11.0 — 2026-08-26
 

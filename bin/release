@@ -307,13 +307,39 @@ CHANGELOG_HEADING_RE='^## v[0-9]+\.[0-9]+\.[0-9]+( — 20[0-9]{2}-[0-9]{2}-[0-9]
 #
 # The line every release note opens with — stripped here, not carried into
 # CHANGELOG.md, where it would repeat once per entry.
-CHANGELOG_TAGLINE="Guardrails for Claude Code, enforced rather than suggested."
+#
+# A list, because the wording has already moved once: notes from v0.2.1 through
+# v0.9.0 open with the Claude-Code-only line, and v0.10.1 onwards names Codex too.
+# Both are still on disk and both still have to be stripped, so replacing the old
+# string with the new one would only move the leak to the older half of the file.
+# Every wording a published note has ever opened with belongs here permanently —
+# when it changes again, add a line rather than editing one.
+#
+# Still exact lines, for the same reason the strip is by line and not by position:
+# a prefix loose enough to cover both wordings would also swallow whatever a
+# future note happened to open with.
+CHANGELOG_TAGLINES=(
+  "Guardrails for Claude Code, enforced rather than suggested."           # v0.2.1 – v0.9.0
+  "Guardrails for Claude Code and Codex, enforced rather than suggested." # v0.10.1 onwards
+)
 
-# Two ways a body can go wrong that --check cannot catch on its own, because both
+# What a tagline looks like without saying which one. A detector for a wording that
+# has moved again, never the strip itself — which stays exact, above.
+#
+# The comma immediately before "enforced" is the whole discriminator, and it is what
+# keeps ordinary prose out: a sentence such as "Guardrails for Codex are now enforced
+# rather than suggested." shares both ends of this pattern and is not a tagline. What
+# sits between the ends is deliberately unconstrained, because that is the half that
+# moves — "Claude Code" became "Claude Code and Codex" once already, and the next
+# host added to the list will most likely put a comma in it.
+CHANGELOG_TAGLINE_RE='^Guardrails for .+, enforced rather than suggested\.$'
+
+# Three ways a body can go wrong that --check cannot catch on its own, because each
 # would be wrong the same way on every future run — self-consistent, and self-consistency
 # is all a diff against the last regeneration can see.
 changelog_body() {
-  local file="$1" body
+  local file="$1" body line
+  local -a strip_args
 
   # A finished note (no sentinel) with nothing matching **Install** exactly would
   # otherwise pass its whole remainder through untruncated — the install steps, the
@@ -327,8 +353,27 @@ changelog_body() {
     exit 1
   fi
 
-  body="$(grep -Fxv -e "$CHANGELOG_TAGLINE" -e "$DRAFT_SENTINEL" "$file" |
+  strip_args=()
+  for line in "${CHANGELOG_TAGLINES[@]}" "$DRAFT_SENTINEL"; do
+    strip_args+=(-e "$line")
+  done
+
+  body="$(grep -Fxv "${strip_args[@]}" "$file" |
     sed -n '/^\*\*Install\*\*$/q;p' | sed '/./,$!d' || true)"
+
+  # A tagline in a wording $CHANGELOG_TAGLINES does not list. This is exactly how
+  # the v0.10.1 rewording leaked into three entries: the strip above went on
+  # succeeding for every older note, so nothing about it looked broken, and the
+  # only signal was the tagline showing up in CHANGELOG.md for a reader to notice.
+  # Refuse instead, and print the line that needs adding.
+  if printf '%s\n' "$body" | grep -qE "$CHANGELOG_TAGLINE_RE"; then
+    echo "❌ $file carries a tagline in a wording CHANGELOG_TAGLINES does not list," >&2
+    echo "   so the strip missed it and it would repeat once per CHANGELOG.md entry:" >&2
+    printf '%s\n' "$body" | grep -E "$CHANGELOG_TAGLINE_RE" | sed 's/^/     /' >&2
+    echo "   Add that exact line to CHANGELOG_TAGLINES in bin/release — add, never" >&2
+    echo "   replace, or the older notes stop being stripped." >&2
+    exit 1
+  fi
 
   # bin/scrub-check exempts a line shaped like a generated heading on the strength
   # of that shape alone — it has no way to tell this script's own output from a

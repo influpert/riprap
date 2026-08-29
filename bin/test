@@ -67,6 +67,23 @@ bin/check-skills --self-test
 bin/check-skills
 
 echo
+echo "--- Payload workflows parse ---"
+# Nothing else in the tree ever reads these files. They are shipped verbatim to
+# every adopter and executed by the host's workflow runtime, so a syntax error
+# would pass lint, pass the manifest check, pass CI, and surface for the first
+# time in somebody else's repository.
+#
+# `node --check` alone is the WRONG validator here: the runtime wraps the script
+# body in an async function, so top-level `return` is legal there and illegal in
+# a bare ES module. Checking without the wrapper rejects every correct workflow.
+for wf in plugin/payload/.claude/workflows/*.js; do
+  { echo 'export const __w = async (agent,parallel,pipeline,phase,log,args,budget,workflow) => {'
+    sed 's/^export const meta/const meta/' "$wf"
+    echo '}'; } | node --input-type=module --check \
+    || { echo "❌ $wf does not parse under the workflow runtime's wrapping" >&2; exit 1; }
+  echo "✅ $(basename "$wf") parses"
+done
+
 echo "--- Native Codex package and shared plugin surface ---"
 bin/check-codex-plugin
 

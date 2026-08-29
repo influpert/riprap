@@ -35,7 +35,7 @@ TECH_FOOTPRINT_ALLOWED_PATHS=(
   # without this line installing riprap either refuses its own first commit
   # in any repository with an established stack, or — in one with none yet —
   # establishes js permanently and waves through every .js added afterwards.
-  '.claude/workflows/riprap-review-loop.js'
+  '.claude/workflows/riprap-vet.js'
   'bin/riprap'
   'bin/test'
   'bin/lint'

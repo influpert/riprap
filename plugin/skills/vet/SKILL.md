@@ -1,9 +1,9 @@
 ---
-name: review-loop
-description: Drive review and remediation in bounded cycles until the findings stop, then stop at the merge gate with the pull request ready for a human. Use when the user runs /riprap:review-loop or asks to keep reviewing and fixing until a change is clean — "review and fix this until it passes", "loop the review", "get PR 412 ready to merge". For a single pass with a verdict, use riprap:review; this drives that skill repeatedly and records what each round changed.
+name: vet
+description: Drive review and remediation in bounded cycles until the findings stop, then stop at the merge gate with the pull request ready for a human. Use when the user runs /riprap:vet or asks to keep reviewing and fixing until a change is clean — "review and fix this until it passes", "vet this PR", "get PR 412 ready to merge". For a single pass with a verdict, use riprap:review; this drives that skill repeatedly and records what each round changed.
 ---
 
-# Review loop
+# Vet
 
 ## Shared guardrails
 

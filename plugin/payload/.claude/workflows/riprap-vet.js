@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'riprap-review-loop',
+  name: 'riprap-vet',
   description: 'Drive riprap:review and its fixes through bounded cycles, then stop at the merge gate',
   whenToUse:
     'A pull request or branch that needs reviewing and fixing until the findings stop. Ends by handing over — it never merges.',
@@ -9,7 +9,7 @@ export const meta = {
   ],
 }
 
-// The Claude Code half of the `review-loop` skill.
+// The Claude Code half of the `vet` skill.
 //
 // The SKILL is the definition; this file is only the enforcement. Every agent
 // below invokes `riprap:review` or follows the skill rather than restating what
@@ -26,7 +26,7 @@ export const meta = {
 // gains one, this file is the thing to port.
 //
 // Usage:
-//   Workflow({ name: 'riprap-review-loop',
+//   Workflow({ name: 'riprap-vet',
 //              args: { pr: 412, repo: '/abs/path/to/worktree', branch: 'feat/thing' } })
 
 const PR = args?.pr
@@ -44,7 +44,7 @@ if (!PR || !REPO || !BRANCH) {
 
 const WHERE = `
 WORKING DIRECTORY: ${REPO}, branch ${BRANCH}, pull request #${PR}.
-Follow the \`riprap:review-loop\` skill — it is the definition of this procedure, and this
+Follow the \`riprap:vet\` skill — it is the definition of this procedure, and this
 workflow only sequences it. Read it if it is not already in context.
 `
 
@@ -85,24 +85,33 @@ const CYCLE_RESULT = {
   },
 }
 
-// The angles come from the skill's table. They are listed here — rather than left
-// to the review skill's own dispatch — because that dispatch has no sub-agent
-// tool to reach for inside a workflow and silently degrades to one reviewer
-// working every angle in sequence. Sequential angles are not independent
-// readings: the context that just cleared correctness is the one judging
-// simplicity, and it has already decided the change is sound. A workflow can
-// spawn genuinely separate contexts, so it does.
+// The angles are NAMED here and deliberately not restated: each reviewer reads
+// its own row out of the `riprap:review` skill's table, which is the one
+// definition. An earlier version copied the questions into this file and they
+// had drifted from the skill's wording before anyone read them — "what must be
+// understood" against the skill's "what has to be understood" — with nothing able
+// to notice, because bin/check-skills reads plugin/skills/ and this file is in
+// the payload. Two copies of a procedure is two procedures; the same reason this
+// file defers the severity classes to interaction-preferences.md.
 //
-// Five is the skill's floor and should-this-exist does not count toward it, so
-// six is the minimum. Override for blast radius: a migration wants contracts
+// They are listed at all — rather than left to the review skill's own dispatch —
+// because that dispatch has no sub-agent tool to reach for inside a workflow and
+// silently degrades to one reviewer working every angle in sequence. Sequential
+// angles are not independent readings: the context that just cleared correctness
+// is the one judging simplicity, and it has already decided the change is sound.
+// A workflow can spawn genuinely separate contexts, so it does.
+//
+// Row labels, verbatim from that table, because they are how each agent finds its
+// row. Five is the skill's floor and should-this-exist does not count toward it,
+// so six is the minimum. Override for blast radius: a migration wants contracts
 // and tests, a parser wants security.
 const ANGLES = args?.angles ?? [
-  ['correctness', 'What input breaks this? Empty, absent, duplicated, out of order, at the boundary?'],
-  ['simplicity', 'Is there a shorter way that does the same thing? What is carried forever here for no gain?'],
-  ['maintainability', 'Can the next person change this without reading all of it? What must be understood before one line can move?'],
-  ['dependency-creep', 'Does this add a dependency, runtime or build tool the repo does not already use, and was that asked for? Is something already here doing the job?'],
-  ['tests', 'Does a test fail if the change is reverted? If not, the change is untested whatever the suite says.'],
-  ['should-this-exist', 'Is the whole change wrong: better reverted, better not made, better replaced by three lines somewhere else? This is the only angle that can come back with "do not".'],
+  'Correctness & edge cases',
+  'Simplicity & conciseness',
+  'Maintainability',
+  'Dependency creep',
+  'Tests',
+  'Should this exist',
 ]
 
 const ANGLE_FINDINGS = {
@@ -139,17 +148,26 @@ const seen = new Map()
 const history = []
 let last = null
 let headBefore = null
+// Whether a remediation turn has run since the last review. It is what separates
+// "clean, and something was pushed to confirm" from "clean, and nothing moved" —
+// two states that look identical in a verdict and want opposite responses.
+let remediated = false
 
 for (let cycle = 1; cycle <= MAX_CYCLES; cycle++) {
   phase('Cycle')
 
   const angleReports = await parallel(
-    ANGLES.map(([angle, question]) => () =>
+    ANGLES.map((angle) => () =>
       agent(`${WHERE}
 
-You are ONE ANGLE of a review, and the only question you answer is this one:
+You are ONE ANGLE of a review. Your angle is **${angle}**.
 
-  ${question}
+Read the \`riprap:review\` skill's angle table and find the row labelled "${angle}". The
+question in that row is the only question you answer. It is deliberately NOT repeated here:
+the skill's table is the one definition, and a copy in the workflow would drift from it with
+nothing able to notice. If no row carries that label, say so and return no findings rather
+than inventing a question — a renamed row must surface as a gap, not as a reviewer quietly
+answering something else.
 
 Read the diff for #${PR}; \`gh pr diff ${PR}\` is the source of truth for what it contains.
 Report only what your angle asks about. Another agent is covering every other angle right
@@ -232,8 +250,38 @@ defect — a slug that drifts cannot detect recurrence, which is the only thing 
 
   headBefore = review.headSha ?? headBefore
 
-  if (review.blocking === 0 && cycle >= CYCLES) break
-  if (review.blocking === 0) continue
+  // Nothing blocking. Two things still have to happen here, and skipping either
+  // is a defect the skill names in its own words.
+  if (review.blocking === 0) {
+    // The disposition comment is owed even when nothing blocked. A cycle that
+    // raised only MINOR and NON-ISSUE has no fixes to make, and leaving on that
+    // basis is how those findings get raised, deferred by omission, and recorded
+    // nowhere. The skill says this happened on the first real run.
+    await agent(`${WHERE}
+
+Cycle ${cycle} found nothing at BLOCKER or MAJOR, so there is nothing to fix. The disposition
+comment is still owed: read the skill's "2. Remediate" step for what the table carries, and
+post it as one comment on #${PR}.
+
+Post ONLY that table. Do not edit any file, do not commit, and do not push — nothing blocked,
+so there is nothing to remediate, and a merge of the base branch here would move the head for
+no reason.
+
+=== REVIEW ===
+${review.summary}
+=== END REVIEW ===`,
+      { label: `disposition ${cycle}`, phase: 'Cycle' })
+
+    // A further cycle only earns its cost if something was pushed since the last
+    // review. Without this the default CYCLES = 2 guarantees that a clean first
+    // pass runs the whole fan-out again against a head nothing moved, and posts a
+    // second review restating the first. The skill's reason for two cycles is
+    // "one pass to find, one to confirm the fixes landed" — with no fixes there
+    // is nothing to confirm.
+    if (!remediated || cycle >= CYCLES) break
+    remediated = false
+    continue
+  }
 
   if (cycle === MAX_CYCLES) {
     return {
@@ -258,6 +306,7 @@ returns unchanged.
 
 Return the disposition table and the new head SHA. Say plainly if you could not push.`,
     { label: `remediate ${cycle}`, phase: 'Cycle' })
+  remediated = true
 }
 
 phase('Handover')

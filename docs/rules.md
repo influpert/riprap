@@ -36,7 +36,7 @@ stating because the alternative looks easier:
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
 `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
-`/riprap:prune`, `/riprap:release`, `/riprap:review`, `/riprap:review-loop`,
+`/riprap:prune`, `/riprap:release`, `/riprap:review`, `/riprap:vet`,
 `/riprap:handoff` and `/riprap:write`,
 so a repository with its own `/learn` or `/review` keeps it. There is nothing to merge and
 nothing to collide with.
@@ -276,7 +276,7 @@ writing the procedure in both places would make it two definitions of one rule, 
 severity classes stay in `interaction-preferences.md`, shared with the plan stress-test, so a
 BLOCKER means one thing everywhere.
 
-**`/riprap:review-loop`** drives that review and the fixes it asks for through a bounded
+**`/riprap:vet`** drives that review and the fixes it asks for through a bounded
 number of cycles, and stops at the merge gate. It exists because `/riprap:review` reports and
 stops by design, so somebody still has to apply the fixes, push them, and ask again — and
 done by hand that loop reliably loses one of three things: the fix is never pushed, so the

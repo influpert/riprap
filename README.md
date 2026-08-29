@@ -112,10 +112,9 @@ Improvements flow back as ordinary pull requests.
 instructions/     21 guardrail documents, indexed by task. Both hosts inject the router;
                   skills also read it on demand if hooks are disabled.
 skills/           /riprap:learn  /riprap:spec  /riprap:architect
-                  /riprap:implement  /riprap:advise
-                  /riprap:prune  /riprap:release  /riprap:review
-                  /riprap:review-loop  /riprap:handoff  /riprap:install
-                  /riprap:write
+                  /riprap:implement  /riprap:advise  /riprap:prune
+                  /riprap:release  /riprap:review  /riprap:vet
+                  /riprap:handoff  /riprap:install  /riprap:write
 agents/           riprap:agent — a generic role-based worker
 hooks/            shared native lifecycle hooks; repository git hooks are shared
 ```

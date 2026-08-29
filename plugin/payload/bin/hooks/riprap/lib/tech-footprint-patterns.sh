@@ -29,6 +29,13 @@
 # — you cannot require someone to disable a guardrail in order to set it up.
 # shellcheck disable=SC2034  # read by name via hook_path_allowed (bash 3.2 has no namerefs)
 TECH_FOOTPRINT_ALLOWED_PATHS=(
+  # Shipped by riprap into the host's own workflow directory. Exempt for the
+  # reason stated above and for a second one specific to it: it is the only
+  # file riprap installs whose extension carries a technology signal, so
+  # without this line installing riprap either refuses its own first commit
+  # in any repository with an established stack, or — in one with none yet —
+  # establishes js permanently and waves through every .js added afterwards.
+  '.claude/workflows/riprap-vet.js'
   'bin/riprap'
   'bin/test'
   'bin/lint'

@@ -13,9 +13,9 @@ hero_commands:
   - /riprap:install
 hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
-latest_release_version: "0.11.0"
+latest_release_version: "0.12.0"
 description: >-
-  Guardrails, conventions, and enforcement for Claude Code and Codex. Eleven shared skills,
+  Guardrails, conventions, and enforcement for Claude Code and Codex. Twelve shared skills,
   repository git enforcement, and shared native lifecycle hooks.
 ---
 
@@ -37,7 +37,7 @@ good practice. Every rule is here because something broke first, and the inciden
 caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
-<em>from</em>. They are not what it ships. What it ships is 21 guardrail documents, eleven
+<em>from</em>. They are not what it ships. What it ships is 21 guardrail documents, twelve
 skills, twelve hooks and one agent — the inventory is on the
 <a href="reference.md">reference page</a>.</p>
 
@@ -69,7 +69,7 @@ riprap is one plugin for Claude Code and Codex. There is nothing to clone.
 ```
 
 These are the Claude Code commands; Codex installation is listed on the
-[installation page](install.md). Both hosts receive the same eleven skills, worker agent, and
+[installation page](install.md). Both hosts receive the same twelve skills, worker agent, and
 payload workflow, and native lifecycle hooks.
 
 Run `/riprap:install` again any time. It is also the update path.
@@ -118,10 +118,10 @@ instructions/   21 guardrail documents, indexed by task.
                 the rest are read on demand.
 skills/         /riprap:learn      /riprap:spec
                 /riprap:architect  /riprap:implement
-                /riprap:advise    /riprap:prune
+                /riprap:advise     /riprap:prune
                 /riprap:release    /riprap:review
-                /riprap:handoff    /riprap:install
-                /riprap:write
+                /riprap:vet        /riprap:handoff
+                /riprap:install    /riprap:write
 agents/         riprap:agent — a generic
                 role-based worker
 hooks/          shared native lifecycle hooks;

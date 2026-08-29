@@ -27,6 +27,7 @@ need() {  # $1 = command, $2 = what it is for
 echo "Tools riprap's own checks need:"
 need shellcheck "bin/lint — every script in the tree"
 need jq         "manifest and plugin metadata checks"
+need node       "bin/test — the payload workflows are the one thing here that is not shell"
 need git        "everything"
 
 echo

@@ -42,6 +42,12 @@ is_seed() {
 in_namespace() {
   case "$1" in
     bin/hooks/riprap/*|bin/riprap) return 0 ;;
+    # riprap's own workflows, inside the host's directory. The riprap- filename
+    # prefix IS the namespace here: it cannot collide with an adopter's own
+    # script, and the alternative — seeding — means riprap can never ship a fix
+    # for this file to anyone who has already installed. The two numbers worth
+    # tuning are read from `args` at invocation, so a refresh reverts no tuning.
+    .claude/workflows/riprap-*) return 0 ;;
     *) return 1 ;;
   esac
 }

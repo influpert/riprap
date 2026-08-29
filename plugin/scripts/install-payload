@@ -61,7 +61,7 @@ VERSION="${VERSION:-unknown}"
 manifest_entries() { grep -vE '^[[:space:]]*(#|$)' "$MANIFEST"; }
 
 in_namespace() {
-  case "$1" in bin/hooks/riprap/*|bin/riprap) return 0 ;; *) return 1 ;; esac
+  case "$1" in bin/hooks/riprap/*|bin/riprap|.claude/workflows/riprap-*) return 0 ;; *) return 1 ;; esac
 }
 
 # NUL bytes, tested directly. `grep -Iq .` calls a whitespace-only file binary,
@@ -113,17 +113,25 @@ $problems"
 # Namespaced files that exist here but are no longer shipped. Left in place they
 # keep running: a retired guardrail that still fires is worse than one that is
 # gone, because nobody knows it is still there.
+#
+# Every root the namespace covers has to be walked. A root listed in in_namespace
+# but missing here is one whose retired files are never pruned — a half-namespace,
+# which looks owned on install and behaves like a seed on removal.
+_installed_namespaced() {  # run with cwd = $TARGET; emits repo-relative paths
+  [ -d bin/hooks/riprap ] && find bin/hooks/riprap -type f
+  [ -d .claude/workflows ] && find .claude/workflows -type f -name 'riprap-*'
+  return 0
+}
+
 plan_prune=""
-if [ -d "$TARGET/bin/hooks/riprap" ]; then
-  shipped="$(manifest_entries | cut -f2)"
-  while IFS= read -r existing; do
-    [ -n "$existing" ] || continue
-    # VERSION is written by this script, not shipped by the manifest, so it is
-    # never a prune candidate.
-    [ "$existing" = "bin/hooks/riprap/VERSION" ] && continue
-    printf '%s\n' "$shipped" | grep -qxF "$existing" || plan_prune="$plan_prune$existing"$'\n'
-  done < <(cd "$TARGET" && find bin/hooks/riprap -type f | LC_ALL=C sort)
-fi
+shipped="$(manifest_entries | cut -f2)"
+while IFS= read -r existing; do
+  [ -n "$existing" ] || continue
+  # VERSION is written by this script, not shipped by the manifest, so it is
+  # never a prune candidate.
+  [ "$existing" = "bin/hooks/riprap/VERSION" ] && continue
+  printf '%s\n' "$shipped" | grep -qxF "$existing" || plan_prune="$plan_prune$existing"$'\n'
+done < <(cd "$TARGET" && _installed_namespaced | LC_ALL=C sort)
 
 count() { [ -z "$1" ] && echo 0 || printf '%s' "$1" | grep -c . ; }
 

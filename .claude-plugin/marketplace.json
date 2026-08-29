@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "riprap",
-      "description": "Baseline engineering guardrails for Claude Code and Codex: eleven shared skills, a worker agent, repository git enforcement, and native Claude lifecycle hooks. Run /riprap:install to add the repo-side half.",
+      "description": "Baseline engineering guardrails for Claude Code and Codex: twelve shared skills, a worker agent, repository git enforcement, and native Claude lifecycle hooks. Run /riprap:install to add the repo-side half.",
       "source": "./plugin",
       "homepage": "https://riprap.dev"
     }

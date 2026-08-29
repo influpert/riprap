@@ -61,7 +61,7 @@ codex plugin add riprap@influpert
 ```
 
 Then ask Codex to run `/riprap:install` from the repository root. Both hosts install the
-same eleven skills, worker agent, payload workflow, and native lifecycle hooks. Codex asks the
+same twelve skills, worker agent, payload workflow, and native lifecycle hooks. Codex asks the
 user to review and trust plugin hooks before enabling them; riprap does not mutate user-level
 Codex configuration.
 
@@ -112,8 +112,8 @@ Improvements flow back as ordinary pull requests.
 instructions/     21 guardrail documents, indexed by task. Both hosts inject the router;
                   skills also read it on demand if hooks are disabled.
 skills/           /riprap:learn  /riprap:spec  /riprap:architect
-                  /riprap:implement  /riprap:advise
-                  /riprap:prune  /riprap:release  /riprap:review
+                  /riprap:implement  /riprap:advise  /riprap:prune
+                  /riprap:release  /riprap:review  /riprap:vet
                   /riprap:handoff  /riprap:install  /riprap:write
 agents/           riprap:agent — a generic role-based worker
 hooks/            shared native lifecycle hooks; repository git hooks are shared

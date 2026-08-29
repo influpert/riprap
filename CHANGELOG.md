@@ -5,9 +5,7 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.12.0
-
-Guardrails for Claude Code and Codex, enforced rather than suggested.
+## v0.12.0 — 2026-08-29
 
 **Features**
 
@@ -57,8 +55,6 @@ Guardrails for Claude Code and Codex, enforced rather than suggested.
 
 ## v0.11.0 — 2026-08-26
 
-Guardrails for Claude Code and Codex, enforced rather than suggested.
-
 **Features**
 
 - **New guardrail document: `communication-preferences.md`.** Chat replies had no
@@ -81,8 +77,6 @@ Guardrails for Claude Code and Codex, enforced rather than suggested.
   itself installs or enforces.
 
 ## v0.10.1 — 2026-08-22
-
-Guardrails for Claude Code and Codex, enforced rather than suggested.
 
 This release fixes riprap's own tooling and closes a gap in the handoff guardrail —
 no new skills, no new hooks a fresh install would notice, other than the one described

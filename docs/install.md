@@ -130,7 +130,7 @@ that already has its own instructions, skills, and hooks cannot clobber any of t
 
 | Capability | Claude Code | Codex |
 |---|---|---|
-| Eleven `/riprap:*` skills | Native | Native |
+| Twelve `/riprap:*` skills | Native | Native |
 | `riprap:agent` worker | Native | Native |
 | `/riprap:install` and shared payload | Native | Native |
 | Repository pre-commit and pre-push enforcement | After install | After install |

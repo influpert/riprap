@@ -15,7 +15,7 @@ hero_commands_note: >-
   Three commands, nothing to clone. The first two touch no file in your repository.
 latest_release_version: "0.12.0"
 description: >-
-  Guardrails, conventions, and enforcement for Claude Code and Codex. Eleven shared skills,
+  Guardrails, conventions, and enforcement for Claude Code and Codex. Twelve shared skills,
   repository git enforcement, and shared native lifecycle hooks.
 ---
 

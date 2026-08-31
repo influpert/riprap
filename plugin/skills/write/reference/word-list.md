@@ -1622,9 +1622,12 @@ Use the word user only to refer to the user of the software that your reader is 
 - user base
 Not userbase.
 - using
-Where using might have more than one interpretation, use by using to help clarify the logic of the sentence.
-Recommended: You can filter for data with specific attributes by using custom filters.
-Not recommended: You can filter for data with specific attributes using custom filters.
+Where using might have more than one interpretation, use by using or that use instead to help clarify the logic of the sentence.
+Recommended: Remove the Compute Engine VMs by using the test tag.
+Recommended: Identify the service accounts that use the Google Cloud console.
+Not recommended: Filter the IAM roles using custom permissions.
+It's OK to use using (or with) when misinterpretation is unlikely.
+Recommended: You can connect to Cloud SQL using IAM database authentication.
 - UTF
 Include the hyphen in the names of Unicode encodings, such as UTF-8, UTF-16, and UTF-32.
 - utilize, utilization

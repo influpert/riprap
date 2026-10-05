@@ -307,6 +307,10 @@ For information about clarifying who's performing an action, see Active voice.
 - canary
 Don't use canary as a verb, and don't use canarying.
 When possible, avoid jargon like canary and canary testing. If you use one of these phrases, define it on first use or provide a link to the definition, and use it consistently throughout the document.
+- careful, carefully
+Avoid telling a user to perform an action carefully, which can sound condescending or imply that other steps don't require much attention. For more information, see Use precise, objective language.
+Recommended: Enter the API key that appears in the console.
+Not recommended: Make sure to enter the API key carefully.
 - cell phone, cellphone
 Don't use. Instead, use mobile phone, or if you're talking about more than phones, then use mobile device.
 It's OK to use phone (without mobile) when the context is clear.
@@ -561,7 +565,7 @@ Not recommended: Use version 2.2 or lower.
 In Android documentation, don't use earlier for a range of version numbers. Instead, use lower.
 When referring to a position in a document, use earlier or preceding, not higher.
 - easy, easily
-What might be easy for you might not be easy for others. Try eliminating this word from the sentence because usually the same meaning can be conveyed without it.
+What might be easy for you might not be easy for others. Try eliminating this word from the sentence because usually the same meaning can be conveyed without it. For more information, see Use precise, objective language.
 - ecommerce
 Not e-commerce.
 - edge availability domain
@@ -1303,11 +1307,15 @@ Not pre-submit.
 Use with caution. Don't use primitive in a disparaging sense.
 - project
 In Google Cloud documentation, use Google Cloud project on first mention and in any context in which there might be ambiguity about what kind of project you're referring to.
+- proper, properly
+Avoid proper and properly, which are vague and can imply subjective judgments of correctness or superiority. Instead, focus on describing the technical details. For more information, see Use precise, objective language.
+Recommended: Verify that the port is open and accepting connections.
+Not recommended: Ensure the port is properly configured.
 - pros
 Don't use. Instead, use a more precise term, such as advantages.
 #### Q
 - quick, quickly
-What might be quick for you might not be quick for others. Try eliminating this word from the sentence because usually the same meaning can be conveyed without it.
+What might be quick for you might not be quick for others. Try eliminating this word from the sentence. For more information, see Use precise, objective language.
 - quota
 In API contexts, often refers to API usage limits. Where possible, it's best to use a more specific term, such as usage limit; the word quota means many different things to many different people.
 In some contexts, such as Google Cloud documentation, the standard term is quota, so use that term.
@@ -1435,7 +1443,7 @@ Don't use either form on its own. Use the hyphenated version as part of single s
 - sign-out (noun or adjective), sign out (verb)
 Not log out or signout.
 - simple, simply
-What might be simple for you might not be simple for others. Try eliminating this word from the sentence because usually the same meaning can be conveyed without it.
+What might be simple for you might not be simple for others. Try eliminating this word from the sentence because usually the same meaning can be conveyed without it. For more information, see Use precise, objective language.
 - since
 If you mean because, then use because instead of since. Since is ambiguous; it can refer to the passage of time. Because refers to causation or the reason for something.
 - single most
@@ -1622,9 +1630,12 @@ Use the word user only to refer to the user of the software that your reader is 
 - user base
 Not userbase.
 - using
-Where using might have more than one interpretation, use by using to help clarify the logic of the sentence.
-Recommended: You can filter for data with specific attributes by using custom filters.
-Not recommended: You can filter for data with specific attributes using custom filters.
+Where using might have more than one interpretation, use by using or that use instead to help clarify the logic of the sentence.
+Recommended: Remove the Compute Engine VMs by using the test tag.
+Recommended: Identify the service accounts that use the Google Cloud console.
+Not recommended: Filter the IAM roles using custom permissions.
+It's OK to use using (or with) when misinterpretation is unlikely.
+Recommended: You can connect to Cloud SQL using IAM database authentication.
 - UTF
 Include the hyphen in the names of Unicode encodings, such as UTF-8, UTF-16, and UTF-32.
 - utilize, utilization

@@ -5,12 +5,12 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 21 guardrail documents, twelve skills, twelve hook
+  The complete riprap catalogue: 21 guardrail documents, thirteen skills, twelve hook
   registrations, one agent, four stack seams, and everything the installer writes into a
   repository.
 ---
 
-riprap is two halves. The plugin carries **21 guardrail documents**, **twelve skills**,
+riprap is two halves. The plugin carries **21 guardrail documents**, **thirteen skills**,
 **twelve hook registrations** and **one agent**, and puts no file in your repository.
 `/riprap:install` adds the half that has to live in the repo: the guardrail scripts,
 their shared pattern libraries, the git hooks, and the four stack commands the hooks call.
@@ -104,7 +104,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `testing.md` | Writing tests first, reading failures, the four costly mistakes |
 | `writing-style.md` | Voice, tense and word choice for everything riprap writes |
 
-## The twelve skills
+## The thirteen skills
 
 Namespaced by the harness, so a repository with its own `/learn` keeps it.
 
@@ -115,6 +115,7 @@ plugin updates.
 
 - **`/riprap:install`** — installs or refreshes the repository payload, wires git hooks without taking over another hook manager, proposes stack-seam configuration, reports overlaps, and verifies the result.
 - **`/riprap:learn`** — reviews the session and writes what was learned into *your* project's instructions, never riprap's, which are replaced on update. Also proposes narrow `permissions.allow` entries for any tool-and-argument pattern approved twice or more in the session — always the narrowest rule that covers actual usage, always confirmed with you before it touches `settings.json`.
+- **`/riprap:brainstorm`** — turns a rough idea into an approved design before any plan exists: research first, a short phased interview one structured question at a time, two or three approaches with a verdict, and the design presented only in plan mode after a stress-test. Writes no source; hands the design to `/riprap:architect`. Replaces `superpowers:brainstorming`.
 - **`/riprap:spec`** — interactive feature definition: stakeholder interviews, mockups, phased work items, acceptance tests. Planning only; it writes no implementation.
 - **`/riprap:architect`** — turns a settled requirement into an implementation plan its reader can execute without re-exploring: what already exists with line references, what has to change, the files, the ordered steps and how each is verified. Planning only; it writes no source.
 - **`/riprap:implement`** — builds an approved plan: tests first, then three review passes — over the tests, the implementation and the pull request — each presented to you before anything is incorporated. Drives the checks green and hands the merge back to a person.

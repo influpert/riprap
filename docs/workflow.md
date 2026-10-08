@@ -10,7 +10,7 @@ description: >-
   "deploy" fits when your project calls it that.
 ---
 
-Five of riprap's twelve skills form a line: a stakeholder ask goes in one end, a merged and
+Five of riprap's thirteen skills form a line: a stakeholder ask goes in one end, a merged and
 released change comes out the other. Each stage is a separate skill because each ends in a
 different kind of mistake if it runs unattended, and each is a separate context window
 because carrying the interview transcript into the code review is a cost nobody downstream
@@ -72,6 +72,10 @@ The chain has three checkpoints that do not move, however far you are running un
 The chain has one required link and three optional ones. `/riprap:implement` needs a plan;
 everything before it exists to produce a good one, not to gate access to it.
 
+- **Start with `/riprap:brainstorm`** when there is an idea but no shape yet — you know what
+  bothers you, not what to build. It interviews you, weighs two or three approaches, and hands
+  an approved design to `/riprap:architect`. It is not a sixth stage: a settled requirement
+  goes straight to `architect`, and a feature with stakeholders goes to `spec`.
 - **Skip `/riprap:spec`** when the requirement is already settled — a bug report, a one-line
   ask, a requirement from outside this cycle entirely. Type the sentence straight into
   `/riprap:architect`; which of those two it is decides only where the requirements came from,

@@ -47,7 +47,7 @@ purpose, and `bin/` is in none of the scrub path lists.
 
 ### The skills, and what they are for here
 
-Cutting a release, pruning branches, recording a lesson, defining a feature, planning a change,
+Cutting a release, pruning branches, recording a lesson, shaping an idea, defining a feature, planning a change,
 building one and planning something hard all have a skill already. **Use it rather than writing the procedure out
 again.** A procedure spelled out in this file beside a skill that covers the same ground is
 not a convenience — it is a second definition of the same rule, and it wins by default
@@ -60,6 +60,7 @@ nothing to catch it, which is the failure the four-places rule below exists to p
 | `/riprap:release` | Cutting a release. See **Cutting a release** below for what is specific to riprap. |
 | `/riprap:prune` | Pruning merged and stale branches, and triaging quiet pull requests. |
 | `/riprap:learn` | Recording what a session taught. **Read the note in the answers file first** — this skill's central rule inverts here. |
+| `/riprap:brainstorm` | Shaping an idea into a design before anything is planned. It replaces `superpowers:brainstorming`, so do not run that here. Its design lands in `tmp/`, never under `docs/` — see its answers file. |
 | `/riprap:spec` | Defining a feature. It writes into `tmp/`; nothing it generates may land under `plugin/`, and `docs/` is the public site, not a scratch area. |
 | `/riprap:architect` | Turning a requirement into an implementation plan. Plans only — it writes no source, and its output is what `/riprap:implement` reads. |
 | `/riprap:implement` | Building an approved plan, through three review gates to a pull request. **Its answers file records why a worktree is wrong here** — the plugin loads from this working tree, so a second checkout tests the wrong copy. |

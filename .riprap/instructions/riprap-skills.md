@@ -5,7 +5,7 @@ can be wrong about its own project in ways no other repository would notice — 
 answers are written down here rather than worked out again each run, and the corrections
 below are stated where the skills actually read.
 
-Five of the skills ask a fixed set of questions and record the answers in a file exactly
+Six of the skills ask a fixed set of questions and record the answers in a file exactly
 like this one. The rest read `.riprap/instructions/` as ordinary project context, which is
 why the corrections live here too and not only in `CLAUDE.md`: a rule constraining a skill
 should not sit in the file that skill is licensed to rewrite and told to keep short.
@@ -171,6 +171,16 @@ loop having failed.
 **A change under `plugin/` is a change to what every future adopter receives**, so gate 2 and
 gate 3 weigh a finding there against the whole population rather than against this repository.
 There is no staging: the plugin loads live from this working tree.
+
+## riprap:brainstorm
+
+- Where designs land: `tmp/riprap/design-<slug>.md`
+
+The same constraint `/riprap:spec` and `/riprap:architect` have applies here: **nothing
+generated may land under `plugin/`**, and `docs/` is not a scratch area — it is the public
+site, and every markdown file in it is swept for claims about how many skills ship. That is
+also the reason this skill never follows superpowers' habit of committing designs under
+`docs/plans/`: here that directory would be published.
 
 ## riprap:advise
 

@@ -5,6 +5,50 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
+## v0.13.0
+
+**Features**
+
+- **New skill: `/riprap:brainstorm`.** It turns a rough idea into an approved design before
+  anything is planned. That step had no owner: `/riprap:architect` refuses a request with no
+  observable end state, and `/riprap:spec` is a full stakeholder feature definition. So "I
+  want the sync to be smarter" had nowhere to go except a general-purpose brainstorming skill
+  that shows its design in chat. There, no part of the design can be rejected and have the
+  rejection stick.
+
+  It researches the codebase first, then interviews in short themed phases — purpose,
+  boundaries, shape — one question at a time. Every question goes through the host's
+  clickable choice UI, with a recommended answer. It challenges the idea before proposing
+  two or three approaches with a verdict.
+
+  **The design is shown only in plan mode.** It is presented once, as a whole, after the plan
+  stress-test, and never in chat or a section at a time. The skill enters plan mode before it
+  reads anything, so the harness keeps it from writing source. The approved design is
+  written to an ignored scratch path, `tmp/riprap/design-<slug>.md` by default, and handed to
+  `/riprap:architect`.
+
+  **It replaces `superpowers:brainstorming`.** Where both are installed, run this one. It
+  keeps what that skill gets right — research first, one question at a time, several
+  approaches and a recommendation — and changes four things. The design is reviewed in plan
+  mode rather than in chat. Choices are clicked rather than typed back as numbers. Nothing is
+  committed under `docs/plans/`. The hand-off goes to `/riprap:architect` rather than to a
+  worktree. A skill cannot switch another plugin off, so uninstalling superpowers is the only
+  certain way to stop the two competing for the same trigger.
+
+**Fixes**
+
+- **CHANGELOG.md no longer repeats the release-note tagline.** The tagline's wording changed
+  at v0.10.1. The strip still matched only the old wording, so the new tagline leaked into
+  the v0.10.1, v0.11.0 and v0.12.0 entries. Both wordings are now stripped, and
+  `bin/release` refuses to write a changelog where a tagline-shaped line survives the strip.
+  The leak went unnoticed for three releases because nothing about it looked broken.
+- **The docs site now reads properly on a phone.** Wide tables — the feature-cycle chain,
+  the hook tables — used to wrap each cell over several lines. On narrow screens each row
+  now renders as its own card, with the column headers as labels.
+- **The site now gives the right skill count everywhere.** Three claims, including the meta
+  description that search results show, still said eleven skills after the twelfth shipped.
+  The homepage's latest-release badge also moved to 0.12.0.
+
 ## v0.12.0 — 2026-08-29
 
 **Features**

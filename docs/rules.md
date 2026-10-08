@@ -35,7 +35,7 @@ stating because the alternative looks easier:
   actually uninstall.
 
 The same reasoning covers the skills. They are namespaced by the harness as `/riprap:install`, `/riprap:learn`,
-`/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
+`/riprap:brainstorm`, `/riprap:spec`, `/riprap:architect`, `/riprap:implement`, `/riprap:advise`,
 `/riprap:prune`, `/riprap:release`, `/riprap:review`, `/riprap:vet`,
 `/riprap:handoff` and `/riprap:write`,
 so a repository with its own `/learn` or `/review` keeps it. There is nothing to merge and
@@ -195,7 +195,7 @@ ignores `tmp/` does not need riprap's opinion about it.
   path that resolves differently than expected is the most common cause of an agent editing
   the wrong copy of a file.
 
-## The twelve skills
+## The thirteen skills
 
 These chain: `/riprap:spec` defines a feature, `/riprap:architect` turns it into an
 implementation plan, `/riprap:implement` builds that plan, and `/riprap:review` reviews what
@@ -212,6 +212,14 @@ into riprap's own documents, which are replaced on update. This is the mechanism
 It also proposes narrow `permissions.allow` entries for any tool-and-argument pattern approved
 twice or more in the session — the narrowest rule that covers actual usage, never a broad one
 granted once to save a prompt, and never applied without asking first.
+
+**`/riprap:brainstorm`** turns an idea that is not yet a design into one, before any plan
+exists. It researches first, interviews in short thematic phases — one question at a time,
+each through the host's structured choice UI with a recommended answer — then proposes two or
+three approaches with a verdict. The design is shown only in plan mode, stress-tested first,
+and never in chat: a design approved a section at a time in a scrolling conversation has no
+part the user can reject and have it bind. It writes no source, and hands an approved design
+file to `/riprap:architect`. It replaces `superpowers:brainstorming` where both are installed.
 
 **`/riprap:spec`** is interactive feature definition in five phases: stakeholder interviews,
 UI mockups, phased work items, and acceptance tests. It is planning only — it writes no

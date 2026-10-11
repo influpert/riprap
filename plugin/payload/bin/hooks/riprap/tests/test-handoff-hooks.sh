@@ -838,6 +838,106 @@ O=$( (cd "$P" && printf '%s' '{"tool_name":"ScheduleWakeup","tool_input":{"delay
 rm -rf "$P"
 
 echo
+echo "--- a session working in a worktree: the hooks follow .cwd, not where it started ---"
+
+# git.md makes a worktree the default, so a session routinely starts in the main checkout
+# (which is what CLAUDE_PROJECT_DIR keeps naming) and does its work in a second one. Every
+# hook used to read the branch and tmp/handoff/ from the start directory, so the unattended
+# gate refused a backgrounded Agent for ever: it compared trunk against a handoff it was
+# looking for in the wrong checkout, and writing the handoff it asked for changed nothing.
+
+# Run a hook as Claude Code does mid-session: CLAUDE_PROJECT_DIR is where the session
+# started, while the process and the payload's .cwd are where it is working now.
+run_hook_in() {  # $1 = hook name, $2 = CLAUDE_PROJECT_DIR, $3 = cwd, $4 = stdin JSON
+  local ef
+  ef=$(mktemp)
+  OUT=$( ( cd "$3" && printf '%s' "$4" | CLAUDE_PROJECT_DIR="$2" "$CLAUDE_DIR/$1" 2>"$ef" ) )
+  RC=$?
+  ERR=$(cat "$ef")
+  rm -f "$ef"
+}
+
+# A second worktree of $1 on a new branch, beside it in a fresh directory.
+new_worktree() {  # $1 = project, $2 = branch
+  local dir
+  dir="$(mktemp -d)/wt"
+  git -C "$1" worktree add -q -b "$2" "$dir" >/dev/null 2>&1
+  printf '%s' "$dir"
+}
+
+# The payload a hook receives, carrying the .cwd it now reads.
+with_cwd() {  # $1 = cwd, $2 = the rest of the payload as JSON
+  jq -cn --arg c "$1" --argjson rest "$2" '$rest + {cwd: $c}'
+}
+
+BG='{"tool_name":"Agent","tool_input":{"run_in_background":true}}'
+
+P=$(new_project); W=$(new_worktree "$P" feature)
+write_handoff "$W" "$WORK" feature >/dev/null
+run_hook_in "$UNATTENDED_HOOK" "$P" "$W" "$(with_cwd "$W" "$BG")"
+assert_silent "a handoff written in the worktree satisfies the gate for the worktree's branch"
+rm -rf "$W/tmp"
+run_hook_in "$UNATTENDED_HOOK" "$P" "$W" "$(with_cwd "$W" "$BG")"
+assert_blocked "with no handoff in the worktree, a backgrounded Agent is still refused"
+assert_err_says "the refusal names the worktree's branch, not the one the session started on" "branch feature"
+assert_err_says "the refusal names the worktree's handoff directory" "wt/tmp/handoff"
+assert_err_says "the refusal spells out the marker the handoff must carry" "<!-- riprap:handoff branch=feature -->"
+# Trunk's handoff in the main checkout belongs to other work, exactly as a handoff
+# claiming another branch does in a single checkout.
+write_handoff "$P" "$OTHER" "$(branch_of "$P")" >/dev/null
+run_hook_in "$UNATTENDED_HOOK" "$P" "$W" "$(with_cwd "$W" "$BG")"
+assert_blocked "the main checkout's handoff for trunk does not satisfy a session working in the worktree"
+rm -rf "$P" "$(dirname "$W")"
+
+# Without .cwd, nothing moves: the hook answers for CLAUDE_PROJECT_DIR as it always did.
+P=$(new_project); W=$(new_worktree "$P" feature)
+write_handoff "$P" "$WORK" "$(branch_of "$P")" >/dev/null
+run_hook_in "$UNATTENDED_HOOK" "$P" "$W" "$BG"
+assert_silent "a payload with no .cwd still resolves to CLAUDE_PROJECT_DIR"
+rm -rf "$P" "$(dirname "$W")"
+
+# A .cwd in some other repository altogether is not this project's work, and is ignored.
+P=$(new_project); Q=$(new_project)
+write_handoff "$P" "$WORK" "$(branch_of "$P")" >/dev/null
+run_hook_in "$UNATTENDED_HOOK" "$P" "$Q" "$(with_cwd "$Q" "$BG")"
+assert_silent "a .cwd in an unrelated repository does not move the project"
+rm -rf "$P" "$Q"
+
+# A project rooted in a subdirectory of its repository keeps that subdirectory in the worktree.
+P=$(new_project); mkdir -p "$P/app"; printf 'x\n' >"$P/app/f"
+git -C "$P" add -A >/dev/null 2>&1; git -C "$P" commit -qm app >/dev/null 2>&1
+W=$(new_worktree "$P" feature)
+write_handoff "$W/app" "$WORK" feature >/dev/null
+run_hook_in "$UNATTENDED_HOOK" "$P/app" "$W/app" "$(with_cwd "$W/app" "$BG")"
+assert_silent "a project in a subdirectory resolves to the same subdirectory of the worktree"
+rm -rf "$P" "$(dirname "$W")"
+
+# The four hooks that only ask or write follow the same resolution.
+P=$(new_project); W=$(new_worktree "$P" feature)
+H=$(write_handoff "$W" "$WORK" feature); touch -t "$OLD" "$H"
+printf 'changed\n' >>"$W/tracked.txt"; touch -t "$NEW" "$W/tracked.txt"
+run_hook_in handoff-stop.sh "$P" "$W" "$(with_cwd "$W" '{}')"
+assert_context_says "handoff-stop.sh finds the worktree's stale handoff" "tmp/handoff/$WORK"
+run_hook_in handoff-plan-approved.sh "$P" "$W" \
+  "$(with_cwd "$W" '{"tool_name":"ExitPlanMode","tool_response":"User has approved your plan."}')"
+assert_context_says "handoff-plan-approved.sh asks for the worktree's handoff to be rewritten" "Rewrite tmp/handoff/$WORK"
+run_hook_in handoff-precompact.sh "$P" "$W" "$(with_cwd "$W" '{}')"
+case "$(cat "$H")" in *"Context was compacted"*) ok "handoff-precompact.sh stamps the worktree's handoff" ;;
+  *) bad "handoff-precompact.sh did not stamp the worktree's handoff" ;; esac
+[ -d "$P/tmp/handoff" ] && bad "handoff-precompact.sh wrote into the main checkout" \
+  || ok "handoff-precompact.sh leaves the main checkout alone"
+rm -rf "$P" "$(dirname "$W")"
+
+P=$(new_project); W=$(new_worktree "$P" feature)
+run_hook_in session-end.sh "$P" "$W" "$(with_cwd "$W" '{}')"
+case "$(cat "$W"/tmp/handoff/*.md 2>/dev/null)" in
+  *"riprap:handoff branch=feature -->"*) ok "session-end.sh writes its capture into the worktree, for its branch" ;;
+  *) bad "session-end.sh wrote no capture for the worktree's branch" ;; esac
+[ -d "$P/tmp/handoff" ] && bad "session-end.sh wrote into the main checkout" \
+  || ok "session-end.sh leaves the main checkout alone"
+rm -rf "$P" "$(dirname "$W")"
+
+echo
 echo "--- session-end.sh ---"
 
 P=$(new_project)

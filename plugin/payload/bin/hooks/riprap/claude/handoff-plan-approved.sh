@@ -49,7 +49,10 @@ case "$RESULT" in
   ""|*"stay in plan mode"*) exit 0 ;;
 esac
 
-PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+handoff_resolve_project "$INPUT"
+PROJECT="$HANDOFF_PROJECT"
+# handoff_current reads the branch from wherever this runs, so run it in the project.
+cd "$PROJECT" 2>/dev/null || true
 if CURRENT=$(handoff_current) && [ -f "$CURRENT" ] && ! handoff_is_capture "$CURRENT"; then
   # Repo-relative, like the other two emitters: an absolute path is the one form
   # that resolves differently for the next reader than it did for the writer.

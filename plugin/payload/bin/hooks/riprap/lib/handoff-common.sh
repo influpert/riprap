@@ -44,9 +44,74 @@ HANDOFF_LEGACY_SUBDIR="tmp/handover"
 # handoff claims the branch you are on, and there is no current handoff.
 HANDOFF_MARKER_OPEN="<!-- riprap:handoff branch="
 
+# The checkout the session is actually working in. Set by handoff_resolve_project;
+# empty means it was never called, and every reader then falls back to the old answer.
+HANDOFF_PROJECT=""
+
+# Decide which checkout this hook is about, and record it in HANDOFF_PROJECT.
+#
+# CLAUDE_PROJECT_DIR is where the session STARTED, and it does not move. git.md makes
+# a worktree the default, so a session routinely starts in the main checkout and then
+# does all its work in `../<repo>-<task>`. Reading the branch and tmp/handoff/ from the
+# start directory then answers for the wrong checkout: the branch is trunk, the
+# handoff the session wrote is in the worktree, and nothing the model does can satisfy
+# require-handoff-before-unattended.sh — writing a handoff, the very thing its message
+# asks for, leaves it blocked. Every hook payload carries `.cwd`, which does follow the
+# session, so that wins whenever it names another worktree of the same repository.
+#
+# Deliberately narrow, so every case that worked before still resolves the same way:
+#   - no payload, no jq, no `.cwd`, or a `.cwd` that is not a git checkout: unchanged.
+#   - `.cwd` in the same checkout as CLAUDE_PROJECT_DIR: unchanged, which keeps a
+#     project rooted in a subdirectory of its repository rooted there.
+#   - `.cwd` in a different repository altogether: unchanged. A session that wandered
+#     into some other clone is not doing this project's work, and gating on that
+#     clone's handoffs would be a new way to be wrong.
+# Only a different worktree of the same repository moves it, and then the project's
+# subdirectory within its checkout is carried across when the worktree has one.
+#
+# The plugin's dispatcher already does this before it runs any hook, and keeps its own
+# copy in plugin/hooks/project-root.sh because it cannot source the payload. This one
+# stays because the plugin and the payload update on different schedules: under a plugin
+# that predates the fix, it is the only copy that runs. Under a current one it finds
+# CLAUDE_PROJECT_DIR already resolved and changes nothing. riprap's own CI runs both
+# against the same worktrees and fails if they disagree.
+handoff_resolve_project() {  # $1 = the hook's stdin payload, possibly empty
+  local declared cwd top declared_top common declared_common prefix
+  declared="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+  HANDOFF_PROJECT="$declared"
+  [ -n "${1:-}" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  command -v git >/dev/null 2>&1 || return 0
+  cwd=$(printf '%s' "$1" | jq -r '.cwd // empty' 2>/dev/null) || return 0
+  [ -n "$cwd" ] && [ -d "$cwd" ] || return 0
+
+  top=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null) || return 0
+  declared_top=$(git -C "$declared" rev-parse --show-toplevel 2>/dev/null) || return 0
+  [ "$top" != "$declared_top" ] || return 0
+
+  # --git-common-dir is relative to the directory git ran in, so it is resolved from
+  # there. `--path-format=absolute` would say this in one flag, but needs git 2.31.
+  common=$(cd "$cwd" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || return 0
+  declared_common=$(cd "$declared" 2>/dev/null && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || return 0
+  [ "$common" = "$declared_common" ] || return 0
+
+  prefix=$(git -C "$declared" rev-parse --show-prefix 2>/dev/null) || prefix=""
+  prefix="${prefix%/}"
+  if [ -n "$prefix" ] && [ -d "$top/$prefix" ]; then
+    HANDOFF_PROJECT="$top/$prefix"
+  else
+    HANDOFF_PROJECT="$top"
+  fi
+}
+
+# The project directory every function below reads from.
+handoff_project() {
+  printf '%s' "${HANDOFF_PROJECT:-${CLAUDE_PROJECT_DIR:-$(pwd)}}"
+}
+
 # Absolute path of the handoff directory for this project.
 handoff_dir() {
-  printf '%s/%s' "${CLAUDE_PROJECT_DIR:-$(pwd)}" "$HANDOFF_SUBDIR"
+  printf '%s/%s' "$(handoff_project)" "$HANDOFF_SUBDIR"
 }
 
 # Is the handoff directory safely untracked?
@@ -99,7 +164,7 @@ handoff_list() {
   # Fall back to the pre-rename directory only when the current one is empty, so
   # a project that has moved never sees its old files again.
   if [ -z "$listing" ]; then
-    dir="${CLAUDE_PROJECT_DIR:-$(pwd)}/$HANDOFF_LEGACY_SUBDIR"
+    dir="$(handoff_project)/$HANDOFF_LEGACY_SUBDIR"
     listing=$(ls -t "$dir"/*.md 2>/dev/null) || listing=""
   fi
   [ -n "$listing" ] || return 1

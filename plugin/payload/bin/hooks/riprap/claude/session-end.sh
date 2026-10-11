@@ -29,9 +29,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handoff-common.sh
 source "$SCRIPT_DIR/../lib/handoff-common.sh"
 
-cat >/dev/null 2>&1 || true   # drain stdin; nothing here needs the payload
+# Only `.cwd` is read, to find the checkout the session is working in.
+INPUT=$(cat 2>/dev/null || true)
 
-PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+handoff_resolve_project "$INPUT"
+PROJECT="$HANDOFF_PROJECT"
 cd "$PROJECT" 2>/dev/null || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0

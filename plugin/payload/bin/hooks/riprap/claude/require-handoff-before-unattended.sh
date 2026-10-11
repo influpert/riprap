@@ -67,7 +67,8 @@ if [ "$TOOL" = "Agent" ] || [ "$TOOL" = "Task" ]; then
   [ "$BACKGROUND" = "true" ] || exit 0
 fi
 
-PROJECT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+handoff_resolve_project "$INPUT"
+PROJECT="$HANDOFF_PROJECT"
 cd "$PROJECT" 2>/dev/null || exit 0
 command -v git >/dev/null 2>&1 || exit 0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
@@ -76,11 +77,16 @@ if CURRENT=$(handoff_current) && [ -f "$CURRENT" ] && ! handoff_is_capture "$CUR
   exit 0
 fi
 
-MSG="⛔ Blocked: no handoff exists yet for this branch, and $TOOL is about to leave the
-session unattended.
+# Name the branch and the checkout that were checked. "This branch" alone hid the case
+# where the hook was looking somewhere other than where the session worked, and a model
+# told to write a handoff it has already written has no way to see why it is still refused.
+BRANCH=$(handoff_branch)
+MSG="⛔ Blocked: no handoff exists yet for branch ${BRANCH:-(detached HEAD)}, and $TOOL is
+about to leave the session unattended.
 
 Write one now, before proceeding: goal, plan, what is done, what is next, what done means,
-and how to resume. It goes in tmp/handoff/ -- /riprap:handoff has the template.
+and how to resume. It goes in $(handoff_dir)/ and must carry the line
+\`${HANDOFF_MARKER_OPEN}${BRANCH:-<branch>} -->\` -- /riprap:handoff has the template.
 
 Then retry $TOOL."
 

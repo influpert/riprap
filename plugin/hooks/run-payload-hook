@@ -16,15 +16,47 @@ name="${1:-}"
 [ -n "$name" ] || { echo "usage: run-payload-hook <script-name>" >&2; exit 2; }
 shift
 
-root="${CLAUDE_PROJECT_DIR:-$(pwd)}"
-hook="$root/bin/hooks/riprap/claude/$name"
+declared="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+hook="$declared/bin/hooks/riprap/claude/$name"
 
 # Not installed here, or installed without the executable bit — either way there
 # is nothing to run, and neither is this hook's problem to report. `bin/riprap
 # verify` is where a broken install gets diagnosed, loudly and on demand.
+#
+# Decided from the start directory alone, before stdin is touched, so a repository
+# that never adopted riprap still pays for one `test` and nothing else per call.
 [ -x "$hook" ] || exit 0
+
+# The session may be working in another worktree of this repository, and then
+# that worktree is the project: its branch, its tmp/handoff/, the files it writes.
+# project-root.sh says why CLAUDE_PROJECT_DIR alone gets that wrong. Finding out
+# means reading the payload's `.cwd`, so the payload is read here and handed on.
+#
+# Only from an open, non-terminal stdin. `cat` on a closed fd 0 reads the pipe of
+# its own command substitution and never returns; session-start learned that the
+# hard way. `cat` rather than a bounded `read`: a Write payload carries the whole
+# file, bash reads a pipe one byte at a time, and a timeout that truncated it
+# would hand the secrets hook half a document to approve.
+payload=""
+if [ ! -t 0 ] && (exec 3<&0) 2>/dev/null; then
+  payload=$(cat) || payload=""
+fi
+
+# shellcheck source=project-root.sh
+. "$(dirname "${BASH_SOURCE[0]}")/project-root.sh"
+root=$(riprap_project_root "$payload")
+
+# The worktree's own copy when it has one, which is what its git hooks already run
+# (core.hooksPath resolves per worktree). A branch cut before the install has none,
+# and then the start directory's copy still guards it: a worktree must never be the
+# place riprap quietly stops enforcing.
+[ ! -x "$root/bin/hooks/riprap/claude/$name" ] || hook="$root/bin/hooks/riprap/claude/$name"
+
+# Every payload hook reads the project from CLAUDE_PROJECT_DIR, so pointing it at
+# the resolved checkout fixes them all in one place rather than in each.
+export CLAUDE_PROJECT_DIR="$root"
 
 # exec, so the hook's exit code and stderr reach Claude Code unaltered. A
 # guardrail blocks with exit 2 and a message on stderr; anything that swallowed
 # either would turn a block into a silent pass.
-exec "$hook" "$@"
+exec "$hook" "$@" <<<"$payload"

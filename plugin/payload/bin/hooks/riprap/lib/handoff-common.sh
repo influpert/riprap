@@ -68,6 +68,13 @@ HANDOFF_PROJECT=""
 #     clone's handoffs would be a new way to be wrong.
 # Only a different worktree of the same repository moves it, and then the project's
 # subdirectory within its checkout is carried across when the worktree has one.
+#
+# The plugin's dispatcher already does this before it runs any hook, and keeps its own
+# copy in plugin/hooks/project-root.sh because it cannot source the payload. This one
+# stays because the plugin and the payload update on different schedules: under a plugin
+# that predates the fix, it is the only copy that runs. Under a current one it finds
+# CLAUDE_PROJECT_DIR already resolved and changes nothing. riprap's own CI runs both
+# against the same worktrees and fails if they disagree.
 handoff_resolve_project() {  # $1 = the hook's stdin payload, possibly empty
   local declared cwd top declared_top common declared_common prefix
   declared="${CLAUDE_PROJECT_DIR:-$(pwd)}"

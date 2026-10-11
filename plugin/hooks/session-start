@@ -21,6 +21,36 @@ DOCS="${PLUGIN_ROOT}/instructions"
 
 router="$(cat "${DOCS}/README.md")"
 
+# What started this session, where its transcript is, and which checkout it is in.
+#
+# `resume` and `fork` continue a context that already carries an earlier copy of
+# the router, so re-sending it pays ~160 lines to repeat what has been said.
+#
+# READ DEFENSIVELY. This hook runs before anything else in the session, is
+# registered `async: false`, and never read stdin at all until this was added:
+#
+#   - Bounded, never `cat`. `cat` waits for EOF, not for data — so a writer that
+#     does not close, and a CLOSED fd 0 (where the command substitution's own
+#     pipe is allocated as the lowest free descriptor, so cat reads what it is
+#     writing), both hang for ever emitting nothing. A hung SessionStart is worse
+#     than any amount of duplicated text: the session gets no guardrails at all.
+#     `[ -t 0 ]` catches a terminal and neither of those.
+#   - Only with jq. jq is NOT a dependency of this half — the payload hooks may
+#     demand it, but the router has to reach the model on a machine that never
+#     installed it.
+#
+# Every failure path leaves `source` empty, which takes the full-router branch.
+source=""
+transcript=""
+payload=""
+if [ ! -t 0 ] && command -v jq >/dev/null 2>&1; then
+  IFS= read -r -d '' -t 2 payload 2>/dev/null || true
+  if [ -n "$payload" ]; then
+    source="$(printf '%s' "$payload" | jq -r '.source // empty' 2>/dev/null || true)"
+    transcript="$(printf '%s' "$payload" | jq -r '.transcript_path // empty' 2>/dev/null || true)"
+  fi
+fi
+
 # The handoff for whatever this session is continuing, if there is one.
 #
 # Named rather than described. A session that has just been resumed, forked, or
@@ -40,7 +70,12 @@ router="$(cat "${DOCS}/README.md")"
 # router simply stops mentioning handoffs, which reads exactly like not having
 # one.
 handoff_note=""
-project="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# The checkout the session is working in, which after a compaction or a resume in a
+# worktree is not the one CLAUDE_PROJECT_DIR names. project-root.sh says why; without
+# jq or a payload it answers CLAUDE_PROJECT_DIR, exactly as this line used to.
+# shellcheck source=project-root.sh
+. "${SCRIPT_DIR}/project-root.sh"
+project="$(riprap_project_root "$payload")"
 newest=""
 sole=""
 count=0
@@ -89,36 +124,6 @@ if [ -n "$newest" ]; then
     handoff_note=$'\n\n---\n\n**No handoff was written before this context was lost.** `'"${rel}"$'` is an automatic capture of git state — it does not say what the work is for, what was agreed, or what done means, because nobody wrote those down. Treat it as raw material: re-establish the goal with the user before acting, then replace it with a real handoff.'
   else
     handoff_note=$'\n\n---\n\n**There is a handoff for this branch: `'"${rel}"$'`.** Read it once and carry its contents into your working state in the same turn; a read can be its last (handoffs.md). Check it against the tree before acting — where they disagree, the tree is what is true and the handoff is what was intended. If it turns out to describe finished work, say so and start a new one rather than editing it.'"${legacy}"
-  fi
-fi
-
-# What started this session, and where its transcript is.
-#
-# `resume` and `fork` continue a context that already carries an earlier copy of
-# the router, so re-sending it pays ~160 lines to repeat what has been said.
-#
-# READ DEFENSIVELY. This hook runs before anything else in the session, is
-# registered `async: false`, and never read stdin at all until this was added:
-#
-#   - Bounded, never `cat`. `cat` waits for EOF, not for data — so a writer that
-#     does not close, and a CLOSED fd 0 (where the command substitution's own
-#     pipe is allocated as the lowest free descriptor, so cat reads what it is
-#     writing), both hang for ever emitting nothing. A hung SessionStart is worse
-#     than any amount of duplicated text: the session gets no guardrails at all.
-#     `[ -t 0 ]` catches a terminal and neither of those.
-#   - Only with jq. jq is NOT a dependency of this half — the payload hooks may
-#     demand it, but the router has to reach the model on a machine that never
-#     installed it.
-#
-# Every failure path leaves `source` empty, which takes the full-router branch.
-source=""
-transcript=""
-if [ ! -t 0 ] && command -v jq >/dev/null 2>&1; then
-  payload=""
-  IFS= read -r -d '' -t 2 payload 2>/dev/null || true
-  if [ -n "$payload" ]; then
-    source="$(printf '%s' "$payload" | jq -r '.source // empty' 2>/dev/null || true)"
-    transcript="$(printf '%s' "$payload" | jq -r '.transcript_path // empty' 2>/dev/null || true)"
   fi
 fi
 

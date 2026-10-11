@@ -75,6 +75,14 @@ echo "--- The homepage release badge bumps correctly, in isolation ---"
 bin/tests/test-release-badge-bump.sh
 
 echo
+# The payload's hook tests above cannot reach the plugin's half: they ship to adopters
+# and only ever call ../claude. This is where the dispatcher and session-start are run
+# with a real payload behind them, and where the two copies of the project resolver are
+# held to the same answers.
+echo "--- The plugin's hooks follow a session into its worktree ---"
+bin/tests/test-plugin-hooks.sh
+
+echo
 echo "--- Payload workflows parse ---"
 # Nothing else in the tree ever reads these files. They are shipped verbatim to
 # every adopter and executed by the host's workflow runtime, so a syntax error

@@ -443,6 +443,14 @@ Recommended | Not recommended |
 If the connection doesn't respond, check for errors. | If the connection hangs, check for errors. |
 Point to File, and then click New. | Hover over File, and hit New. |
 For guidance about specific terms, see the Word list.
+#### Use precise, objective language
+Use precise, objective language so that all readers can gather the same information from your writing. Don't use vague or subjective language. What's simple or quick for an experienced engineer might be complex or time consuming for someone new to the product. To prevent introducing subjectivity in your writing, avoid the following:
+- Words like simple, simply, easy, easily, and quick, quickly, which introduce an opinion that might not reflect the user's experience.
+- Words like careful, carefully or thorough, thoroughly, which provide unclear instruction or imply either that not all tasks require the user's full attention or that the user is usually careless or inattentive.
+- Words like proper, properly, which are unclear and can assert opinions of superiority. Recommended | Not recommended |
+Review the audit logs for security issues. For example, ensure that the user accounts have multi-factor authentication enabled. | Make sure that you carefully and thoroughly review all of the audit logs for potential security issues. |
+To verify that the daemon is running, run systemctl status DAEMON_NAME and confirm that the output shows Active: active (running). | Ensure the daemon is properly installed and running. |
+Open the configuration file and add your custom key. | Simply open the configuration file to quickly add your custom key. |
 #### Write diverse and inclusive examples
 Write documentation for a global audience. Use diverse names, genders, ages, and locations in examples. Keep the following advice in mind:
 - Follow our gender-neutral pronoun guidance.
@@ -637,9 +645,14 @@ Not recommended: A hybrid cloud-native DevSecOps pipeline
 Recommended: Request only one token.
 Recommended: Request no more than one token.
 Not recommended: Only request one token.
+- Describe technical details in precise, technical terms. Avoid subjective modifiers such as simply, properly, or carefully. Subjective words can be vague. For more information, see Avoid subjective language.
 #### Use active voice and present tense
 - Use present tense and avoid complex or uncommon verb forms.
 - Use active voice. The subject of the sentence is the person or thing performing the action. With passive voice, it's often hard for readers to figure out who's supposed to do something. For more information, see Active voice.
+- Avoid participles and gerunds (that is, verbing) when possible. Verbing can be less direct and ambiguous. Consider replacing using with by using, that use (or that uses), or you use as appropriate. For more information, see the word list entry using.
+Recommended | Not recommended |
+You must configure the VPC firewall rules before you deploy the VM instance. | Configuring the VPC firewall rules is required before deploying the VM instance. |
+This guide describes how to set up database replication. | This guide describes setting up database replication. |
 #### Use words in their primary sense
 - Don't use the same word to mean different things. In particular, avoid using the same word as both a noun and a verb in close proximity. For examples of words that have multiple meanings, see the word list entries for once, while, as, and since.
 - Avoid directional language (for example, above or below) in procedural documentation. For more information, see UI elements and interaction.

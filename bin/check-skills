@@ -125,7 +125,14 @@ ROWS
 # obvious edit to it is `--arg ev APPROVE`, which puts the value BEFORE the field
 # name entirely — no widening of `event.{0,4}` reaches it. APPROVED was already
 # blacklisted, so a bare token costs nothing in false positives.
-NEVER_INSTRUCT="gh pr merge|mergePullRequest|hub +merge|git +push +[^ ]+ +[^ ]*HEAD:|gh pr review[^|;&.]{0,40}(--approve|-a([[:space:]]|\$))|--admin|--auto|pulls/[^ ]*/merge|LGTM|APPROVED|(^|[^A-Z])(APPROVE|REQUEST_CHANGES)([^A-Z]|\$)"
+#
+# The `gh pr review` alternative is spelled out three times rather than as one
+# `{0,40}(--approve|-a([[:space:]]|$))`: mawk 1.3.4, the default awk on Debian
+# and Ubuntu, panics compiling a bounded repeat followed by a group. The panic
+# printed nothing, so every A6 assertion found no hits and passed — the check
+# went green on a skill that force-merged. check_awk_patterns below is what
+# turns the next such pattern into a refusal instead.
+NEVER_INSTRUCT="gh pr merge|mergePullRequest|hub +merge|git +push +[^ ]+ +[^ ]*HEAD:|gh pr review[^|;&.]{0,40}--approve|gh pr review[^|;&.]{0,40}-a[[:space:]]|gh pr review[^|;&.]{0,40}-a\$|--admin|--auto|pulls/[^ ]*/merge|LGTM|APPROVED|(^|[^A-Z])(APPROVE|REQUEST_CHANGES)([^A-Z]|\$)"
 
 # Editing a branch under review. "Never merges" had three assertions and "never
 # edits" — the harder half of the same hard rule — had none.
@@ -182,6 +189,25 @@ NEGATED='[Nn]ever|[Dd]o not|[Dd]on.t|[Ii]nstead of|[Rr]ather than|[Ff]orbid|[Rr]
 # $1 pattern, $2 file, $3 "fixed" when the pattern is a literal string rather
 # than an ERE. Every occurrence is tried, because one negated mention earlier in
 # a paragraph says nothing about a bare instruction later in it.
+# Every pattern unnegated() hands to awk, compiled once before anything is
+# scanned. awk dialects disagree about what they can compile, and a pattern one
+# of them rejects does not fail the check: awk dies, unnegated() prints no
+# hits, and an assertion that fires on hits passes having examined nothing.
+# That is how A6 sat green under mawk. A refusal here costs one run; the silent
+# pass cost every run on that machine.
+check_awk_patterns() {
+  local p
+  for p in "$NEVER_INSTRUCT" "$NEVER_EDITS" "$NEGATED"; do
+    awk -v pat="$p" 'BEGIN { match("", pat) }' >/dev/null 2>&1 || {
+      echo "❌ $(command -v awk) cannot compile a pattern bin/check-skills relies on:" >&2
+      echo "     $p" >&2
+      echo "   Every assertion using it would pass without checking anything." >&2
+      echo "   Rewrite the pattern in a form this awk accepts." >&2
+      exit 1; }
+  done
+}
+check_awk_patterns
+
 unnegated() {
   awk -v pat="$1" -v neg="$NEGATED" -v fixed="${3:-}" \
       -v term='[.!?;:]+[*_")]*[ \t]|—|-- ' '

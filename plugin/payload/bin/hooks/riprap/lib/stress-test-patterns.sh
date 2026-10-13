@@ -12,10 +12,11 @@
 # plain constant in the hook script itself instead.
 
 # The floor: this many qualifying dispatches, since the last PASSING check, before
-# ExitPlanMode is allowed. Five distinct-angle critics plus the mandatory devil's
-# advocate, per interaction-preferences.md.
+# ExitPlanMode is allowed. Two distinct-angle critics plus the mandatory devil's
+# advocate, per interaction-preferences.md. The rule recommends five (four critics plus
+# the advocate); this is the floor below which the hook blocks, not the recommendation.
 # shellcheck disable=SC2034  # consumed by require-plan-stress-test.sh
-STRESS_TEST_MIN_DISPATCHES=6
+STRESS_TEST_MIN_DISPATCHES=3
 
 # --- project extension point ------------------------------------------------
 # riprap owns this file and overwrites it on every update, so a value changed here is

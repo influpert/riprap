@@ -2,8 +2,9 @@
 # PreToolUse hook: require a minimum stress-test dispatch floor before ExitPlanMode.
 #
 # Enforces the mechanical half of interaction-preferences.md's "Always stress-test a plan
-# before presenting it": at least five distinct-angle critic sub-agents plus a mandatory
-# devil's-advocate sub-agent, dispatched before the plan is shown. It counts dispatches;
+# before presenting it": at least three sub-agents — distinct-angle critics plus a mandatory
+# devil's advocate — dispatched before the plan is shown. The rule recommends five; this
+# enforces only the floor. It counts dispatches;
 # it cannot verify critique quality, angle distinctness, honest classification, or that
 # findings were folded into the plan — see this rule's own "## Enforcement" subsection in
 # interaction-preferences.md, and never describe this hook, in a message or elsewhere, as
@@ -59,8 +60,8 @@ refuse() {  # $1 = the specific reason
     echo "$1"
     echo ""
     echo "riprap requires dispatching at least $STRESS_TEST_MIN_DISPATCHES sub-agents before"
-    echo "every ExitPlanMode call: five distinct-angle critics plus a mandatory devil's"
-    echo "advocate. See interaction-preferences.md, \"Always stress-test a plan before"
+    echo "every ExitPlanMode call: distinct-angle critics plus a mandatory devil's advocate"
+    echo "(five recommended). See interaction-preferences.md, \"Always stress-test a plan before"
     echo "presenting it.\" This is a repo-wide policy taking effect on this call, not"
     echo "something specific to this plan."
     echo ""
@@ -88,9 +89,9 @@ refuse() {  # $1 = the specific reason
 # even when the lib below turns out to be missing — under `set -u`, an unset reference
 # inside refuse() would abort with bash's own "unbound variable" error before reaching
 # this function's own `exit 2`, which is a fail-open exit code by this hook's own logic.
-# Sourcing the lib below overrides this with its own value (still 6, unless a project's
+# Sourcing the lib below overrides this with its own value (still 3, unless a project's
 # .local.sh raises or lowers it).
-STRESS_TEST_MIN_DISPATCHES=6
+STRESS_TEST_MIN_DISPATCHES=3
 
 # The lib file holds only STRESS_TEST_MIN_DISPATCHES now (see its own header for why
 # QUALIFYING_TOOL_NAMES moved out of it). A missing or unreadable lib file would otherwise

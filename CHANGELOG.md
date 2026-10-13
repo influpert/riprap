@@ -37,6 +37,24 @@ per-version file, never this one: `bin/release --changelog` regenerates it, and
 
 **Fixes**
 
+- **riprap's hooks now follow a session into a worktree.** `git.md` makes a worktree the
+  default, so a session usually starts in the main checkout and works in another. The
+  hooks still answered from the checkout the session started in. The handoff gate looked
+  for a handoff in the wrong checkout and refused every backgrounded agent for good —
+  writing the handoff its message asked for changed nothing. Format-on-write skipped every
+  file written in the worktree, the secrets hook's allow-list prefixes never matched there,
+  and session-start named the main checkout's handoff after a resume. The hooks now resolve
+  the checkout the session is working in, and run that worktree's own copy of each hook
+  when it has one. The handoff refusal now names the branch, directory and marker it
+  checked, so a mismatch is visible rather than a loop.
+- **A test suite run from riprap's git hooks can no longer rewrite your git config.** git
+  exports `GIT_DIR` and `GIT_INDEX_FILE` to a hook, and a test suite started from
+  pre-push inherited them. Its `git init` and `git config user.name` in a scratch directory
+  then acted on the hook's own repository. From a linked worktree that is the config every
+  worktree shares: the test identity authored every later commit, `core.bare` was set to
+  true, and nothing failed. pre-push now runs `bin/test` with git's environment cleared, and
+  both hooks refuse when the repository's config changed underneath them, even if the
+  checks passed.
 - **CHANGELOG.md no longer repeats the release-note tagline.** The tagline's wording changed
   at v0.10.1. The strip still matched only the old wording, so the new tagline leaked into
   the v0.10.1, v0.11.0 and v0.12.0 entries. Both wordings are now stripped, and

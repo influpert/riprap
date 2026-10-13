@@ -35,7 +35,7 @@ them and they would rot on every edit of every document.
 
 - [project-standards.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/project-standards.md) — conventions that apply to everything in this repo. Read this first.
 - [interaction-preferences.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/interaction-preferences.md) — how to work with the person on the other side of the session: when to argue, where a plan goes, and what to ask before starting.
-- [design.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design.md) — a change with material UI or UX impact gets a mockup before it gets an implementation, drawn inside the project's design system and in its frontend library's own primitives. Copy edits and invisible refactors are explicitly exempt; a new feature gets a full design, not one screen.
+- [design.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/design.md) — a change with material UI or UX impact gets a mockup before it gets an implementation, drawn inside the project's design system and in its frontend library's own primitives. The user approves the mockup, rendered, before any code, and the built result before the work is done. Copy edits and invisible refactors are explicitly exempt; a new feature gets a full design, not one screen.
 - [development-workflow.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/development-workflow.md) — when to stop and plan, how to scope a bug fix, what to clean up, and what "done" has to mean.
 - [handoffs.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/handoffs.md) — session handoffs always go in `tmp/handoff/`, never in `docs/` or the repo root.
 - [writing-style.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/writing-style.md) — the writing standard that governs every reply, plan, task, commit message and pull request body: voice, tense, prescriptive verbs, and the bar a task has to clear before somebody else can pick it up. Distilled from the Google developer documentation style guide.
@@ -86,7 +86,7 @@ The other view: what to scan when you want to be sure you have seen everything.
 | `code-review.md` | Reviewing a diff before the pull request, and staying with it after |
 | `code-style.md` | Naming, structure, comments — what a formatter cannot decide |
 | `communication-preferences.md` | How long a conversational reply should be, and what to cut |
-| `design.md` | Mocking up a UI change before building it, inside the existing design system |
+| `design.md` | Mocking up a UI change before building it, inside the existing design system, and getting the mockup and the built result approved |
 | `design-principles.md` | How much structure to build, and when |
 | `development-workflow.md` | When to plan, how to scope a fix, cleaning up, what "done" has to mean |
 | `error-handling.md` | Letting errors surface; keeping secrets out of logs |

@@ -207,8 +207,8 @@ gh pr list --state open --json number,title,headRefName,isDraft \
 Filter on the branch name rather than `--search`, which tokenises the slug and matches on any
 word in it: searching `add-reviewer-skill` in this repository returns three unrelated pull
 requests that share `add` or `skill`, and misses a real duplicate whose title is prose. If one
-carries this slug in its branch name and is not a draft, say so and stop rather than
-re-implement.
+carries this slug in its branch name, say so and stop rather than re-implement. A draft is work
+to resume, not to redo — one awaiting design.md's built-result approval most of all.
 
 **Three sufficiency questions, each with a stop attached**, because a plan that fails one
 produces a branch that fails at gate 2 with the whole implementation already written:
@@ -218,8 +218,9 @@ produces a branch that fails at gate 2 with the whole implementation already wri
    here, and it is free to detect now.
 2. **Does it say how it will be verified?** No verification story means step 3 has nothing to
    write a test from and gate 1 has nothing to review against.
-3. **Does it touch what a user sees, and does it carry the mockup design.md asks for?** If it is
-   material and there is no link, stop. Building the screen from your own judgement is what that
+3. **Does it touch what a user sees, and does it carry the mockup design.md asks for — and the
+   user's approval of it?** If it is material and there is no link, stop. If there is a link but
+   no recorded approval, run design.md's first checkpoint now, or stop. Building the screen from your own judgement is what that
    rule exists to prevent, and a mockup produced afterwards is a screenshot with extra steps.
 
 Where the change is a bug fix, development-workflow.md's pattern sweep should already be in the
@@ -316,6 +317,11 @@ development-workflow.md's rule, and the one this skill is likeliest to be caught
 Everything you noticed and did not fix goes in the list for step 8, in project-standards.md's
 form.
 
+**Where design.md called for a mockup, its second checkpoint closes this step** — the built
+result approved in the UI, including that document's unattended branch. It sits here, before
+gate 2, so the build the reviewers read is the one the user approved, and a request for changes
+is more of this step rather than a return past a gate that has already run.
+
 ### 6. Gate 2 — have the implementation reviewed
 
 code-review.md owns the obligation: review the diff before a pull request exists, fix everything
@@ -370,12 +376,6 @@ Then push. If a force is ever needed, `--force-with-lease` and never the plain f
 
 ### 8. Open the pull request
 
-**Where design.md called for a mockup, get the built result approved first.** That document's
-second checkpoint: run the change, present the real screen in the UI beside the approved mockup,
-name where they differ, and wait for an explicit approve through the structured choice UI. A
-request for changes goes back to step 5. With nobody to answer, publish the screenshots anyway,
-open the pull request as a draft, and say in the body that the result is unapproved.
-
 git.md requires the pull request; code-review.md requires what goes in it. The assembly order is
 this skill's:
 
@@ -387,8 +387,8 @@ this skill's:
    because a second copy in this file is a second definition of what a disposition means. This is
    also where `tmp/riprap/decisions-<slug>.md` graduates — the overrules recorded there become
    rows here, rather than standing as a second record.
-4. **The design link**, where design.md called for one, with the screenshot of the built result
-   and both approvals recorded. Where the built screen diverges from the
+4. **The design link and both approvals**, where design.md called for them, in the form it
+   gives. Where the built screen diverges from the
    mockup, that document's re-mock rule applies and it has two branches, not one: update the
    mockup, or declare it stale in the body and say why. A stale mockup nobody flagged is worse
    than none.
@@ -417,7 +417,7 @@ Then the checkpoint.
 
 ### 10. Verify the gates, and hand it back
 
-**Four things are confirmed, in this order.** Any one missing and the answer is not *merge later*
+**Five things are confirmed, in this order.** Any one missing and the answer is not *merge later*
 — it is that this loop ends here and the user is told what is outstanding:
 
 1. `/riprap:review` returned a clean verdict **against the current head** — or every surviving
@@ -428,7 +428,9 @@ Then the checkpoint.
    outstanding change request; every check green.
 3. **No gated path among the changed files.** Where there is one, run that document's hold
    sequence and stop.
-4. The user has confirmed, in this session, in answer to a question naming the pull request.
+4. Where design.md applied, **both of its approvals are recorded in the body.** A gate-3 fix that
+   changed the screen after the second one goes back to the user first.
+5. The user has confirmed, in this session, in answer to a question naming the pull request.
 
 Then report the state, and **hand the merge to a person — never run `gh pr merge` yourself, and
 never propose `--admin` or `--auto`,** which respectively bypass the checks the confirmation was

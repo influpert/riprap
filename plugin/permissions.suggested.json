@@ -12,8 +12,10 @@
     "real enforcement is the hooks.",
     "",
     "Artifact is the host's mockup tool, which design.md allows for mockups and for",
-    "showing the built result. It publishes private pages that only the user can open",
-    "until they share them, so allowing it saves a prompt on every redraw."
+    "showing the built result. This entry allows every Artifact action, not only a new",
+    "private publish: updating an existing page, including one already shared with",
+    "others, and reading pages other people own. The host still confirms deletes.",
+    "Merge it only if that scope is acceptable to you."
   ],
   "permissions": {
     "allow": [

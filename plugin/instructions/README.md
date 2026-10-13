@@ -149,7 +149,7 @@ beat one 215-line file when either would answer the question.
   full standard? → `/riprap:write`
 - How long should this reply be, and does it need bullets? → [communication-preferences.md](communication-preferences.md) (~60)
 - Planning anything a user will see? Mock it up first, in the project's design system, and get
-  the mockup and the built result approved in the UI → [design.md](design.md) (~320)
+  the mockup and the built result approved in the UI → [design.md](design.md) (~335)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
   on the way? → [development-workflow.md](development-workflow.md) (~110)
 - Handed a requirement, and the plan has to be built by somebody who was not here? →

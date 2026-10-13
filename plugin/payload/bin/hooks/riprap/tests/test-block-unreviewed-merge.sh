@@ -110,6 +110,88 @@ export RIPRAP_TEST_PR_FILES="true"
 check "empty file list -> block" 2 "$MERGE"
 
 echo
+echo "--- Only a merge that runs is a merge ---"
+# The text "gh pr merge" was enough on its own once, so a pull request body that
+# quoted the command, a commit message or a grep for it was refused as a merge.
+with_files "src/auth/login.ts"
+SCRATCH=$(mktemp -d)
+trap 'rm -rf "$SCRATCH"' EXIT
+A="$SCRATCH/a"; B="$SCRATCH/b"; mkdir -p "$A" "$B"
+# bash_at DIR COMMAND — a Bash payload whose command starts in DIR.
+bash_at() { jq -cn --arg d "$1" --arg c "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}'; }
+NL=$'\n'
+check "quoted in a commit message -> allow" 0 "$(bash_at "$A" 'git commit -m "explain gh pr merge 5"')"
+check "a grep pattern -> allow" 0 "$(bash_at "$A" 'grep -rn "gh pr merge" .')"
+check "single-quoted in an echo -> allow" 0 "$(bash_at "$A" "echo 'gh pr merge 5'")"
+check "in a comment -> allow" 0 "$(bash_at "$A" 'ls # gh pr merge 5')"
+check "in a heredoc body, even after cd -> allow" 0 \
+  "$(bash_at "$A" "gh issue create --body-file - <<'EOF'${NL}Run \`cd $B && gh pr merge 56\`${NL}gh pr merge 7${NL}EOF")"
+check "after &&, ; and a newline -> block" 2 "$(bash_at "$A" "git push && gh pr merge 5")"
+check "on the line after a heredoc -> block" 2 "$(bash_at "$A" "cat <<EOF${NL}x${NL}EOF${NL}gh pr merge 5")"
+check "in a subshell -> block" 2 "$(bash_at "$A" "(gh pr merge 5)")"
+check "in an unquoted \$( ) -> block" 2 "$(bash_at "$A" 'echo $(gh pr merge 5)')"
+check "in backticks -> block" 2 "$(bash_at "$A" 'echo `gh pr merge 5`')"
+check "in a double-quoted \$( ) -> block" 2 "$(bash_at "$A" 'echo "$(gh pr merge 5)"')"
+check "through env, command, or a full path -> block" 2 "$(bash_at "$A" 'env GH_DEBUG=1 command /usr/local/bin/gh pr merge 5')"
+check "handed to bash -c -> block" 2 "$(bash_at "$A" 'bash -c "gh pr merge 5"')"
+check "piped into sh -> block" 2 "$(bash_at "$A" "printf 'gh pr merge 5' | sh")"
+check "through timeout -> block" 2 "$(bash_at "$A" 'timeout 60 gh pr merge 5')"
+check "through xargs -> block" 2 "$(bash_at "$A" 'echo 5 | xargs gh pr merge')"
+
+echo
+echo "--- The pull request asked about is the one the command merges ---"
+# The seam answers "gated" only when it is asked about exactly EXPECT, and
+# "harmless" otherwise, so a block proves which pull request was looked up. The
+# gate once asked the session's own checkout about the number, whatever
+# repository the command was in.
+cat >"$SCRATCH/seam" <<'SEAM'
+#!/usr/bin/env bash
+if [ "$RIPRAP_GATE_DIR|$RIPRAP_GATE_REPO|$RIPRAP_GATE_PR" = "$EXPECT" ] && [ "$PWD" = "$(cd "$RIPRAP_GATE_DIR" && pwd)" ]; then
+  echo src/auth/login.ts
+else
+  echo README.md
+fi
+SEAM
+chmod +x "$SCRATCH/seam"
+export RIPRAP_TEST_PR_FILES="$SCRATCH/seam"
+asks() {  # DESCRIPTION EXPECT COMMAND [START_DIR]
+  EXPECT="$2" check "$1" 2 "$(bash_at "${4:-$A}" "$3")"
+}
+export EXPECT
+asks "cd into another repository first -> that one" "$B||56" "cd $B && gh pr merge 56 --squash"
+asks "cd then ; -> that one" "$B||7" "cd $B; gh pr merge 7"
+asks "a relative cd -> resolved from the start directory" "$SCRATCH/b||7" "cd b && gh pr merge 7" "$SCRATCH"
+HOME="$SCRATCH" asks "cd ~/ -> under HOME" "$SCRATCH/b||7" "cd ~/b && gh pr merge 7"
+asks "a cd inside a subshell does not leak out" "$A||7" "(cd $B && true); gh pr merge 7"
+asks "--repo -> that repository" "$A|o/r|56" "gh pr merge 56 --repo o/r"
+asks "--repo= -> that repository" "$A|o/r|56" "gh pr merge --repo=o/r 56"
+asks "-R before the number" "$A|o/r|12" "gh pr merge -R o/r 12"
+asks "-R with its value attached" "$A|o/r|12" "gh pr merge -Ro/r 12"
+asks "GH_REPO in front of the command" "$A|o/r|3" "GH_REPO=o/r gh pr merge 3"
+asks "a flag before the number" "$A||12" "gh pr merge --squash 12"
+asks "shorthand flags run together" "$A||12" "gh pr merge -sd 12"
+asks "a flag that takes a value, before the number" "$A||12" "gh pr merge --subject 'Ship it' 12"
+asks "a URL" "$A||https://github.com/o/r/pull/12" "gh pr merge https://github.com/o/r/pull/12 --squash"
+asks "no selector -> the current branch's PR, where it runs" "$B||" "cd $B && gh pr merge --squash"
+EXPECT="$B||56" check "the same merge, harmless where it really runs -> allow" 0 \
+  "$(bash_at "$A" "cd $A && gh pr merge 56")"
+
+echo
+echo "--- What cannot be read is refused, not guessed ---"
+export EXPECT="nothing"   # the seam calls everything harmless from here on
+check "cd to a variable -> block" 2 "$(bash_at "$A" 'cd "$REPO" && gh pr merge 5')"
+check "cd - -> block" 2 "$(bash_at "$A" 'cd - && gh pr merge 5')"
+check "a cd in a pipeline, then a merge -> block" 2 "$(bash_at "$A" "cd $B | true; gh pr merge 5")"
+check "popd, then a merge -> block" 2 "$(bash_at "$A" 'popd && gh pr merge 5')"
+check "cd to a directory that does not exist -> block" 2 "$(bash_at "$A" "cd $SCRATCH/gone && gh pr merge 5")"
+check "an unknown flag -> block" 2 "$(bash_at "$A" 'gh pr merge 5 --yolo')"
+check "an unknown shorthand -> block" 2 "$(bash_at "$A" 'gh pr merge -x 5')"
+check "two pull requests -> block" 2 "$(bash_at "$A" 'gh pr merge 5 6')"
+check "the number is a variable -> block" 2 "$(bash_at "$A" 'gh pr merge "$PR"')"
+check "--repo with no value -> block" 2 "$(bash_at "$A" 'gh pr merge 5 --repo')"
+with_files "src/auth/login.ts"
+
+echo
 echo "--- The refusal has to be actionable ---"
 with_files "bin/hooks/riprap/claude/lint-secrets.sh"
 check_contains "names the gated file" "lint-secrets.sh" "$MERGE"

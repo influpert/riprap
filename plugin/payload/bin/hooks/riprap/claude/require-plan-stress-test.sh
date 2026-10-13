@@ -197,7 +197,7 @@ COUNT=0
 # advocate"), never an arbitrary character, so this doesn't also match unrelated text like
 # "devils3advocate" or a stray "_devils_advocate_" identifier.
 ADVOCATE=0
-if [ -n "$QUALIFYING" ] && printf '%s\n' "$QUALIFYING" | grep -qiE "devil['’]?s advocate"; then
+if [ -n "$QUALIFYING" ] && printf '%s\n' "$QUALIFYING" | grep -qiE "devil('|’)?s advocate"; then
   ADVOCATE=1
 fi
 

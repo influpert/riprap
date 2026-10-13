@@ -115,11 +115,18 @@ dispatch() {  # $1 = CLAUDE_PROJECT_DIR, $2 = stdin; sets OUT ERR RC
 P="$SCRATCH/main"; W="$SCRATCH/main-task"
 new_project "$P"; new_worktree "$P" "$W" feature
 fake_hook "$P"; fake_hook "$W"
+# What the dispatcher reports, spelled as git spells it. The worktree is found through
+# git, which prints the physical path, while $SCRATCH may sit under a symlink (macOS's
+# /var -> /private/var). Matching the unresolved spelling failed there for a dispatcher
+# that had run exactly the right copy. The inputs stay unresolved on purpose: a project
+# reached through a symlink is a case the dispatcher has to handle. The start directory's
+# own copy keeps the spelling CLAUDE_PROJECT_DIR gave it, so $P is matched as given.
+PW=$(phys "$W")
 
 dispatch "$P" "$(payload_for "$W" '{}')"
-case "$OUT" in *"self=$W/"*) ok "runs the worktree's own copy of the hook" ;;
+case "$OUT" in *"self=$PW/"*) ok "runs the worktree's own copy of the hook" ;;
   *) bad "did not run the worktree's copy: $OUT" ;; esac
-case "$OUT" in *"project=$W"$'\n'*) ok "tells the hook the worktree is the project" ;;
+case "$OUT" in *"project=$PW"$'\n'*) ok "tells the hook the worktree is the project" ;;
   *) bad "CLAUDE_PROJECT_DIR was not the worktree: $OUT" ;; esac
 [ "$RC" -eq 2 ] && [ "$ERR" = "refused" ] && ok "the hook's exit code and stderr still reach the caller" \
   || bad "a block was lost on the way through: rc=$RC err=$ERR"
@@ -139,7 +146,7 @@ fi
 
 rm -rf "${W:?}/bin"
 dispatch "$P" "$(payload_for "$W" '{}')"
-case "$OUT" in *"self=$P/"*"project=$W"$'\n'*) ok "a worktree with no payload of its own is still guarded, from the main checkout's copy" ;;
+case "$OUT" in *"self=$P/"*"project=$PW"$'\n'*) ok "a worktree with no payload of its own is still guarded, from the main checkout's copy" ;;
   *) bad "a worktree without its own payload went unguarded: rc=$RC $OUT" ;; esac
 
 dispatch "$P" '{}'

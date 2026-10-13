@@ -55,6 +55,10 @@ per-version file, never this one: `bin/release --changelog` regenerates it, and
   true, and nothing failed. pre-push now runs `bin/test` with git's environment cleared, and
   both hooks refuse when the repository's config changed underneath them, even if the
   checks passed.
+- **The plan stress-test gate now recognises "devil’s advocate" with a curly apostrophe in
+  every locale.** Under `LC_ALL=C`, which many CI images and some shells use, grep read the
+  curly apostrophe as three separate bytes. A correctly worded devil's-advocate dispatch was
+  missed, and ExitPlanMode was blocked.
 - **CHANGELOG.md no longer repeats the release-note tagline.** The tagline's wording changed
   at v0.10.1. The strip still matched only the old wording, so the new tagline leaked into
   the v0.10.1, v0.11.0 and v0.12.0 entries. Both wordings are now stripped, and

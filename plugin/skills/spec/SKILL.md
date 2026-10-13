@@ -115,13 +115,13 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
     a. **Gate first — does this feature have a user-facing surface at all?** A nightly batch job, an internal API, a schema migration does not. If it does not, say so in one line, record that in the feature document, and go to step 13 without building anything. Ask the stakeholder here whether they want a design at all; an explicit "no" ends it, and is recorded rather than re-argued later.
 
-    b. **Confirm the surface before drawing anything** — Claude Design by default, or the design tool the user or the project already uses. If the integration is unavailable in this session, note that now: the fallback is a self-contained HTML mockup in an untracked scratch folder, which is a fallback to state, not a reason to skip.
+    b. **Confirm the surface before drawing anything** — Claude Design by default, the design tool the user or the project already uses, or the host's mockup tool (Claude Code's `Artifact` tool, which renders a self-contained HTML mockup beside the conversation). If the chosen integration is unavailable in this session, note that now: the fallback is a self-contained HTML mockup in an untracked scratch folder, published through the mockup tool where there is one — a fallback to state, not a reason to skip.
 
     c. **Find the design system**, per the search order in riprap's `instructions/design.md` (the session router names its absolute path): the user's own design system, then the project's instructions and theme config, then the visual identity and components already visible in shipped features. If the project uses a frontend library, design in that library's own components and scale. If none of the three answers, propose the palette, type scale and spacing — and get them agreed rather than assumed.
 
     d. **Build the full design.** A feature is being defined here, so the target is every step of the user journey from Phase 2, every state of each screen (design.md's state list: empty, loading, partial, error, permission-denied, disabled, overflow), the dead ends, the entry points, and the narrowest supported width. Use fabricated-but-realistic sample data. A complete design scales with the feature and its blast radius — one dialog and its states completely designs a one-dialog feature.
 
-    e. Show the design to the stakeholder, saying which design system it was assembled from and which surface it lives on.
+    e. **Present the design in the UI** — open it on its surface, or publish it through the mockup tool so it renders in the session; a file path or a description is not presenting it. Say which design system it was assembled from and which surface it lives on.
 
     f. Ask for approval via that structured choice UI:
     ```

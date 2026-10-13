@@ -2,7 +2,9 @@
 
 A change that materially affects what a user sees gets a mockup before it gets an
 implementation, and the mockup goes on the surface the user has chosen — Claude Design by
-default.
+default, or the host's own mockup tool. The user sees it, in the session, and approves it
+before any code is written; then they see the built result and approve that before the work
+counts as done.
 
 Not to be confused with [design-principles.md](design-principles.md), which is next door
 and is about a different question: how much structure to build. This file is about what
@@ -23,6 +25,16 @@ Design**, unless one of these holds:
   take them in the order [mcp-servers.md](mcp-servers.md) argues for: a `bin/` wrapper or
   its own CLI first, its MCP server where the operation is genuinely structured.
 
+**The host's mockup tool is also allowed.** Where the session can render a page to the
+user directly — Claude Code's `Artifact` tool, which publishes a private HTML page and opens
+it beside the conversation, is the usual one — a self-contained HTML mockup published
+through it is an accepted surface in its own right, not only a fallback. Use it when the
+user or the project has not named a design tool, or when the change is small enough that a
+round trip through a separate design surface costs more than the picture does. It is also
+the surface for showing the user the *built* result, below. The rules in this document
+apply to it unchanged: the design system, the state list, fabricated data, and one design
+in one place.
+
 **Claude Design** is the design surface at claude.ai/design, reached from a session through
 whatever design tooling the harness exposes. It is the default for one reason: it is the
 only surface where the same session can write the mockup, read the design system back, and
@@ -41,6 +53,48 @@ place, an error the user cannot act on — each of those is cheap to redraw and 
 withdraw, because by the time it is visible the code exists, the tests assert it, and the
 discussion has quietly become how to patch it rather than whether it is right. A mockup
 moves that discussion to the point where changing your mind costs one picture.
+
+---
+
+## Present it, and wait for approval
+
+**Show the user the change in the UI, and get an explicit yes — twice.** Once for the
+mockup, before implementation. Once for the built result, before the work is called done or a
+pull request is opened.
+
+1. **The mockup, before any code.** Put it in front of the user: open it on the design
+   surface, or publish it through the mockup tool so it renders in the session. A path to a
+   file or a sentence describing the layout is not presenting it. Then ask for approval
+   through the host's structured choice UI — approve, request changes, or stop — and do not
+   start building until the answer is approve. Request changes means redraw and ask again.
+2. **The built result, before done.** Run the change and show what it actually looks like:
+   a screenshot or a live preview of the real screen, or the real output for a terminal or
+   email surface, covering the states the mockup covered. Put it next to the approved mockup,
+   say where the two differ, and ask for approval the same way. Only an approve lets you
+   claim the change is done or open the pull request; request changes sends you back to the
+   implementation, not to the mockup, unless the user says the design itself was wrong.
+
+**Silence is not approval**, and neither is a thumbs-up on something else. An approval
+covers what was shown: a material change after it — a new state, a moved control — is shown
+and approved again. It is the same rule [interaction-preferences.md](interaction-preferences.md)
+applies to plans, for the same reason: a revision inherits the approval of the original
+without inheriting its review.
+
+**Record both approvals** where the change is reviewed — the plan, the pull request body —
+next to the mockup link and the screenshot of the built result. A reviewer who cannot see
+that the user signed off has to assume nobody did.
+
+**Why:** the mockup approval catches a wrong design while it costs one picture. The second
+approval catches what the first cannot: the built screen drifting from the drawing — a
+truncated label, a state rendered differently, a spacing the library imposed — which no test
+asserts and no reviewer reading a diff can see. Asking the user to look at a diff and imagine
+the screen is asking them to do the rendering in their head, which is the step most likely to
+be skipped.
+
+**With nobody to answer**, the router's proceed-and-record applies, and narrowly. Publish the
+mockup and the built screenshots anyway, so the user can review them on their return; state in
+the pull request body that neither has been approved; and open it as a draft. A change whose
+user-visible result nobody approved is not ready to merge, however green its CI.
 
 ---
 
@@ -168,7 +222,9 @@ vocabulary. Working around it starts a second.
 
 **Before implementation, as part of the plan** — see
 [interaction-preferences.md](interaction-preferences.md). The mockup is a review surface,
-so it has to arrive while rejecting it still binds.
+so it has to arrive while rejecting it still binds. The approval of the built result comes
+after the implementation passes its tests and before the pull request opens, for the same
+reason: once the pull request is up, a rejection is a patch rather than a decision.
 
 A mockup produced after the screen is built is not a design review; it is a screenshot with
 extra steps. That is the same failure as opening a draft pull request to review a decision:
@@ -178,8 +234,9 @@ the work already exists, so every question becomes a question about patching it.
 
 ## How
 
-1. **Confirm the surface before drawing anything.** Claude Design, or the tool the project
-   named. If it is genuinely ambiguous, that is one question, asked once.
+1. **Confirm the surface before drawing anything.** Claude Design, the tool the project
+   named, or the host's mockup tool. If it is genuinely ambiguous, that is one question, asked
+   once.
 2. **Find the system before drawing anything either** — the four-step search above. It
    comes first because it decides what the components *are*; discovering the design system
    afterwards means redrawing, not adjusting.
@@ -192,12 +249,17 @@ the work already exists, so every question becomes a question about patching it.
    [secret-hygiene.md](secret-hygiene.md) governs credentials, which must never reach a
    tracked file or a session at all; this is the weaker sibling rule for everything else a
    real record contains, and it is stated here because no other document covers it.
-5. **Record the link where the change is reviewed** — the plan, the pull request body, the
+5. **Present it and get it approved** before writing any code — the first checkpoint
+   above.
+6. **Record the link where the change is reviewed** — the plan, the pull request body, the
    feature document. A mockup nobody can find gets re-derived from the code, which is
    exactly backwards.
-6. **Re-mock when the implementation diverges.** If building it revealed that the design
+7. **Re-mock when the implementation diverges.** If building it revealed that the design
    cannot work, update the mockup or say in the pull request that it is stale and why. A
-   stale mockup is worse than none: the next reader trusts it.
+   stale mockup is worse than none: the next reader trusts it. A divergence the user has not
+   seen goes back to them for approval.
+8. **Present the built result and get it approved** before calling it done — the second
+   checkpoint above.
 
 ---
 
@@ -208,15 +270,19 @@ may simply be absent — no login, no session, nothing to push to. Treat it as
 [mcp-servers.md](mcp-servers.md) says to treat any absent server: **degrade gracefully** —
 detect the absence, report it, and fall back rather than failing or pretending.
 
-The fallback is a self-contained HTML mockup in a scratch directory the repository does not
-track — `tmp/`, which `/riprap:install` seeds a `.gitignore` for. In a repository that has
+The fallback is a self-contained HTML mockup, published through the host's mockup tool where
+the session has one, so the user still sees it rendered and can still approve it. Its source
+lives in a scratch directory the repository does not track — `tmp/`, which
+`/riprap:install` seeds a `.gitignore` for. In a repository that has
 only the plugin, nothing has been seeded, so **check before writing there**: an unignored
 mockup gets swept into the next `git add -A`. [handoffs.md](handoffs.md) carries the
 check and the fix. Link it from the plan or the pull request, with one line naming
 the surface you used and why it was not the intended one.
 
 What must not happen: the tool is unreachable, the mockup is skipped, and nobody is told.
-Silence there reads as "this change needed no design".
+Silence there reads as "this change needed no design". The same goes for the approvals: a
+surface that could not render is a reason to present the mockup another way, not a reason to
+build without a yes.
 
 ---
 
@@ -233,8 +299,9 @@ notices staged paths under the project's UI globs and prints "no design linked i
 change" without blocking. Nobody has built one; it would need the project's own globs, so
 it belongs in the project's hooks rather than riprap's.
 
-The reviewer's question is: where is the mockup? *"This change did not need one"* is a
-complete answer — when it is stated, not assumed.
+The reviewer's questions are: where is the mockup, and where did the user approve it and the
+built result? *"This change did not need one"* is a complete answer — when it is stated, not
+assumed.
 
 ---
 
@@ -242,7 +309,8 @@ complete answer — when it is stated, not assumed.
 
 - **The user opted out**, for this change or standing.
 - **A production incident.** Fix it, ship it, and put the mockup on the follow-up that
-  makes the fix permanent.
+  makes the fix permanent. Show the user the fix's visible result as soon as it is out, even
+  though their approval could not come first.
 - **A throwaway spike** whose whole purpose is to find out what the thing should look like.
   Say in the pull request that it is a spike, and that the real change carries the mockup.
 

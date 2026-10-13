@@ -94,7 +94,7 @@ What it defers. The session router names each absolute path.
 | development-workflow.md | the planning gate, the bug-fix pattern sweep, what "done" has to mean, and why what you noticed is reported rather than fixed |
 | project-standards.md | the four stack commands every hook and CI call, and the form for flagging what you found |
 | ci-hygiene.md | re-running a red check without corrupting its result, and reading status by job name |
-| design.md | whether this change needed a mockup, and where its link goes |
+| design.md | whether this change needed a mockup, where its link goes, and the approval the built result needs before the pull request |
 | tech-footprint.md | what counts as a new technology, and why the unattended answer is no |
 
 design-principles.md, code-style.md, error-handling.md, secret-hygiene.md and git-hooks.md apply
@@ -370,6 +370,12 @@ Then push. If a force is ever needed, `--force-with-lease` and never the plain f
 
 ### 8. Open the pull request
 
+**Where design.md called for a mockup, get the built result approved first.** That document's
+second checkpoint: run the change, present the real screen in the UI beside the approved mockup,
+name where they differ, and wait for an explicit approve through the structured choice UI. A
+request for changes goes back to step 5. With nobody to answer, publish the screenshots anyway,
+open the pull request as a draft, and say in the body that the result is unapproved.
+
 git.md requires the pull request; code-review.md requires what goes in it. The assembly order is
 this skill's:
 
@@ -381,7 +387,8 @@ this skill's:
    because a second copy in this file is a second definition of what a disposition means. This is
    also where `tmp/riprap/decisions-<slug>.md` graduates — the overrules recorded there become
    rows here, rather than standing as a second record.
-4. **The design link**, where design.md called for one. Where the built screen diverges from the
+4. **The design link**, where design.md called for one, with the screenshot of the built result
+   and both approvals recorded. Where the built screen diverges from the
    mockup, that document's re-mock rule applies and it has two branches, not one: update the
    mockup, or declare it stale in the body and say why. A stale mockup nobody flagged is worse
    than none.

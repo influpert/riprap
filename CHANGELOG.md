@@ -59,6 +59,15 @@ per-version file, never this one: `bin/release --changelog` regenerates it, and
   every locale.** Under `LC_ALL=C`, which many CI images and some shells use, grep read the
   curly apostrophe as three separate bytes. A correctly worded devil's-advocate dispatch was
   missed, and ExitPlanMode was blocked.
+- **The merge gate checks the pull request the command actually merges.** It looked the pull
+  request up from the session's own checkout, whatever repository the command was in. Run after
+  `cd` into another repository, or given `--repo`, a URL, or a flag before the number, it checked
+  some other pull request. When that one was harmless, it allowed a merge that should have been
+  held. It now reads the command the way gh will: the pull request among the merge's arguments,
+  the repository from `--repo`, `GH_REPO` or the directory after `cd`. Anything it can't read
+  with certainty is refused. It also stopped refusing commands that only mention a merge: a
+  commit message, a heredoc body, a comment or a grep pattern containing `gh pr merge` no longer
+  counts as one.
 - **CHANGELOG.md no longer repeats the release-note tagline.** The tagline's wording changed
   at v0.10.1. The strip still matched only the old wording, so the new tagline leaked into
   the v0.10.1, v0.11.0 and v0.12.0 entries. Both wordings are now stripped, and

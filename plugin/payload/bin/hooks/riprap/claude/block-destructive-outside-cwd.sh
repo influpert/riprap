@@ -18,7 +18,7 @@
 # Limits, by design, because this runs on every Bash call: shell variables are
 # not expanded; exactly one `cd &&` hop is followed. Quoted arguments — including
 # ones containing spaces — are recognised as single tokens by a quote-aware
-# tokenizer (see tokenize_words), which also handles backslash escapes per shell
+# tokenizer (tokenize_words, lib/shell-words.sh), which also handles backslash escapes per shell
 # rules. A literal `--` ends flag parsing for that invocation, so every token
 # after it is treated as a path operand and bounds-checked even if it starts
 # with `-`.
@@ -28,6 +28,11 @@
 # base to resolve targets against. Non-destructive commands still pass, since
 # there is nothing to verify.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# tokenize_words: the quote-aware splitter, shared with block-unreviewed-merge.sh.
+# shellcheck source=../lib/shell-words.sh
+. "$SCRIPT_DIR/../lib/shell-words.sh"
 
 # Commands whose every non-flag argument is a path that must stay inside the
 # working directory. Extend this if your project has others (`shred`, `trash`).
@@ -126,112 +131,6 @@ path_is_inside() {
     "$base"/*) return 0 ;;
     *) return 1 ;;
   esac
-}
-
-# Quote- and escape-aware word splitter. Splits "$1" on whitespace like
-# `read -ra`, but treats a quoted run (including spaces inside it) as ONE token
-# and strips the quotes. Plain `read -ra` has no concept of quoting and would
-# split `rm -rf "/some/other dir/outside"` into `"/some/other` and `dir/outside"`,
-# defeating the absolute-path detection entirely.
-#
-# Backslash escapes follow shell rules: unquoted, a backslash escapes the next
-# character (so an escaped space no longer splits words, and an escaped quote no
-# longer opens a quoted run); inside single quotes a backslash is literal; inside
-# double quotes it escapes only `"` and `\`. A backslash before a literal newline
-# is a line continuation and is elided.
-#
-# No variable expansion, no command substitution — this is a pure character scan
-# and never an `eval`. The input is untrusted command text we are inspecting,
-# never executing. Populates the global TOKENIZED array (bash 3.2 has no
-# namerefs, so results cannot be returned via a caller-named array).
-tokenize_words() {
-  local s="$1"
-  local i=0 len=${#s}
-  local ch nxt cur="" in_word=0 state="none"
-  local BSLASH=$'\\' NL=$'\n'
-  TOKENIZED=()
-  while [ "$i" -lt "$len" ]; do
-    ch="${s:$i:1}"
-    case "$state" in
-      single)
-        # Everything literal until the closing quote; backslash has no special
-        # meaning inside single quotes.
-        if [ "$ch" = "'" ]; then
-          state="none"
-        else
-          cur+="$ch"
-        fi
-        ;;
-      double)
-        # A backslash escapes only " and \ — the characters that decide where the
-        # quoted run ends. Any other backslash stays literal. Spaces are part of
-        # the word.
-        if [ "$ch" = "$BSLASH" ]; then
-          nxt="${s:$((i + 1)):1}"
-          case "$nxt" in
-            '"' | "$BSLASH")
-              cur+="$nxt"
-              i=$((i + 1))
-              ;;
-            "$NL")
-              i=$((i + 1))
-              ;;
-            *) cur+="$ch" ;;
-          esac
-        elif [ "$ch" = '"' ]; then
-          state="none"
-        else
-          cur+="$ch"
-        fi
-        ;;
-      *)
-        # Unquoted. A backslash escapes the very next character. A trailing
-        # backslash is literal. A backslash before a newline is a line
-        # continuation and is elided entirely — NOT treated as "escape the
-        # newline", which would splice the next line into the current token and
-        # could hide an absolute path inside it.
-        if [ "$ch" = "$BSLASH" ]; then
-          nxt="${s:$((i + 1)):1}"
-          if [ "$nxt" = "$NL" ]; then
-            i=$((i + 1))
-          elif [ -n "$nxt" ]; then
-            cur+="$nxt"
-            i=$((i + 1))
-            in_word=1
-          else
-            cur+="$ch"
-            in_word=1
-          fi
-        else
-          case "$ch" in
-            "'")
-              state="single"
-              in_word=1
-              ;;
-            '"')
-              state="double"
-              in_word=1
-              ;;
-            [[:space:]])
-              if [ "$in_word" -eq 1 ]; then
-                TOKENIZED+=("$cur")
-                cur=""
-                in_word=0
-              fi
-              ;;
-            *)
-              cur+="$ch"
-              in_word=1
-              ;;
-          esac
-        fi
-        ;;
-    esac
-    i=$((i + 1))
-  done
-  if [ "$in_word" -eq 1 ]; then
-    TOKENIZED+=("$cur")
-  fi
 }
 
 # `${CWD:-/}` guards against calling normalize_path with a genuinely empty

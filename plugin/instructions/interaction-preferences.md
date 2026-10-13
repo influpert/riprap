@@ -80,8 +80,9 @@ switch is a transport requirement, not approval of a plan or of any option.
 
 ## Always stress-test a plan before presenting it
 
-**Before exiting plan mode, dispatch at least five critic sub-agents in parallel, each
-from a distinct angle.** There is no exemption for plans that look small.
+**Before exiting plan mode, dispatch at least three sub-agents in parallel — two critics
+from distinct angles plus the devil's advocate — and five where the plan can bear it: four
+critics plus the advocate.** There is no exemption for plans that look small.
 
 **One carve-out, and only one: an unattended run.** Plan mode's whole purpose is to give a
 human a review surface, so an agent running with nobody watching — a scheduled job, a
@@ -96,7 +97,10 @@ finished, and that feeling is the thing a stress test exists to interrogate. An 
 granted by the author to the author is self-defeating — the plans that most need a second
 look are precisely the ones that have stopped feeling like they need one.
 
-Pick five or more from this menu, taking the angles that actually apply:
+Pick at least two from this menu, four where the plan touches more than one of them, taking
+the angles that actually apply. Three is the floor because below it there is no second angle
+to disagree with the first; five is the recommendation because past four critics the angles
+start to overlap and the extra agents mostly repeat each other:
 
 | Angle | The critic's question |
 |---|---|
@@ -108,9 +112,9 @@ Pick five or more from this menu, taking the angles that actually apply:
 | Codebase fit & reuse | Does something here already do this? Is this a new pattern where an existing one fits? |
 | Alternative architecture | What is the shape nobody proposed, and why is it worse? |
 
-**One angle is mandatory and is not one of the five: the devil's advocate.** Its brief is to
-argue that the plan should not be done at all — what is the case for the status quo, and what
-does this cost that nobody priced? Dispatch it *in addition to* the five, every time.
+**One angle is mandatory and is not one of the menu picks: the devil's advocate.** Its brief
+is to argue that the plan should not be done at all — what is the case for the status quo, and
+what does this cost that nobody priced? Dispatch it *in addition to* the critics, every time.
 
 **Why it cannot be a menu item:** every other angle asks how to do this well, and so every
 other angle presupposes doing it. The devil's advocate is the only critic that can come back
@@ -127,15 +131,15 @@ Findings come back classified:
 | **MINOR** | Worth doing, not worth blocking on | Note it, propose it as follow-up. |
 | **NON-ISSUE** | Considered and dismissed | Say so in one line. A dismissed concern is information: it tells the reader it was checked. |
 
-Present the plan with the surviving findings visible. "Five critics, here is what they
-found and what changed" is reviewable. "Looks good to me" is a report about a mood.
+Present the plan with the surviving findings visible. "Four critics and the advocate,
+here is what they found and what changed" is reviewable. "Looks good to me" is a report about a mood.
 
 ### A changed plan is a new plan
 
 **Whenever a plan changes materially — after review feedback, after a discovery
 mid-implementation, after a deviation report — stress-test the revision before presenting
-it.** Same bar as the first time: five or more critics from distinct angles, plus the
-devil's advocate, findings classified.
+it.** Same bar as the first time: at least two critics from
+distinct angles, four recommended, plus the devil's advocate, findings classified.
 
 Material means the approach changed, a subsystem entered or left scope, a new dependency or
 migration appeared, or the verification story changed. Reordered steps and reworded
@@ -159,18 +163,19 @@ condition for self-review.
 The unattended carve-out stated above applies here unchanged.
 
 `/riprap:advise` runs a critic roster of this shape and is a reasonable starting point, but
-it is not a substitute for the rule: its roster can come to four, none of its critics is the
-devil's advocate — its Alternative Proponent is asked for *other ways to achieve the same
+it is not a substitute for the rule: none of its critics is the devil's advocate — its Alternative Proponent is asked for *other ways to achieve the same
 objective*, which presupposes the objective — and it classifies findings its own way rather
-than as BLOCKER/MAJOR/MINOR/NON-ISSUE. Use it, then check the count, add the advocate, and
+than as BLOCKER/MAJOR/MINOR/NON-ISSUE. Use it, then add the advocate, and
 classify as above.
 
 ### Enforcement
 
 A `PreToolUse` hook — `bin/hooks/riprap/claude/require-plan-stress-test.sh` — blocks
-`ExitPlanMode` until at least six qualifying sub-agent dispatches have happened since the last
-passing check: five distinct-angle critics plus one whose prompt or description names the
-devil's advocate. The floor itself lives in `bin/hooks/riprap/lib/stress-test-patterns.sh`,
+`ExitPlanMode` until at least three qualifying sub-agent dispatches have happened since the last
+passing check, one of them with a prompt or description that names the devil's advocate. It
+enforces the floor, not the recommendation of five: a hook cannot tell a plan that needed four
+angles from one that needed two, so the extra critics are a judgement left to whoever writes
+the plan. The floor itself lives in `bin/hooks/riprap/lib/stress-test-patterns.sh`,
 project-configurable through its `.local.sh` extension point. The tool names a dispatch is
 recorded under do not: that is a fact about the runtime, not a project preference, so it is a
 plain constant in the hook script itself, corrected upstream rather than configured around.

@@ -84,6 +84,19 @@ not a reason to block today's unrelated commit.
 
 **`pre-push`** — runs `bin/test`. One job: do not push a broken build.
 
+**Neither lets the project's command write to this repository's git config.** git hands a hook
+`GIT_DIR`, and a test that runs `git init` and `git config user.name` in its own temp directory
+then writes to the hook's repository instead. From a linked worktree that is the config every
+worktree shares, and `git init` also sets `core.bare = true` there. The test identity then
+authors every later commit, and nothing fails. So `pre-push` runs `bin/test` with git's
+repository-local variables cleared (`git rev-parse --local-env-vars`), and both hooks compare
+the config before and after their command. A change outside `branch.*` and `remote.*` rejects
+the push or commit, and the hook names each line that changed. It doesn't put the file back: another
+session may have changed it in the same window. `bin/lint` keeps the hook's environment, because
+under `git commit -a` the staged content is in a temporary index that only `GIT_INDEX_FILE` names.
+A test helper that runs git should still clear those variables itself, because nothing protects
+a suite run from some other hook or from a shell that exported them.
+
 Both hooks skip cleanly when the stub they call is not configured yet, printing a notice instead of
 failing. A template that blocks your first commit before you have set anything up is one you delete.
 

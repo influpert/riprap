@@ -47,7 +47,23 @@ if [ ${#STAGED[@]} -gt 0 ] && [ -x bin/lint ] && ! grep -q '^# riprap:stub$' bin
   # Deciding here which extensions matter would mean this hook knowing the
   # project's stack, which is exactly what bin/lint exists to avoid — so the
   # contract is that bin/lint ignores what it does not handle rather than erroring.
-  if ! bin/lint "${STAGED[@]}"; then
+  # Unlike bin/test in pre-push, bin/lint keeps the hook's environment. Under
+  # `git commit -a` or `git commit <paths>` the staged content is in a temporary
+  # index that only GIT_INDEX_FILE names, and a linter that asks git what is
+  # staged has to see that one. The config is still compared around it.
+  # shellcheck source=../lib/git-env.sh
+  . "$SCRIPT_DIR/../lib/git-env.sh"
+  CONFIG_BEFORE="$(git_config_snapshot)"
+  LINT_STATUS=0
+  bin/lint "${STAGED[@]}" || LINT_STATUS=$?
+  CONFIG_AFTER="$(git_config_snapshot)"
+  if [ "$CONFIG_BEFORE" != "$CONFIG_AFTER" ]; then
+    git_config_report "bin/lint" "$CONFIG_BEFORE" "$CONFIG_AFTER"
+    echo "" >&2
+    echo "❌ Commit rejected." >&2
+    exit 1
+  fi
+  if [ "$LINT_STATUS" -ne 0 ]; then
     echo "❌ bin/lint failed. Fix the issues, or commit with --no-verify to skip." >&2
     exit 1
   fi

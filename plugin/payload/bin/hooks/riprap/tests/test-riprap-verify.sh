@@ -11,6 +11,13 @@
 # the real one back, which would leave exactly the bug this is here to catch.
 set -uo pipefail
 
+# These fixtures run `git init` and `git config user.*` in temp directories.
+# Run from a git hook, an inherited GIT_DIR points those at the repository the
+# hook belongs to instead (lib/git-env.sh), so clear git's repository-local
+# variables before any of them run.
+# shellcheck disable=SC2046
+unset $(git rev-parse --local-env-vars)
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 RIPRAP="$SCRIPT_DIR/../../../riprap"
 # shellcheck source=./test-support.sh

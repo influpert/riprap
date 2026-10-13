@@ -17,7 +17,10 @@
 # branch by two commits.
 set -uo pipefail
 
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+# git's own list of repository-local variables, not a typed one: a typed list
+# of four let GIT_COMMON_DIR and GIT_CONFIG_PARAMETERS through.
+# shellcheck disable=SC2046
+unset $(git rev-parse --local-env-vars)
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null
 export GIT_AUTHOR_NAME=riprap GIT_AUTHOR_EMAIL=riprap@example.invalid
 export GIT_COMMITTER_NAME=riprap GIT_COMMITTER_EMAIL=riprap@example.invalid

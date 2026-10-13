@@ -46,6 +46,9 @@ Plus two git hooks: `pre-commit` runs `bin/lint` on staged files and then the pa
 guardrails, and `pre-push` runs `bin/test`. Both get out of the way with a notice if the
 stack seam they call is still a stub — a template that blocks your first push before you
 have configured anything is a template you delete.
+Neither lets its command write to the repository's own git config: `bin/test` runs without
+the `GIT_DIR` git gave the hook, and a config change outside `branch.*` and `remote.*` rejects
+the push or commit.
 
 One further hook script, `lint-example.sh`, ships **deliberately unregistered**. It is an inert
 template to copy, and wiring a rule that never fires teaches people to ignore the wiring.

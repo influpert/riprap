@@ -42,14 +42,17 @@ namespaced	bin/hooks/riprap/git/pre-commit
 namespaced	bin/hooks/riprap/git/pre-push
 namespaced	bin/hooks/riprap/lib/context-usage.sh
 namespaced	bin/hooks/riprap/lib/example-patterns.sh
+namespaced	bin/hooks/riprap/lib/git-env.sh
 namespaced	bin/hooks/riprap/lib/handoff-common.sh
 namespaced	bin/hooks/riprap/lib/hook-common.sh
 namespaced	bin/hooks/riprap/lib/merge-gate-patterns.sh
 namespaced	bin/hooks/riprap/lib/secret-patterns.sh
+namespaced	bin/hooks/riprap/lib/shell-words.sh
 namespaced	bin/hooks/riprap/lib/stress-test-patterns.sh
 namespaced	bin/hooks/riprap/lib/tech-footprint-patterns.sh
 namespaced	bin/hooks/riprap/tests/test-block-destructive-outside-cwd.sh
 namespaced	bin/hooks/riprap/tests/test-block-unreviewed-merge.sh
+namespaced	bin/hooks/riprap/tests/test-git-env.sh
 namespaced	bin/hooks/riprap/tests/test-handoff-hooks.sh
 namespaced	bin/hooks/riprap/tests/test-lint-secrets.sh
 namespaced	bin/hooks/riprap/tests/test-lint-tech-footprint.sh

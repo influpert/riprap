@@ -25,6 +25,16 @@ reads the PR's changed files, and refuses if any match:
   `payment`, `billing`, `invoice`, `checkout`
 - Any dependency manifest or lockfile
 
+**It checks the pull request the command merges, not the session's.** A merge is a `gh pr merge`
+that runs: as a command, after `cd`, `&&`, `;`, a pipe, a subshell or a prefix such as `env`. The
+text inside a commit message, a heredoc body, a comment or a grep pattern is not a merge. The pull
+request is the number, URL or branch among its arguments. Its repository is the `--repo` or
+`GH_REPO` the command gives, or else the directory it runs in after any `cd`, and that is where the
+hook asks `gh pr diff`. Anything the hook can't read with certainty is refused, not guessed: a flag
+it doesn't know, `cd` to a variable, a merge run through `timeout`, `xargs` or `sudo`, or a
+shell handed the merge as text (`bash -c`, `eval`, a pipe into `sh`). To merge, run `gh pr merge`
+directly.
+
 The hook machinery is on that list deliberately. A change there can disable every other
 control in the repo, and no test suite reliably catches *"the guardrail stopped
 guarding"*. Tooling changes are exactly the class where a silent failure looks like

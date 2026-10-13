@@ -15,7 +15,26 @@ if [ ! -x bin/test ] || grep -q '^# riprap:stub$' bin/test 2>/dev/null; then
   exit 0
 fi
 
-if ! bin/test; then
+# shellcheck source=../lib/git-env.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/git-env.sh"
+
+# bin/test runs without the GIT_DIR this hook was given (lib/git-env.sh says
+# why), and the config is compared around it: a suite that writes to this
+# repository's config anyway refuses the push even when it passed, because that
+# write outlives the run and signs every later commit.
+CONFIG_BEFORE="$(git_config_snapshot)"
+STATUS=0
+git_env_isolated bin/test || STATUS=$?
+CONFIG_AFTER="$(git_config_snapshot)"
+
+if [ "$CONFIG_BEFORE" != "$CONFIG_AFTER" ]; then
+  git_config_report "bin/test" "$CONFIG_BEFORE" "$CONFIG_AFTER"
+  echo "" >&2
+  echo "❌ Push aborted." >&2
+  exit 1
+fi
+
+if [ "$STATUS" -ne 0 ]; then
   echo "" >&2
   echo "❌ Tests failed. Push aborted." >&2
   echo "   Fix them, or push with --no-verify to skip this check." >&2

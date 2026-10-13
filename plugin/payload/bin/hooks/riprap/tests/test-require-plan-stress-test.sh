@@ -264,17 +264,17 @@ rm -f "${TMPDIR:-/tmp}/riprap-plan-stress-test-$(id -u)/$(basename "$T")" 2>/dev
 echo
 echo "--- Marker write failure: unwritable marker directory blocks rather than allows ---"
 
-RO_DIR=$(mktemp -d)
-chmod 555 "$RO_DIR"
+# The marker directory's parent is a regular file, so mkdir fails with "Not a directory".
+# A read-only directory (chmod 555) would not do: root ignores permission bits, so under a
+# root CI runner or container the write succeeds and this test fails for the wrong reason.
+NOT_A_DIR=$(mktemp)
 T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
 ef=$(mktemp)
-printf '%s' "$(payload "$T")" | RIPRAP_TEST=1 RIPRAP_TEST_STATE_DIR="$RO_DIR/sub" "$HOOK" >/dev/null 2>"$ef"
+printf '%s' "$(payload "$T")" | RIPRAP_TEST=1 RIPRAP_TEST_STATE_DIR="$NOT_A_DIR/sub" "$HOOK" >/dev/null 2>"$ef"
 RC=$?
 [ "$RC" = 2 ] && ok "unwritable marker directory -> block, not a silent allow" \
   || bad "unwritable marker directory did not block: rc=$RC $(cat "$ef")"
-rm -f "$ef"
-chmod 755 "$RO_DIR"
-rm -rf "$RO_DIR"
+rm -f "$ef" "$NOT_A_DIR"
 
 echo
 echo "--- Missing jq ---"

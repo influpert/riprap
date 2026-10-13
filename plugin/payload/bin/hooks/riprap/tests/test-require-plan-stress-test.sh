@@ -117,6 +117,12 @@ check "0 dispatches -> block" 2 "$(payload "$T")"
 T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
 check "5 plain + 1 devil's-advocate -> allow" 0 "$(payload "$T")"
 
+T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")" "${ADVOCATE[@]}")
+check "2 plain + 1 devil's-advocate (the floor) -> allow" 0 "$(payload "$T")"
+
+T=$(new_transcript "$(dispatch "c1" "p1")" "${ADVOCATE[@]}")
+check "1 plain + 1 devil's-advocate (below the floor) -> block" 2 "$(payload "$T")"
+
 T=$(new_transcript "${FIVE_PLAIN[@]}")
 check "5 plain, no advocate -> block" 2 "$(payload "$T")"
 case "$ERR" in
@@ -189,12 +195,12 @@ T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
 check "first pass -> allow" 0 "$(payload "$T")"
 check "immediate re-call, no new dispatches -> block (marker advanced)" 2 "$(payload "$T" "a revised plan")"
 
-T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")" "$(dispatch "c3" "p3")")
-check "3 dispatches -> block (retry expected)" 2 "$(payload "$T")"
+T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")")
+check "2 dispatches -> block (retry expected)" 2 "$(payload "$T")"
 {
-  printf '%s\n' "$(dispatch "c4" "p4")" "$(dispatch "c5" "p5")" "$(dispatch "devil's advocate" "p6")" >>"$T"
+  printf '%s\n' "$(dispatch "devil's advocate" "p3")" >>"$T"
 }
-check "3 more dispatched after a block, 6 total -> allow (blocked attempt did not reset progress)" 0 "$(payload "$T")"
+check "1 more dispatched after a block, 3 total -> allow (blocked attempt did not reset progress)" 0 "$(payload "$T")"
 
 T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
 printf 'not-a-number\ngarbage-second-line\n' > "$STATE_DIR/$(basename "$T")"

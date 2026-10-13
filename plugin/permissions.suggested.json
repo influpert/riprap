@@ -9,7 +9,13 @@
     "",
     "Read permissions.md before trusting the deny list. Short version: these are",
     "literal prefix matches, they stop mistakes rather than adversaries, and the",
-    "real enforcement is the hooks."
+    "real enforcement is the hooks.",
+    "",
+    "Artifact is the host's mockup tool, which design.md allows for mockups and for",
+    "showing the built result. This entry allows every Artifact action, not only a new",
+    "private publish: updating an existing page, including one already shared with",
+    "others, and reading pages other people own. The host still confirms deletes.",
+    "Merge it only if that scope is acceptable to you."
   ],
   "permissions": {
     "allow": [
@@ -20,6 +26,7 @@
       "Write",
       "WebFetch",
       "WebSearch",
+      "Artifact",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",

@@ -158,8 +158,8 @@ second is the one that gets forgotten:
 
 **Three things get written, and none of them is source.** Plan mode's own file, which is the
 review surface. The durable artifact in step 8, after approval, carrying the same content. And —
-only when step 3 needs it — design.md's fallback mockup, when the design tool is unreachable and
-the change has a user-facing surface.
+only when step 3 needs it — design.md's HTML mockup, when the change has a user-facing surface and
+the mockup goes through the host's mockup tool or the fallback.
 
 **That third one needs plan mode to be left and re-entered, so do it explicitly.** You cannot
 know a mockup is needed before reading, and this step requires plan mode before the first read,

@@ -220,7 +220,8 @@ produces a branch that fails at gate 2 with the whole implementation already wri
    write a test from and gate 1 has nothing to review against.
 3. **Does it touch what a user sees, and does it carry the mockup design.md asks for — and the
    user's approval of it?** If it is material and there is no link, stop. If there is a link but
-   no recorded approval, run design.md's first checkpoint now, or stop. Building the screen from your own judgement is what that
+   no recorded approval — an approved plan carrying the mockup link and design.md's approval record
+   counts — run design.md's first checkpoint now, or stop. Building the screen from your own judgement is what that
    rule exists to prevent, and a mockup produced afterwards is a screenshot with extra steps.
 
 Where the change is a bug fix, development-workflow.md's pattern sweep should already be in the
@@ -318,8 +319,8 @@ Everything you noticed and did not fix goes in the list for step 8, in project-s
 form.
 
 **Where design.md called for a mockup, its second checkpoint closes this step** — the built
-result approved in the UI, including that document's unattended branch. It sits here, before
-gate 2, so the build the reviewers read is the one the user approved, and a request for changes
+result approved in the UI. With nobody to answer, the approval stays open and step 8 carries it.
+It sits here, before gate 2, so the build the reviewers read is the one the user approved, and a request for changes
 is more of this step rather than a return past a gate that has already run.
 
 ### 6. Gate 2 — have the implementation reviewed
@@ -375,6 +376,9 @@ Once the pull request exists, `gh pr diff` is the source of truth instead.
 Then push. If a force is ever needed, `--force-with-lease` and never the plain form.
 
 ### 8. Open the pull request
+
+**Where design.md's built-result approval is still outstanding**, open the pull request as a draft,
+named in the body as awaiting that approval, per that document's unattended branch.
 
 git.md requires the pull request; code-review.md requires what goes in it. The assembly order is
 this skill's:

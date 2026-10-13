@@ -72,8 +72,9 @@ pull request is opened.
    HTML file in the user's browser or show a rendered screenshot inline. A path to a file or a
    sentence describing the layout is not presenting it. Then ask through the structured choice
    UI [interaction-preferences.md](interaction-preferences.md) defines, and do not start
-   building until the answer is an explicit approve. Where the mockup is presented rendered
-   inside a plan, approving the plan is that approval; do not ask twice for one decision.
+   building until the answer is an explicit approve. Where the plan links the rendered mockup
+   and the user approves the plan, that is the approval — the plan records it as text in the
+   form below — and nothing asks twice for one decision.
 2. **The built result, before done.** Run the change and show what it actually looks like —
    a screenshot or a live preview of the real screen, or the real output for a terminal or
    email surface — covering the states the mockup covered. Put it next to the approved mockup,
@@ -87,7 +88,7 @@ task does not waive them: confidence about what was asked says nothing about whe
 user likes what they see.
 
 **Run the built result against fabricated or seeded data**, never production or a copy of
-it: How step 4's sample-data rule applies to the screenshot exactly as it does to the mockup.
+it — step 4 of **How**, below, applies to the screenshot exactly as it does to the mockup.
 Before publishing a capture, check it for real records and for credentials — the address
 bar, a settings or API-key screen, a devtools panel. A screenshot is a route around
 [secret-hygiene.md](secret-hygiene.md) that no hook can see.

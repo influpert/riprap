@@ -19,7 +19,9 @@ than at some later filtering step. There is no later filtering step.
 ## Rules
 
 **Never read a secret-bearing file into context.** Not with Read, not with Grep, not with
-`cat`, `head`, `less`, `source`, or a `<` redirect. The list currently covered:
+`cat`, `bat`, `base64`, `git show HEAD:.env`, `source`, or a `<` redirect — and not with a
+recursive search that happens to reach one. `grep -r KEY .` opens `.env` as surely as
+`cat .env` does; it just does not say so. The list currently covered:
 
 - `.env`, `.env.*`
 - `*.pem`, `id_rsa`, `id_ed25519`
@@ -41,7 +43,8 @@ what they are for. Keep them current so nobody has a reason to open the real one
 |---|---|
 | Reading `.env` to see what is configured | Read `.env.example`, which lists the variable names |
 | Printing a value to check it is set | `test -n "$MY_VAR" && echo set` — presence without disclosure |
-| `grep -r PATTERN .` from the repo root | Scope it: `grep -r PATTERN src/ lib/` |
+| `grep -r PATTERN .` from the repo root | Scope it: `grep -r PATTERN src/ lib/`, or leave them out: `grep -r --exclude='.env*' PATTERN .` |
+| A Grep whose glob could name a secret file | Narrow its `path`, or add a negated glob: `*.json !settings.local.json` |
 | Editing `.env` yourself | Edit `.env.example`; ask the human to fill in the real one |
 | Pasting a key into a config file | Reference the variable name and let the runtime supply it |
 
@@ -50,15 +53,44 @@ test environment` is a useful sentence that discloses nothing.
 
 ## Enforcement
 
-Three layers, because prose alone does not survive a busy afternoon:
+Two layers are on once `/riprap:install` has run, and a third is yours to opt into, because
+prose alone does not survive a busy afternoon.
 
-1. **Permission rules** — `.claude/settings.json` denies `Read` on the paths above.
-2. **A PreToolUse hook** — `bin/hooks/riprap/claude/lint-secrets.sh` blocks reads, blocks Bash
-   commands that read those files, and scans written content for token values.
-3. **A pre-commit hook** — `bin/hooks/git/pre-commit` scans staged additions.
+1. **A PreToolUse hook** — `bin/hooks/riprap/claude/lint-secrets.sh`, on Read, Grep, Bash,
+   Edit and Write. It refuses:
+   - **Read or Grep on a secret-bearing path**, and a Grep pointed at `secrets/` or
+     `config/credentials/` itself.
+   - **A Bash command that names one** in an argument or a `<` redirect. Any command counts
+     except a short list that only acts on a name — `ls`, `test`, `rm`, `mv`, `chmod`,
+     `ln`, `echo`, `git add`, `git rm`, `git check-ignore` and a few like them. A list of
+     *readers* is always one short, because the programs that can print a file have no end,
+     and the one it lacks is the one tried after `cat` is refused. `git show <rev>:<path>`
+     reads the path it names; `git log -- .env` does not, until `-p` asks for the patch.
+     Inside a command, substitutions (`"$(cat .env)"`) and `bash -c '…'` scripts are read
+     too; comments, heredoc bodies and quoted prose are not.
+   - **A search that reaches one without naming it**: `grep -r`, `find … -exec`, and
+     ripgrep or the Grep tool once a glob, `--no-ignore` or `-u` takes them past
+     `.gitignore` — a glob that names a file overrides `.gitignore` for it. This fires only
+     when such a file is really there and git does not track it, and the search's own
+     `--exclude`, `--include`, `--exclude-dir` and negated globs are honoured. The message
+     lists the files and the exclusion that leaves them out.
+   - **Edit or Write content containing a token value.**
 
-Layers 2 and 3 share one pattern library, `bin/hooks/riprap/lib/secret-patterns.sh`, so a rule
-has a single definition and cannot drift between its two enforcers.
+   Every refusal names the path it matched and the way forward.
+2. **A pre-commit hook** — `bin/hooks/git/pre-commit` refuses a staged secret-bearing file
+   and scans staged additions for token values.
+3. **Permission rules, if you add them.** riprap ships `permissions.suggested.json`, whose
+   `deny` list refuses `Read` on the paths above. `/riprap:install` shows it and offers its
+   entries for you to choose; it never writes `.claude/settings.json` itself, because a
+   change to permissions needs a human (see [permissions.md](permissions.md)). To opt in,
+   copy the `Read(...)` entries from that file's `deny` list into `permissions.deny` in
+   `.claude/settings.json`. They are literal path matches, so they back the hook up rather
+   than replace it.
+
+Layers 1 and 2 share one pattern library, `bin/hooks/riprap/lib/secret-patterns.sh`, so which
+files count as secret-bearing has a single definition and cannot drift between its two
+enforcers. Whether a command or a search *reads* one is decided in
+`bin/hooks/riprap/lib/secret-reads.sh`, which asks that same definition about every path.
 
 Two properties of that library are deliberate and worth not "fixing":
 
@@ -67,6 +99,29 @@ Two properties of that library are deliberate and worth not "fixing":
 - **It matches prefixed vendor tokens only** — no generic `PASSWORD=` or `SECRET=`
   heuristics. Those false-positive constantly on docs, tests, and fixtures, and a
   guardrail people routinely override is a guardrail that is already off.
+
+### What the hook allows on purpose
+
+- **A file handed to a program, not printed.** `--env-file .env` (docker, compose, node,
+  bun, deno, uv), `ssh -i key.pem`, and an output option (`--output`, `-out`) pass. Any
+  other program that names a secret file is presumed to read it — `dotenv -e .env`,
+  `vercel env pull .env.local`. If one of yours only loads the file, a human adds the
+  command to `SECRET_NONREADING_COMMANDS` in `bin/hooks/lib/secret-patterns.local.sh`.
+- **A tracked file reached by a search.** A committed secret is already in every clone and
+  needs rotating, not guarding; counting committed fixtures (`test/fixtures/server.pem`, a
+  checked-in `.env.development`) would refuse every search from the root. Naming one still
+  counts.
+- **A Grep, or plain `rg`, with `.gitignore` in force.** They leave an ignored `.env`
+  alone, so the hook does not walk the tree on every search to second-guess them. A secret
+  file that `.gitignore` does not cover is within their reach: keep every one of them
+  ignored.
+
+### What it does not catch
+
+It catches an honest slip and the obvious retry after a block. It does not follow a path in
+a variable (`cat "$ENV_FILE"`), a script or program that opens the file itself, a command
+fed to a shell on stdin or through `xargs`, or a recursive `git grep --untracked`, `ag` or
+`ack`. Those are the cases the rule above is for.
 
 ## The escape hatch
 

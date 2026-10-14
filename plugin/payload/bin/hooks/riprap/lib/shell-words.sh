@@ -19,6 +19,14 @@
 #                after its `<<` has, so a reader walking the tokens knows which
 #                command it belongs to: the one whose ending operator is the
 #                first at or after that index.
+#   TOKEN_SUBST  the body of every `$(...)` and backtick substitution that sat
+#                inside double quotes. Unquoted, the operators split one out as
+#                its own command; inside double quotes it stays one word with the
+#                rest of the string, and `echo "$(cat f)"` would read as an echo.
+#                Recorded alongside, never instead: the substitution's text is
+#                still part of its word in TOKENIZED. Single-quoted text is
+#                literal and is not here, and neither is an escaped backtick,
+#                which is a literal one, nor `$((...))`, which is arithmetic.
 
 # tokenize_words TEXT — split TEXT into words, like `read -ra` but with quoting.
 #
@@ -62,6 +70,16 @@ tokenize_command() { tokenize_shell "$1" command; }
 # re-split under it.
 tokenize_redirects() { tokenize_shell "$1" redirects; }
 
+# tokenize_reads TEXT — tokenize_redirects, and also keep `<&` together as one
+# redirection word (`0<&3`), and split the here-string operator `<<<` out as a
+# word of its own, where the other modes keep `<<<` glued to the word after it.
+# So `cat<.env` comes back as `cat` `<` `.env`, and `cat <<<"$x"` as `cat` `<<<`
+# `$x`.
+#
+# Its own mode because the readers of redirects mode take a glued `<<<word` as
+# one word, and lib/shell-walk.sh reads `<&` as `<` then the operator `&`.
+tokenize_reads() { tokenize_shell "$1" reads; }
+
 # Backslash escapes follow shell rules in every mode: unquoted, a backslash
 # escapes the next character (so an escaped space no longer splits words, and an
 # escaped quote no longer opens a quoted run); inside single quotes a backslash
@@ -76,10 +94,10 @@ tokenize_redirects() { tokenize_shell "$1" redirects; }
 # is the commonest multi-line command an agent writes; read as plain double
 # quotes, one stray `"` in the message closed them and left the rest of the
 # message to be read as commands.
-tokenize_shell() {  # $1 = text, $2 = words | command | redirects
-  local s="$1" mode="$2" cmd=0
+tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
+  local s="$1" mode="$2" cmd=0 redir=0
   local i=0 len=${#s}
-  local ch nxt cur="" cur_q=0 in_word=0 state="none" start
+  local ch nxt cur="" cur_q=0 in_word=0 state="none" start _tw_end
   local BSLASH=$'\\' NL=$'\n' TAB=$'\t'
   local -a heredocs=()
   TOKENIZED=()
@@ -87,8 +105,11 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
   TOKEN_QUOTED=()
   TOKEN_HEREDOC_AT=()
   TOKEN_HEREDOC_BODY=()
-  # Everything command mode does, redirects mode does too.
+  TOKEN_SUBST=()
+  # Everything command mode does, redirects mode does too, and reads mode does
+  # everything redirects mode does.
   [ "$mode" = words ] || cmd=1
+  case "$mode" in redirects | reads) redir=1 ;; esac
   while [ "$i" -lt "$len" ]; do
     ch="${s:$i:1}"
     case "$state" in
@@ -99,19 +120,36 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
         if [ "$ch" = "$BSLASH" ]; then
           nxt="${s:$((i + 1)):1}"
           case "$nxt" in
-            '"' | "$BSLASH") cur+="$nxt"; i=$((i + 1)) ;;
+            # An escaped backtick is a literal one, never a substitution.
+            '"' | "$BSLASH" | '`') cur+="$nxt"; i=$((i + 1)) ;;
             "$NL") i=$((i + 1)) ;;
-            # An escaped `$` or backtick is a literal one. Kept as it always was,
-            # backslash and all, but taken in one step so `\$(` opens nothing.
-            '$' | '`') cur+="$ch$nxt"; i=$((i + 1)) ;;
+            # An escaped `$` is a literal one. Kept as it always was, backslash
+            # and all, but taken in one step so `\$(` opens nothing.
+            '$') cur+="$ch$nxt"; i=$((i + 1)) ;;
             *) cur+="$ch" ;;
           esac
         elif [ "$ch" = '"' ]; then
           state="none"
         elif [ "$ch" = '$' ] && [ "${s:$((i + 1)):1}" = "(" ]; then
+          # Taken into the word whole, ended where the shell ends it. A command
+          # substitution's body is also recorded; `$((` is arithmetic and runs
+          # nothing.
           start=$i
           _tw_subst_end
+          if [ "${s:$((start + 2)):1}" != "(" ]; then
+            if [ "${s:$i:1}" = ")" ]; then
+              TOKEN_SUBST+=("${s:$((start + 2)):$((i - start - 2))}")
+            else
+              TOKEN_SUBST+=("${s:$((start + 2))}")
+            fi
+          fi
           cur+="${s:$start:$((i - start + 1))}"
+        elif [ "$ch" = '`' ]; then
+          # A backtick substitution: record its body, and take it into the word
+          # whole.
+          _tw_subst_body "$((i + 1))"
+          cur+="${s:$i:$((_tw_end - i + 1))}"
+          i="$_tw_end"
         else
           cur+="$ch"
         fi
@@ -134,8 +172,15 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
           if [ "${s:$((i + 2)):1}" = "<" ]; then
             # `<<<`, a here-string, whose word is an ordinary word. Taken whole:
             # one `<` at a time, its last two read as a heredoc, and the word
-            # vanished as that heredoc's delimiter.
-            cur+="<<<"; in_word=1; i=$((i + 2))
+            # vanished as that heredoc's delimiter. Reads mode hands the operator
+            # back as a word of its own.
+            if [ "$mode" = reads ]; then
+              _tw_flush
+              TOKENIZED+=("<<<"); TOKEN_OP+=(0); TOKEN_QUOTED+=(0)
+            else
+              cur+="<<<"; in_word=1
+            fi
+            i=$((i + 2))
           else
             # A heredoc: remember its delimiter, and skip its body at the next
             # newline.
@@ -147,7 +192,7 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
           _tw_flush
           _tw_op ";"
           [ "${#heredocs[@]}" -eq 0 ] || _tw_heredoc_bodies keep
-        elif [ "$mode" = redirects ] && { [ "$ch" = ">" ] || [ "$ch" = "<" ]; }; then
+        elif [ "$redir" -eq 1 ] && { [ "$ch" = ">" ] || [ "$ch" = "<" ]; }; then
           # A redirection. Digits already gathered, unquoted, are its
           # descriptor; any other word in progress ends here.
           nxt=""
@@ -162,6 +207,7 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
           nxt+="$ch"
           case "$ch${s:$((i + 1)):1}" in
             ">>" | ">|" | "<>") nxt+="${s:$((i + 1)):1}"; i=$((i + 1)) ;;
+            "<&") if [ "$mode" = reads ]; then nxt+="&"; i=$((i + 1)); fi ;;
           esac
           TOKENIZED+=("$nxt"); TOKEN_OP+=(0); TOKEN_QUOTED+=(0)
         else
@@ -314,3 +360,20 @@ _tw_flush() {
   fi
 }
 _tw_op() { TOKENIZED+=("$1"); TOKEN_OP+=(1); TOKEN_QUOTED+=(0); }
+
+# _tw_subst_body START — from START, just after an opening backtick inside double
+# quotes, find the next unescaped backtick: record the text between in
+# TOKEN_SUBST, and leave the closing backtick's index in _tw_end (the end of the
+# text, when it never comes). A `$(` inside double quotes is _tw_subst_end's.
+_tw_subst_body() {
+  local j="$1" c
+  while [ "$j" -lt "$len" ]; do
+    c="${s:$j:1}"
+    if [ "$c" = "$BSLASH" ]; then j=$((j + 2)); continue; fi
+    [ "$c" != '`' ] || break
+    j=$((j + 1))
+  done
+  [ "$j" -le "$len" ] || j=$len
+  TOKEN_SUBST+=("${s:$1:$((j - $1))}")
+  _tw_end="$j"
+}

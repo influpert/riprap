@@ -5,7 +5,9 @@
 #
 # Two concerns:
 #   1. Secret-bearing files (.env*, key files) must never be read into an agent
-#      context or committed.
+#      context or committed. secret_env_file_path is the ONLY definition of which
+#      paths those are; the command and search checks in secret-reads.sh ask it
+#      rather than keeping a list of their own, which is how they used to drift.
 #   2. High-signal secret token values must never be written into files or
 #      staged in a commit.
 #
@@ -108,33 +110,14 @@ secret_scan_text() {
   return $found
 }
 
-# Returns 0 if a shell command reads a secret-bearing file — `cat .env`,
-# `grep FOO .env.development`, `source config/master.key`, `< .env`.
-#
-# Requires a read-style command AND a secret-file argument in the same pipeline
-# segment, matched per line, so heredoc bodies, commit messages, and docs that
-# merely mention the filenames don't false-positive.
-#
-# Heuristic by design: it stops the accidental leak, which is the realistic
-# failure. It is not a sandbox and will not stop a determined bypass.
-secret_command_touches_env() {
-  local cmd stripped
-  cmd="$1"
-  # References to example/template files never count.
-  stripped=$(printf '%s' "$cmd" | sed -E "s/[^[:space:]\"']*\.(example|sample|template|dist)//g")
-
-  local readers='(cat|grep|egrep|fgrep|rg|ag|ack|head|tail|less|more|sed|awk|cut|sort|uniq|strings|xxd|od|source|cp|scp|rsync|curl|open|code|vim|vi|nano|emacs)'
-  local files="(^|[[:space:]\"'=/])(\\.env[.A-Za-z0-9_-]*|master\\.key|id_rsa|id_ed25519|\\.npmrc|\\.netrc|[^[:space:]]*\\.pem|credentials/[^[:space:]]*|secrets/[^[:space:]]*|settings\\.local\\.json)"
-
-  printf '%s\n' "$stripped" \
-    | grep -Eq "(^|[^A-Za-z0-9_.-])${readers}([[:space:]][^|;&]*)?${files}" && return 0
-
-  # Redirection reads: `< .env`, `<config/master.key`
-  printf '%s\n' "$stripped" \
-    | grep -Eq "<[[:space:]]*[^<>[:space:]]*(\\.env|master\\.key|id_rsa|\\.pem|credentials/|secrets/)" && return 0
-
-  return 1
-}
+# Whether a Bash command or a search READS one of these files —
+# secret_command_touches_env, secret_grep_tool_reaches, secret_dir_path — lives in
+# secret-reads.sh. It is sourced here, ahead of the extension point below, so a
+# project's local file can extend its lists or replace its functions in the same
+# place as everything else. Only the Claude hook calls it; the pre-commit hook
+# judges staged paths and added lines, which never needed a command parser.
+# shellcheck source=./secret-reads.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/secret-reads.sh"
 
 # --- project extension point ------------------------------------------------
 # riprap owns this file and overwrites it on every update, so a pattern added

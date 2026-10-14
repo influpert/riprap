@@ -14,7 +14,7 @@
 #                or backslash-escaped, else 0. Stripping the quotes makes `'>'`
 #                and `>` the same word; this is what still tells them apart.
 #   TOKEN_HEREDOC_AT, TOKEN_HEREDOC_BODY
-#                command and redirects modes only: one entry per heredoc, in
+#                every mode but words: one entry per heredoc, in
 #                order. The body's text, and the index in TOKENIZED the token
 #                after its `<<` has, so a reader walking the tokens knows which
 #                command it belongs to: the one whose ending operator is the
@@ -83,12 +83,14 @@ tokenize_reads() { tokenize_shell "$1" reads; }
 # Backslash escapes follow shell rules in every mode: unquoted, a backslash
 # escapes the next character (so an escaped space no longer splits words, and an
 # escaped quote no longer opens a quoted run); inside single quotes a backslash
-# is literal; inside double quotes it escapes only `"` and `\`. A backslash
+# is literal; inside double quotes it escapes `"`, `\` and a backtick, and keeps
+# `\$` as written, backslash and all, so it opens nothing. A backslash
 # before a literal newline is a line continuation and is elided, NOT treated as
 # "escape the newline", which would splice the next line into the current word.
 #
 # A command substitution inside double quotes ("$(...)") is part of the word it
-# sits in, and is kept whole, unread. But the shell parses its inside afresh, so
+# sits in, and is kept whole, never split into commands of its own; its body is
+# recorded in TOKEN_SUBST. But the shell parses its inside afresh, so
 # a quote in there neither closes the outer quotes nor opens new ones, and a
 # heredoc body in there is data whatever it holds. `git commit -m "$(cat <<'EOF'`
 # is the commonest multi-line command an agent writes; read as plain double

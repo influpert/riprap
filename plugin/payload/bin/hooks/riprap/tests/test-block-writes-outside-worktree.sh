@@ -97,6 +97,38 @@ check "redirect after a heredoc -> block" 2 \
   "$(bash_in "$REPO" "cat <<'EOF' > $OTHER/x\\nbody\\nEOF")"
 
 echo
+echo "--- A quoted > is an argument; an unquoted one is a redirection, glued or not ---"
+check "grep for a single-quoted > -> allow (nothing is written)" 0 \
+  "$(bash_in "$REPO" "grep -c '>' /etc/hosts")"
+check "...the same grep redirected outside -> block" 2 \
+  "$(bash_in "$REPO" "grep -c x /etc/hosts > $OTHER/count")"
+check "grep for a quoted > in a file under ~ -> allow" 0 \
+  "$(bash_in "$REPO" "grep -n '>' ~/.bashrc")"
+check "...the same grep redirected under ~ -> block" 2 \
+  "$(bash_in "$REPO" "grep -n x ~/.bashrc > ~/hits")"
+check "double-quoted > argument -> allow" 0 "$(bash_in "$REPO" "echo \\\">\\\" $OTHER/x")"
+check "...the same echo, unquoted -> block" 2 "$(bash_in "$REPO" "echo > $OTHER/x")"
+check "backslash-escaped > argument -> allow" 0 "$(bash_in "$REPO" "echo a \\\\> $OTHER/x")"
+check "...the same echo, unescaped -> block" 2 "$(bash_in "$REPO" "echo a > $OTHER/x")"
+check "unquoted > with a quoted target glued on -> block" 2 \
+  "$(bash_in "$REPO" "echo hi >\\\"$OTHER/x\\\"")"
+check "...the same, with the target inside -> allow" 0 "$(bash_in "$REPO" "echo hi >\\\"out.txt\\\"")"
+check "redirect glued to the word before it, outside -> block" 2 "$(bash_in "$REPO" "echo hi>$OTHER/x")"
+check "redirect glued to the word before it, inside -> allow" 0 "$(bash_in "$REPO" "echo hi>out.txt")"
+check "append glued to the word before it, outside -> block" 2 "$(bash_in "$REPO" "echo hi>>$OTHER/log")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "echo hi>>tmp/log")"
+check "a word ending in a digit is not a descriptor -> block" 2 "$(bash_in "$REPO" "echo hi2>$OTHER/x")"
+check "glued stderr redirect outside -> block" 2 "$(bash_in "$REPO" "make 2>$OTHER/err")"
+check "glued stderr to /dev/null -> allow" 0 "$(bash_in "$REPO" "make 2>/dev/null")"
+check "glued >&2 is not a file -> allow" 0 "$(bash_in "$REPO" "echo oops>&2")"
+check "2>&1 does not end the command -> block" 2 "$(bash_in "$REPO" "make 2>&1 | tee $OTHER/log")"
+check ">| outside -> block" 2 "$(bash_in "$REPO" "echo hi >| $OTHER/x")"
+check ">| inside -> allow" 0 "$(bash_in "$REPO" "echo hi >| out.txt")"
+check ">| glued outside -> block" 2 "$(bash_in "$REPO" "echo hi>|$OTHER/x")"
+check "2>| outside -> block" 2 "$(bash_in "$REPO" "make 2>| $OTHER/err")"
+check "...2>| inside -> allow" 0 "$(bash_in "$REPO" "make 2>| tmp/err")"
+
+echo
 echo "--- Bash commands that write ---"
 check "tee outside -> block" 2 "$(bash_in "$REPO" "echo hi | tee -a $OTHER/log")"
 check "tee inside -> allow" 0 "$(bash_in "$REPO" "echo hi | tee tmp/log")"
@@ -125,6 +157,16 @@ check "cd into a subdirectory, then a relative write -> allow" 0 "$(bash_in "$RE
 check "cd .. out of the worktree, then a relative write -> block" 2 "$(bash_in "$REPO" "cd .. && touch x")"
 check "a subshell's cd does not leak out -> allow" 0 \
   "$(bash_in "$REPO" "(cd $OTHER && ls) && touch inside.txt")"
+check "pushd out, then a relative write -> block" 2 "$(bash_in "$REPO" "pushd $OTHER && echo hi > out.txt")"
+check "pushd into a subdirectory, then a relative write -> allow" 0 "$(bash_in "$REPO" "pushd src && touch a.txt")"
+check "pushd out and popd back, then a relative write -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER && ls && popd && touch inside.txt")"
+check "pushd in, pushd out, one popd -> block (still outside the first)" 2 \
+  "$(bash_in "$REPO" "pushd $OTHER/a; pushd src; popd; touch x")"
+check "pushd in two levels, popd twice -> allow" 0 \
+  "$(bash_in "$REPO" "pushd src; pushd $OTHER; popd; touch x")"
+check "...but an absolute write after a pushd is still checked -> block" 2 \
+  "$(bash_in "$REPO" "pushd src && touch $OTHER/x")"
 
 echo
 echo "--- A cd the hook cannot expand leaves relative targets unchecked, not refused ---"
@@ -135,6 +177,11 @@ check "cd to a variable, then a relative write -> allow" 0 \
 check "cd to a loop variable inside a subshell -> allow" 0 \
   "$(bash_in "$REPO" "for d in a b; do (cd \\\"\$d\\\" && touch stamp); done")"
 check "cd - then a relative write -> allow" 0 "$(bash_in "$REPO" "cd /x; cd -; touch y")"
+check "a bare pushd, which swaps, then a relative write -> allow" 0 \
+  "$(bash_in "$REPO" "pushd /x; pushd; touch y")"
+check "popd with nothing pushed, then a relative write -> allow" 0 "$(bash_in "$REPO" "popd; touch y")"
+check "no cwd at all, popd, then a relative write -> block (still fails closed)" 2 \
+  '{"tool_name":"Bash","tool_input":{"command":"popd; touch y"}}'
 check "...but an absolute write after it is still checked -> block" 2 \
   "$(bash_in "$REPO" "cd \\\"\$REPO\\\" && touch $OTHER/x")"
 check "no cwd at all, cd -, then a relative write -> block (still fails closed)" 2 \

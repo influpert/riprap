@@ -34,10 +34,20 @@ if [ "$CONFIG_BEFORE" != "$CONFIG_AFTER" ]; then
   exit 1
 fi
 
+# The second paragraph is for the tests-first case. A commit holding only new
+# tests is meant to fail, and it is meant to stay local until the code that
+# makes it pass exists. An agent that pushed it hit this message, and the old
+# wording offered --no-verify as the way through, which publishes a red branch
+# rather than finishing the work.
 if [ "$STATUS" -ne 0 ]; then
-  echo "" >&2
-  echo "❌ Tests failed. Push aborted." >&2
-  echo "   Fix them, or push with --no-verify to skip this check." >&2
+  {
+    echo ""
+    echo "❌ Tests failed. Push aborted."
+    echo "   If these are tests written ahead of their implementation, this push is"
+    echo "   early, not broken: keep the commit local, implement, and push once bin/test"
+    echo "   passes. Otherwise fix the failure. --no-verify skips this check; use it only"
+    echo "   when a person has asked for a red push."
+  } >&2
   exit 1
 fi
 

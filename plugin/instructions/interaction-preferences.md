@@ -292,26 +292,33 @@ would be taking the shape of a rule without the reason for it.
 
 ### When review findings arrive: fix, then offer
 
-**A review's blocking findings are not a question.** When findings come back — from
-`/riprap:review`, from a critic, from a human reviewer on a pull request — start on every
+**A review's blocking findings are not a question.** When findings come back against code or
+tests — from `/riprap:review`, or from a human reviewer on a pull request — start on every
 BLOCKER and MAJOR at once, without pausing to ask which of them to fix. The classes above
 already answered that: code-review.md and testing.md both require the blocking tier fixed, so a
 "which of these shall I fix?" spends a round trip to be told what the rules already say, and
-leaves the work idle for exactly as long as the user takes to reply.
+leaves the work idle for exactly as long as the user takes to reply. A plan stress-test's
+findings are not this section's: they follow that section's own table, inside the plan that plan
+mode reviews.
 
-**While that work is under way, offer the MINORs.** Put them to the user through the
+**As you start, tell the user about the MINORs and suggest taking them on.** The message that
+starts the blocking fixes also lists the MINORs, says which you would fix and why, and asks
+nothing that has to be answered first — the fixes are already running, and the user can answer
+whenever they like, in their own words. **The NON-ISSUEs are reported, not suggested** — the
+class means considered and dismissed, and offering to fix one says the dismissal was not meant.
+If the user asks for one anyway, it becomes a MINOR.
+
+**If the user has not answered by the time the blocking fixes are done, ask then**, through the
 structured choice UI as a multi-select, your recommendation first and "none — defer them" as an
-option. The UI sets the arithmetic: `AskUserQuestion` takes four options a question and four
-questions a call, so with "none" in each question one call carries twelve findings; split across
-questions before grouping, and group by file or theme only past that. **The NON-ISSUEs are
-reported, not offered** — the class means considered and dismissed, and offering to fix one
-says the dismissal was not meant. If the user asks for one anyway, it becomes a MINOR.
-
-**The offer must not hold the blocking fixes up, and a question blocks the turn that asks it.**
-So where the harness can carry the fixes in a background sub-agent, hand them there and ask
-while it works. Where it cannot — or on Codex, where `request_user_input` exists only in Plan
-mode and Plan mode stops edits — finish the blocking fixes first and make the offer then.
-That is a later offer, not a pause before the work: the blocking fixes still never wait for it.
+option. Not before: a question blocks the turn that asks it, so asking first is the pause this
+section exists to remove. The UI sets the arithmetic: `AskUserQuestion` takes four options a
+question and four questions a call, so with "none" in each question one call carries twelve
+findings; split across questions before grouping, and group by file or theme only past that. On
+Codex this is also where the Plan-mode switch goes, per *Structured choices belong in the host
+UI*, since Plan mode stops edits. Fix the accepted MINORs after the blocking fixes, never
+alongside them. A background sub-agent is no shortcut here: `require-handoff-before-unattended.sh`
+refuses a backgrounded dispatch on a branch with no handoff, which is the usual state when a
+review lands.
 
 **This does not break "ask before the work".** That beat is about direction, and the
 direction of a blocking fix is set by the finding. The offer is about scope that the blocking

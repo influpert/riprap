@@ -49,7 +49,7 @@ of each.
 What remains yours, and is not the skill's to do:
 
 - **Fix every BLOCKER and MAJOR before opening, without asking which first.** The skill
-  reports; it never edits. Offer the MINOR findings to the user while those fixes
+  reports; it never edits. Tell the user about the MINOR findings as those fixes
   run — [interaction-preferences.md](interaction-preferences.md)'s "fix, then offer".
 - **Publish every finding in the pull request body with a disposition and a reason** —
   including the ones you rejected. The skill produces that table and hands it over; putting it

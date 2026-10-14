@@ -85,13 +85,14 @@ A separate turn, with the review's findings as input.
   result; burying it costs the next reader the reasoning.
   Start on them without asking which to fix — `interaction-preferences.md`'s "fix, then
   offer".
-- **MINOR** in the same scheme: **offer them while the blocking fixes run**, per
+- **MINOR** in the same scheme: **tell the user about them as the blocking fixes start**, per
   that same section, and fix what the user accepts. With no answer, that section's no-answer
   default applies — fixes to code near the change are how a separable pull request stops being
   separable. **Under the payload workflow the remediation turns are sub-agents with no route to
-  the user**, so they always take that default; the offer moves to the handover, where the
-  parent session puts the deferred MINORs (`interaction-preferences.md`'s class) to the user
-  and a further cycle fixes what they accept.
+  the user**, so they always take that default, and the handover lists each deferred MINOR
+  (`interaction-preferences.md`'s class). Once the workflow returns, the session that launched it
+  offers them to the user, and any accepted become a fresh `/riprap:vet` run — never an extra
+  cycle of this one, which would raise the cap and leave its fixes unreviewed.
 - **Commit and push before the next cycle.** This is the step that quietly breaks the loop
   when it is skipped: the next review reads the pull request, so an unpushed fix is invisible
   to it, the finding reappears unchanged, and the loop reports non-convergence on a defect
@@ -148,7 +149,9 @@ and no more:
   that changed nothing says so, and says which nothing it was**: no finding blocked, or
   remediation ran and failed. Those are opposite states — one is a clean change, the other is
   a stuck one — and "2 cycles, verdict merge" reads like work landed in both.
-- **What was deferred, and where it now lives.**
+- **What was deferred, and where it now lives** — each MINOR on its own line, so the session
+  that launched the loop can offer them to the user (`interaction-preferences.md`'s
+  "fix, then offer").
 - **Whether CI is green**, from the platform rather than from a local run. CI is usually the
   only signal in the whole loop that did not come from the session doing the work, which is
   exactly what makes it worth citing.

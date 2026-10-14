@@ -463,7 +463,9 @@ choosing.
 The checkpoint is still a stop **after** the fixes: present what changed, and wait for the
 signal to move to the next step. And where the verdict says the plan itself is wrong — gate 1's
 *do not merge*, or a finding that the approach is wrong — there is nothing to start: stop and
-ask, with the options proceed · stop, this needs a different plan.
+ask, with the options: the plan stands, so go back to step 1 and settle the tests against it ·
+stop, this needs a different plan. Never a bare "proceed" — at gate 1 that means implementing
+against tests the reviewer says contradict the plan, which testing.md forbids.
 
 **Overruling a finding.** The user may overrule any *finding*. Where
 they overrule one at the blocking tier, interaction-preferences.md's disagreement rule applies:

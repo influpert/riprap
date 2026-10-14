@@ -378,29 +378,22 @@ check_git() {
 # with -s, reads the script from stdin. Then a heredoc's body (in `stdin_bodies`, from
 # on_command) or a here-string's word is the script, and is walked like TEXT. A
 # heredoc fed to `bash -c` or to a script is that command's data, and is not.
+#
+# Where the options end is shell_script_at's (lib/shell-words.sh), shared with the
+# secret hook: an option's value, `-euo pipefail` as much as `-o pipefail`, is
+# neither the script nor a script file. It is read into locals before anything is
+# walked, because the walk can come back here and overwrite it.
 check_shell_c() {
-  local dir="$1" j="$2" a takes_c=0 reads_stdin=0 h
-  while [ "$j" -lt "$n" ]; do
-    a="${w[$j]}"
-    case "$a" in
-      -o | +o | -O | +O) j=$((j + 2)) ;;   # bash -o pipefail -c ...
-      --) j=$((j + 1)); break ;;
-      --*) j=$((j + 1)) ;;                 # --norc, --login
-      -*)
-        case "$a" in *c*) takes_c=1 ;; esac   # -c, -lc, -ec
-        case "$a" in *s*) reads_stdin=1 ;; esac
-        j=$((j + 1))
-        ;;
-      +*) j=$((j + 1)) ;;
-      *) break ;;
-    esac
-  done
-  if [ "$takes_c" -eq 1 ]; then
+  local dir="$1" j="$2" reads_stdin h
+  shell_script_at "${w[@]:$j}"
+  j=$((j + SHELL_SCRIPT_AT))
+  reads_stdin="$SHELL_DASH_S"
+  if [ "$SHELL_DASH_C" -eq 1 ]; then
     if [ "$j" -lt "$n" ]; then walk_commands "${w[$j]}" "$dir" on_command; fi
     return 0
   fi
-  # A here-string is a word like any other until here, so `bash <<< 'cmd'` stops the
-  # option loop on `<<<` — which is stdin, not a script.
+  # A here-string is a word like any other until here, so `bash <<< 'cmd'` ends the
+  # options at `<<<` — which is stdin, not a script.
   if [ "$reads_stdin" -eq 0 ] && [ "$j" -lt "$n" ]; then
     case "${w[$j]}" in
       '<<<'*) ;;

@@ -31,6 +31,11 @@
 #                parallel to TOKEN_SUBST: the index in TOKENIZED of the word the
 #                substitution sits in, so a reader walking the tokens knows which
 #                command runs it, and so where it runs.
+#
+# One reader of the words comes with it, because every hook that reads a shell's
+# script needs the same answer, and the two copies it replaced both missed the
+# same case: shell_script_at, at the end, says where a shell's options end and its
+# script starts.
 
 # tokenize_words TEXT — split TEXT into words, like `read -ra` but with quoting.
 #
@@ -387,4 +392,62 @@ _tw_subst_body() {
   TOKEN_SUBST+=("${s:$1:$((j - $1))}")
   TOKEN_SUBST_AT+=("${#TOKENIZED[@]}")
   _tw_end="$j"
+}
+
+# shell_script_at WORD... — where a shell's own options end, given the words after
+# its name. Every hook that reads `bash -c TEXT`, or a heredoc fed to a shell, has
+# to answer this before it knows what the script is. It is answered here, once,
+# because the secret hook and the destructive guard each had a loop of their own,
+# and both loops got the same case wrong. Results in globals:
+#   SHELL_SCRIPT_AT  the index, among the words given, of the first that is neither
+#                    an option nor an option's value: the script's text under -c,
+#                    the script file without it. The word count when there is none,
+#                    and then the shell reads its script from stdin.
+#   SHELL_DASH_C     1 when -c was among the options: alone or in a cluster (-lc,
+#                    -ec), before the others or after them. The script is still the
+#                    first operand, so `bash -c -e TEXT` runs TEXT.
+#   SHELL_DASH_S     1 when -s was, which reads the script from stdin even with
+#                    operands: they are its $1, $2, ...
+#
+# Every o and O in a cluster takes the next word as its value, as bash, dash, zsh
+# and ksh read it: -euo pipefail is -e, -u and -o pipefail, -oe pipefail is the
+# same, and -oO pipefail extglob takes two words. Matching only a standalone -o
+# took pipefail for the script file, so `bash -euo pipefail -c 'cat .env'`, and the
+# same shell fed a heredoc, had their scripts go unread behind the strict-mode
+# spelling agents write most. `--` and a lone `-` end the options; a long option
+# (--norc, --login) takes no word. Words are compared as they are, so a here-string
+# still among them (`<<<`) is the first operand, and the caller says what it is.
+# shellcheck disable=SC2034  # the SHELL_ globals are what the caller reads
+shell_script_at() {
+  local i=0 a f take=0
+  SHELL_DASH_C=0 SHELL_DASH_S=0
+  while [ "$#" -gt 0 ]; do
+    a="$1"
+    case "$a" in
+      -- | -) i=$((i + 1)); break ;;
+      --*) take=0 ;;
+      -?* | +?*)
+        take=0
+        f="${a#?}"
+        while [ -n "$f" ]; do
+          case "$f" in
+            [oO]*) take=$((take + 1)) ;;
+            c*) SHELL_DASH_C=1 ;;
+            s*) SHELL_DASH_S=1 ;;
+          esac
+          f="${f#?}"
+        done
+        ;;
+      *) break ;;
+    esac
+    shift
+    i=$((i + 1))
+    # The option's values, one for each o and O: never the script.
+    while [ "$take" -gt 0 ] && [ "$#" -gt 0 ]; do
+      shift
+      i=$((i + 1))
+      take=$((take - 1))
+    done
+  done
+  SHELL_SCRIPT_AT=$i
 }

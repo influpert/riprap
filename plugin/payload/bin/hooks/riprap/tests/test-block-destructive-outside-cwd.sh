@@ -373,6 +373,22 @@ check "bash running a script with an outside argument -> allow (scripts are not 
 check "bash -lc rm -> block" 2 "$(bash_in "$WORK" "bash -lc 'rm -rf $OTHER'")"
 check "zsh -c rm -> block" 2 "$(bash_in "$WORK" "zsh -c 'rm -rf $OTHER'")"
 check "bash -o pipefail -c rm -> block" 2 "$(bash_in "$WORK" "bash -o pipefail -c 'rm -rf $OTHER'")"
+# Every o and O in a cluster takes the next word, as the shell reads it: -euo
+# pipefail is -e, -u and -o pipefail. Read as a standalone -o only, pipefail was
+# taken for a script file and the -c text after it went unread, and `set -euo
+# pipefail` is the strict-mode spelling agents write most.
+check "bash -euo pipefail -c rm -> block" 2 "$(bash_in "$WORK" "bash -euo pipefail -c 'rm -rf $OTHER'")"
+check "bash -eo pipefail -c rm -> block" 2 "$(bash_in "$WORK" "bash -eo pipefail -c 'rm -rf $OTHER'")"
+check "bash -oe pipefail -c rm, the value after the whole cluster -> block" 2 \
+  "$(bash_in "$WORK" "bash -oe pipefail -c 'rm -rf $OTHER'")"
+check "bash -oO pipefail extglob -c rm, two values -> block" 2 \
+  "$(bash_in "$WORK" "bash -oO pipefail extglob -c 'rm -rf $OTHER'")"
+check "bash -co pipefail TEXT, the text after the option's value -> block" 2 \
+  "$(bash_in "$WORK" "bash -co pipefail 'rm -rf $OTHER'")"
+check "bash -euo pipefail -c rm inside -> allow (must not false-block)" 0 \
+  "$(bash_in "$WORK" "bash -euo pipefail -c 'rm -rf ./build'")"
+check "bash -euo pipefail running a script with an outside argument -> allow" 0 \
+  "$(bash_in "$WORK" "bash -euo pipefail scripts/clean.sh $OTHER")"
 
 echo
 echo "--- A heredoc or here-string fed to a shell is commands, not data ---"
@@ -392,6 +408,13 @@ check "sudo bash <<-EOF, tab-indented -> block" 2 "$(bash_in "$WORK" "sudo bash 
 	rm -rf $OTHER
 	EOF")"
 check "bash <<< here-string -> block" 2 "$(bash_in "$WORK" "bash <<< 'rm -rf $OTHER'")"
+# An option's value, in a cluster or not, is not a script file: taken for one, it
+# left the shell with a script of its own and the heredoc as its data.
+check "bash -euo pipefail <<EOF -> block" 2 "$(bash_in "$WORK" "bash -euo pipefail <<'EOF'
+rm -rf $OTHER
+EOF")"
+check "sh -euo pipefail <<< here-string -> block" 2 \
+  "$(bash_in "$WORK" "sh -euo pipefail <<< 'rm -rf $OTHER'")"
 check "the second heredoc on a line belongs to the second command -> block" 2 \
   "$(bash_in "$WORK" "cat <<'A' > notes.md && bash <<'B'
 echo notes
@@ -410,6 +433,13 @@ B")"
 check "a heredoc fed to a script is that script's data -> allow" 0 \
   "$(bash_in "$WORK" "bash scripts/apply.sh <<'EOF'
 rm -rf $OTHER
+EOF")"
+check "a heredoc fed to a script behind -euo pipefail is its data -> allow" 0 \
+  "$(bash_in "$WORK" "bash -euo pipefail scripts/apply.sh <<'EOF'
+rm -rf $OTHER
+EOF")"
+check "bash -euo pipefail <<EOF that stays inside -> allow" 0 "$(bash_in "$WORK" "bash -euo pipefail <<'EOF'
+rm -rf ./build
 EOF")"
 check "a heredoc fed to bash -c is data for the command -> allow" 0 \
   "$(bash_in "$WORK" "bash -c 'cat > notes.md' <<'EOF'

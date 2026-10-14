@@ -1857,7 +1857,7 @@ _secret_for() {
 # _secret_simple DEPTH — one simple command, its words in _SR_W and _SR_Q, and
 # its heredoc bodies in _SR_HD.
 _secret_simple() {
-  local depth="$1" n=${#_SR_W[@]} j=0 k ci w q cmd t h stdin=0
+  local depth="$1" n=${#_SR_W[@]} j=0 k ci w q cmd t h
   local -a w2=() q2=() hs=()
   _SR_FIND_SRC="" _SR_FIND_SRCQ=""
 
@@ -1981,30 +1981,26 @@ _secret_simple() {
       # data, as every other command's stdin is, `bash <<'EOF'` was the spelling
       # to try once `bash -c` was refused. A heredoc fed to `bash -c` or to a
       # script is that command's data, and is not read.
-      for ((j = k; j < n; j++)); do
-        case "${_SR_W[$j]}" in
-          -o | +o | -O | +O) j=$((j + 1)) ;;   # bash -o pipefail, whose value is no script
-          --) j=$((j + 1)); break ;;
-          --*) ;;
-          -*c*)
-            for ((t = 0; j + 2 + t < n && t < 10; t++)); do
-              _secret_var_set "$t" "${_SR_W[$((j + 2 + t))]}"
-            done
-            [ "$t" -lt 2 ] || _secret_var_set @ "${_SR_W[$((j + 3))]}"
-            _secret_analyze "${_SR_W[$((j + 1))]:-}" "${_SR_BASE:-}" "$((depth + 1))"
-            # Outside the script they are the caller's again, which a Bash tool
-            # call does not have.
-            for ((t = 0; t < 10; t++)); do _secret_var_set "$t" ""; done
-            _secret_var_set @ ""
-            [ -z "$SECRET_HIT_PATH" ] || return 0
-            return 1
-            ;;
-          -*s*) stdin=1 ;;
-          -* | +*) ;;
-          *) break ;;
-        esac
-      done
-      if [ "$j" -ge "$n" ] || [ "$stdin" -eq 1 ]; then
+      #
+      # Where the options end is shell_script_at's (lib/shell-words.sh), shared
+      # with the destructive guard: an option's value, `-euo pipefail` as much as
+      # `-o pipefail`, is neither the script nor a script file.
+      shell_script_at "${_SR_W[@]:$k}"
+      j=$((k + SHELL_SCRIPT_AT))
+      if [ "$SHELL_DASH_C" -eq 1 ]; then
+        for ((t = 0; j + 1 + t < n && t < 10; t++)); do
+          _secret_var_set "$t" "${_SR_W[$((j + 1 + t))]}"
+        done
+        [ "$t" -lt 2 ] || _secret_var_set @ "${_SR_W[$((j + 2))]}"
+        _secret_analyze "${_SR_W[$j]:-}" "${_SR_BASE:-}" "$((depth + 1))"
+        # Outside the script they are the caller's again, which a Bash tool
+        # call does not have.
+        for ((t = 0; t < 10; t++)); do _secret_var_set "$t" ""; done
+        _secret_var_set @ ""
+        [ -z "$SECRET_HIT_PATH" ] || return 0
+        return 1
+      fi
+      if [ "$j" -ge "$n" ] || [ "$SHELL_DASH_S" -eq 1 ]; then
         for h in "${_SR_HD[@]+"${_SR_HD[@]}"}" "${hs[@]+"${hs[@]}"}"; do
           _secret_analyze "$h" "${_SR_BASE:-}" "$((depth + 1))"
           [ -z "$SECRET_HIT_PATH" ] || return 0

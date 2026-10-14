@@ -548,10 +548,38 @@ check "bash -o pipefail <<EOF -> block" 2 "$(bash_cmd "bash -o pipefail <<'EOF'
 cat .env
 EOF")"
 check "bash -o pipefail -c -> block" 2 "$(bash_cmd "bash -o pipefail -c 'cat .env'")"
+# So does every o and O in a cluster, as the shell reads it: -euo pipefail is -e,
+# -u and -o pipefail. Matched only standalone, pipefail was the script file again,
+# and `set -euo pipefail` is the strict-mode spelling agents write most.
+check "bash -euo pipefail <<EOF -> block" 2 "$(bash_cmd "bash -euo pipefail <<'EOF'
+cat .env
+EOF")"
+check "bash -xeo pipefail <<EOF -> block" 2 "$(bash_cmd "bash -xeo pipefail <<'EOF'
+cat .env
+EOF")"
+check "sh -euo pipefail <<< here-string -> block" 2 "$(bash_cmd "sh -euo pipefail <<< 'cat .env'")"
+check "bash -euo pipefail -c -> block" 2 "$(bash_cmd "bash -euo pipefail -c 'cat .env'")"
+check "bash -eo pipefail -c -> block" 2 "$(bash_cmd "bash -eo pipefail -c 'cat .env'")"
+check "bash -oO pipefail extglob -c, two values -> block" 2 \
+  "$(bash_cmd "bash -oO pipefail extglob -c 'cat .env'")"
+# -c says the first operand is the script, wherever it sits after the options;
+# the word straight after the -c is not it when an option or a value comes first.
+check "bash -co pipefail TEXT -> block" 2 "$(bash_cmd "bash -co pipefail 'cat .env'")"
+check "bash -c -e TEXT -> block" 2 "$(bash_cmd "bash -c -e 'cat .env'")"
+check "bash -euo pipefail -c reading the example -> allow (must not false-block)" 0 \
+  "$(bash_cmd "bash -euo pipefail -c 'cat .env.example'")"
 check "bash -o pipefail with a script file and a heredoc -> allow" 0 \
   "$(bash_cmd "bash -o pipefail scripts/setup.sh <<'EOF'
 cat .env
 EOF")"
+check "bash -euo pipefail with a script file and a heredoc -> allow" 0 \
+  "$(bash_cmd "bash -euo pipefail scripts/setup.sh <<'EOF'
+cat .env
+EOF")"
+check "bash -c behind its options, handed .env as \$1 -> block" 2 \
+  "$(bash_cmd "bash -euo pipefail -c 'cat \"\$1\"' _ .env")"
+check "bash -c behind its options, handed a plain file as \$1 -> allow" 0 \
+  "$(bash_cmd "bash -euo pipefail -c 'cat \"\$1\"' _ notes.md")"
 check "the second heredoc on a line belongs to the second command -> block" 2 \
   "$(bash_cmd "cat <<'A' > notes.md && bash <<'B'
 echo notes

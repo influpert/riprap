@@ -257,6 +257,13 @@ implementation. That is the whole basis of gate 1 — a tests-only diff is a spe
 can read, and once implementation lands beside it nobody can tell which assertion was written to
 describe the plan and which to describe the code.
 
+**That commit stays local.** It fails `bin/test` on purpose, and `pre-push` runs `bin/test`, so
+a push now is refused. The refusal is correct: the first push is step 7's, after the suite
+passes. Gate 1 reads the local diff, so nothing needs to leave the machine before then. Do not
+reach for `--no-verify` to get past it. That publishes a red branch to everyone watching it
+and turns CI red on a commit that was never meant to pass. If the environment really does need
+the work off the machine earlier, say so and let the user decide.
+
 Where a behaviour has no available harness, testing.md's carve-out says what to write down. Do it
 in the tests-only commit, because gate 1 can only find what is in the diff to look at.
 

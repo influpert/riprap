@@ -21,6 +21,18 @@
 # because macOS symlinks its temporary directory and a logical comparison would refuse
 # every write in a checkout under it.
 #
+# A session in the MAIN checkout also owns that repository's linked worktrees, because
+# it cannot leave: Claude Code resets a `cd` that leaves its working directories, so a
+# sibling `../<repo>-<task>` is out of reach unless someone added it with /add-dir, and a
+# subagent keeps the directory it was dispatched from whatever it `cd`s to. Every payload
+# such a session sends, its subagents' included, carries the main checkout as `.cwd`. Run
+# for real against a subagent told to edit the worktree git.md makes the default, the
+# strict boundary refused every write and offered advice no `cd` could follow. The
+# reverse stays strict: a session that did move into a linked worktree has the main
+# checkout and the other worktrees outside, which is the case this rule was written for.
+# What that costs: from the main checkout, a write into some other task's worktree of
+# the same repository is not caught.
+#
 # Allowed outside the worktree, and nothing else:
 #   - /dev/null, /dev/stdout, /dev/stderr, /dev/tty and /dev/fd/*: not files.
 #   - The host's own state for plans and memory, under ${CLAUDE_CONFIG_DIR:-~/.claude}:
@@ -98,6 +110,27 @@ WORKTREE=$(git -C "$PROJECT" rev-parse --show-toplevel 2>/dev/null) || WORKTREE=
 # guardrail. bin/riprap verify is where a broken install is diagnosed.
 WORKTREE=$(cd "$WORKTREE" 2>/dev/null && pwd -P) || exit 0
 
+# The linked worktrees of this repository, physically resolved, when WORKTREE is the
+# main checkout; empty when it is itself a linked worktree. Filled on the first target
+# that lands outside, so a write inside the worktree never pays for `git worktree list`.
+LINKED_WORKTREES=()
+LINKED_LOADED=0
+load_linked_worktrees() {
+  local git_dir common_dir line wt
+  LINKED_LOADED=1
+  # --git-dir and --git-common-dir agree only in the main checkout. Both are relative to
+  # the directory git ran in, so each is resolved from there, as in project-root.sh.
+  git_dir=$(cd "$WORKTREE" && cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P) || return 0
+  common_dir=$(cd "$WORKTREE" && cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P) || return 0
+  [ "$git_dir" = "$common_dir" ] || return 0
+  while IFS= read -r line; do
+    case "$line" in "worktree "*) ;; *) continue ;; esac
+    # A worktree whose directory is gone resolves to nothing and is skipped.
+    wt=$(cd "${line#worktree }" 2>/dev/null && pwd -P) || continue
+    [ "$wt" = "$WORKTREE" ] || LINKED_WORKTREES+=("$wt")
+  done < <(git -C "$WORKTREE" worktree list --porcelain 2>/dev/null)
+}
+
 # --- path helpers -------------------------------------------------------------
 
 # Physical path of a target that may not exist yet: resolve the deepest ancestor that
@@ -153,7 +186,7 @@ BLOCK_UNRESOLVABLE=0
 
 # check_target RAW BASE — record the first target that lands outside the worktree.
 check_target() {
-  local raw="$1" base="$2" abs phys prefix
+  local raw="$1" base="$2" abs phys prefix wt
   [ -z "$BLOCK_TARGET" ] || return 0
   [ -n "$raw" ] || return 0
   case "$raw" in
@@ -180,6 +213,10 @@ check_target() {
   case "$phys" in
     "$WORKTREE" | "$WORKTREE"/*) return 0 ;;
   esac
+  [ "$LINKED_LOADED" -eq 1 ] || load_linked_worktrees
+  for wt in "${LINKED_WORKTREES[@]+"${LINKED_WORKTREES[@]}"}"; do
+    case "$phys" in "$wt" | "$wt"/*) return 0 ;; esac
+  done
   for prefix in "${WORKTREE_WRITE_ALLOWED_PREFIXES[@]}"; do
     [ -n "$prefix" ] || continue
     case "$phys/" in "$prefix"*) return 0 ;; esac
@@ -387,8 +424,11 @@ git -C "$WORKTREE" check-ignore -q tmp/riprap-probe 2>/dev/null && TMP_IGNORED=1
     echo "git check-ignore -v tmp/probe.)"
   fi
   echo ""
-  echo "If you meant to work in another worktree, cd into it in a command of its own first, so"
-  echo "the session follows it. If the user asked for this file outside the worktree,"
+  echo "If the work belongs in another worktree of this repository, this session is not"
+  echo "in it, and a cd will not move it there: the host resets a cd that leaves its working"
+  echo "directories, and a subagent keeps the directory it was dispatched from. Work on it"
+  echo "from a session started there, or from the main checkout, where every worktree of the"
+  echo "repository counts as inside. If the user asked for this file outside the worktree,"
   echo "ask them to create it: this hook governs agent tool calls, not commands typed"
   echo "at a terminal."
   echo ""

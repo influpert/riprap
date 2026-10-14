@@ -29,11 +29,18 @@ trap cleanup EXIT
 BASE=$(cd "$BASE" && pwd -P)
 REPO="$BASE/repo"
 TREE="$BASE/repo-task"   # a second worktree of the same repository
+TREE2="$BASE/repo-other-task"   # a third
+FOREIGN="$BASE/foreign"   # a different repository, with a worktree of its own
+FOREIGN_TREE="$BASE/foreign-task"
 OTHER="$BASE/elsewhere"
 mkdir -p "$REPO/src" "$OTHER" "$BASE/userhome/.claude/plans"
-git -C "$REPO" init -q
-git -C "$REPO" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m init
+for r in "$REPO" "$FOREIGN"; do
+  git -C "$BASE" init -q "$r"
+  git -C "$r" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m init
+done
 git -C "$REPO" worktree add -q "$TREE" -b task 2>/dev/null
+git -C "$REPO" worktree add -q "$TREE2" -b other-task 2>/dev/null
+git -C "$FOREIGN" worktree add -q "$FOREIGN_TREE" -b task 2>/dev/null
 
 export CLAUDE_PROJECT_DIR="$REPO"
 export HOME="$BASE/userhome"
@@ -53,10 +60,9 @@ check "Write inside the worktree -> allow" 0 "$(write "$REPO/src/a.txt")"
 check "Write into a directory that does not exist yet, inside -> allow" 0 "$(write "$REPO/new/deep/a.txt")"
 check "Write to /tmp-style scratch outside -> block" 2 "$(write "$TMPDIR/scratch.txt")"
 check "Write into an unrelated directory -> block" 2 "$(write "$OTHER/a.txt")"
-check "Write into another worktree of the same repo -> block" 2 "$(write "$TREE/a.txt")"
 check "Write that climbs out with .. -> block" 2 "$(write "$REPO/src/../../elsewhere/a.txt")"
 check "Write with .. that stays inside -> allow" 0 "$(write "$REPO/src/../b.txt")"
-check "Write to a sibling whose name starts with the worktree's -> block" 2 "$(write "$REPO-task/a.txt")"
+check "Write to a sibling whose name starts with the worktree's -> block" 2 "$(write "$REPO-notes/a.txt")"
 check "Edit outside -> block" 2 \
   "{\"tool_name\":\"Edit\",\"cwd\":\"$REPO\",\"tool_input\":{\"file_path\":\"$OTHER/a.txt\",\"old_string\":\"a\",\"new_string\":\"b\"}}"
 check "NotebookEdit outside -> block" 2 \
@@ -70,10 +76,28 @@ check "Read outside -> allow (not a write)" 0 \
   "{\"tool_name\":\"Read\",\"cwd\":\"$REPO\",\"tool_input\":{\"file_path\":\"$OTHER/a.txt\"}}"
 
 echo
+echo "--- From the main checkout, its linked worktrees are inside ---"
+# A session there cannot cd out (the host resets it) and its subagents keep the cwd they
+# were dispatched with, so every payload says the main checkout. Measured, not assumed:
+# see the hook's header.
+check "Write into a linked worktree of the same repo -> allow" 0 "$(write "$TREE/a.txt")"
+check "Write into a new directory in another linked worktree -> allow" 0 "$(write "$TREE2/new/a.txt")"
+check "redirect into a linked worktree by absolute path -> allow" 0 \
+  "$(bash_in "$REPO" "echo hi > $TREE/out.txt")"
+check "Write into a worktree of a different repository -> block" 2 "$(write "$FOREIGN_TREE/a.txt")"
+check "Write into the main checkout of a different repository -> block" 2 "$(write "$FOREIGN/a.txt")"
+CLAUDE_PROJECT_DIR="$REPO/src" check "project in a subdirectory of the main checkout: worktrees inside -> allow" 0 \
+  "$(write "$TREE/a.txt")"
+git -C "$REPO" worktree add -q "$BASE/repo-gone" -b gone 2>/dev/null
+rm -rf "$BASE/repo-gone"
+check "a worktree whose directory is gone is not an exemption -> block" 2 "$(write "$BASE/repo-gone/a.txt")"
+
+echo
 echo "--- The session moved into its own worktree ---"
 CLAUDE_PROJECT_DIR="$TREE" check "Write inside the worktree the session is in -> allow" 0 \
   "$(write "$TREE/a.txt")"
 CLAUDE_PROJECT_DIR="$TREE" check "...and the main checkout is now outside -> block" 2 "$(write "$REPO/a.txt")"
+CLAUDE_PROJECT_DIR="$TREE" check "...and so is another linked worktree -> block" 2 "$(write "$TREE2/a.txt")"
 CLAUDE_PROJECT_DIR="$REPO/src" check "project rooted in a subdirectory: the rest of its worktree is inside -> allow" 0 \
   "$(write "$REPO/b.txt")"
 

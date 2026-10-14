@@ -67,8 +67,12 @@ the diff and not in `git status`, so nothing reminds anyone it exists, and when 
 there is no step that removes it — the worktree goes, the file stays. In a sibling checkout it
 is worse: it lands in somebody else's branch, where it looks like their work.
 
-To move to another worktree, `cd` into it in a command of its own, so the session follows it;
-reaching into it by absolute path from here is the mistake this rule is about. The one
+**From the main checkout, the repository's own worktrees count as yours.** A session started
+there cannot move: the host resets a `cd` that leaves its working directories, and a subagent
+keeps the directory it was dispatched from, whatever it `cd`s to. Asked to edit
+`../<repo>-<task>`, such a session can only reach it by absolute path. The reverse does not
+hold: a session working in a worktree, or started in one, writes only there. The main checkout
+and the other worktrees are outside, which is the mistake this rule is about. The one other
 exception is the host's own state — plan mode's plan file and the session's memory — which the
 host writes, owns and cleans up. **This overrides a host that suggests a scratch directory of
 its own under `/tmp`:** follow the worktree's `tmp/` instead, rather than trying the host's

@@ -4,15 +4,17 @@ When to stop and plan, how to scope a bug fix, and what "done" has to mean.
 
 ## The planning gate
 
-Before implementing a change that touches **more than one file** or exceeds **roughly five lines**,
-show the plan and wait for confirmation.
+Before implementing a change that touches **more than one file**, exceeds **roughly five lines**,
+or makes **an architectural decision**, present the plan in plan mode and wait for its approval.
+This is the one planning threshold; the router and [testing.md](testing.md) mean this one when
+they say "the planning gate". Plan mode, not chat, because the user has to be able to reject
+part of the plan — [interaction-preferences.md](interaction-preferences.md) says why.
 
-**Unattended runs do not wait.** With nobody to confirm, "wait for confirmation" is a
-deadlock, not a gate. An agent running unattended still writes the plan — into the task,
-the PR body, or the handoff — and then proceeds, so the reasoning is reviewable after the
-fact even though it was not reviewable before. Pair this with the same carve-out in
-[interaction-preferences.md](interaction-preferences.md); apply neither when a human is
-present.
+**When no answer can come back, do not wait.** With nobody to confirm, "wait for
+confirmation" is a deadlock, not a gate. Still write the plan — into the task, the PR body, or
+the handoff — and then proceed, so the reasoning is reviewable after the fact even though it
+was not reviewable before. You learn that nobody is there because the answer does not come,
+not by guessing: [interaction-preferences.md](interaction-preferences.md) has the rule and why.
 
 The plan needs the files you will touch, what changes in each, and how you will verify it. Keep it
 short — a plan longer than the diff is its own problem.
@@ -78,6 +80,12 @@ who has already stopped thinking about the change.
 - Ran the tests? Show the summary line.
 - Fixed a bug? Show the reproduction failing before and passing after.
 - Changed behaviour no test covers? Say what you did to check it, and what you could not check.
+
+**The check has to exercise the change.** A syntax check, a linter alone, or a test command that
+never got as far as running a test is not verification. If the suite could not start because
+dependencies are missing, run `bin/setup` and try again. If `bin/test` is not configured yet, it
+enforces nothing, so run whatever does exercise the change — the changed command itself, the
+project's own test runner — and say that `bin/test` was not available.
 
 If verification is impossible here, say so and name what still needs running. That is a useful
 handoff; a confident "done" that nobody ran is not.

@@ -190,9 +190,9 @@ native hooks are disabled. Installation writes neither `CLAUDE.md` nor `AGENTS.m
 
 | Rule | What it does |
 |---|---|
-| **Clarify, then plan** | Unless already 95% confident of exactly what is being asked or asked for, ask first — one question at a time. A question then gets an answer; a task gets a summary and waits for the go-ahead; a task already over the bar just gets done. With nobody to answer, take the narrowest reading and record it. Then plan before any 3+ step or architectural task. |
-| **Use subagents** | Offload research and parallel analysis, one task each, to keep the main context clean. |
-| **Capture corrections** | After any correction, write the lesson into `.riprap/instructions/` so it outlives the session. |
+| **Clarify, then plan** | Unless already 95% confident of exactly what is being asked or asked for, ask first — one question at a time. A question then gets an answer; a task gets a summary and waits for the go-ahead; a task already over the bar goes straight to the work. With nobody to answer, take the narrowest reading and record it. Anything over one file, about five lines, or an architectural decision goes through plan mode first, and the plan is the summary. |
+| **Use subagents** | Offload wide research and parallel analysis, one task each, when it would otherwise flood the main context. |
+| **Capture corrections** | When a correction would recur, write the lesson down — project rules into `.riprap/instructions/` — so it outlives the session. |
 | **Verify before done** | Never claim complete without evidence. If tests fail, say so and show the output. |
 | **Prefer the simpler solution** | When two designs both work, ship the one with less code. Add structure at the second occurrence, not in anticipation of one. |
 | **Fix bugs autonomously** | Given a failing test or a red CI run, diagnose and fix it without a round trip. |

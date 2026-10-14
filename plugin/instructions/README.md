@@ -32,13 +32,15 @@ asked or asked for, ask** — before you answer, before you plan, before you bui
 structured choice UI wherever there is one. Never ask what you could read; research first, and
 spend questions on what research cannot settle. Once you are over the bar, what happens next
 depends on what you were handed. **A question** gets an answer, and stops there — answering is
-not a licence to start building on it. **A task** gets a summary of *what made you confident and
-what you are going to do*, and then you wait for the user's signal. **A task you were already
-95% sure of** gets done: the bar is a floor on confidence, not a quota on questions, so at 95%
-you have nothing to ask and must not manufacture something. Only then plan: enter plan mode for
-anything non-trivial — 3+ steps, or any architectural decision — and use it for verification
-steps too, not just for building. If work goes sideways, stop and re-plan rather than pushing
-through.
+not a licence to start building on it. **A task you had to ask about** gets a summary of *what
+made you confident and what you are going to do*, and then you wait for the user's signal. **A
+task you were already 95% sure of** goes straight to the work: the bar is a floor on confidence,
+not a quota on questions, so at 95% you have nothing to ask and must not manufacture something.
+Either way, work above the planning gate — more than one file, more than about five lines, or
+any architectural decision — goes through plan mode first, verification steps included. There
+the plan *is* the summary, and its approval is the signal. Once you have the signal, carry the
+work through: a step that follows from what was approved is something to run, not to announce
+or ask about again. If work goes sideways, stop and re-plan rather than pushing through.
 
 **With nobody to answer, proceed and record.** A question you cannot get answered is not
 permission to guess freely, and not a reason to produce nothing. Take the narrowest reading
@@ -47,16 +49,23 @@ handoff — not in a transcript nobody will read. The critical rules do not rela
 not a licence to merge, to add a technology, or to open a pull request on a diff nobody
 reviewed. → [interaction-preferences.md](interaction-preferences.md)
 
-**2. Use subagents.** Offload research, exploration, and parallel analysis to keep the
-main context clean. One task per subagent. → [interaction-preferences.md](interaction-preferences.md)
+**2. Use subagents.** Offload wide research, exploration, and parallel analysis that would
+otherwise flood the main context — one task per subagent, briefed completely the first time.
+Work you can finish in a few reads or one search stays with you: a subagent rebuilds context
+before it starts and hands back a report you then have to read, and on small work that overhead
+is the whole cost. The critics the stress-test rule below requires are not this judgement call;
+they are required. → [interaction-preferences.md](interaction-preferences.md)
 
-**3. Capture corrections.** After any correction, write the lesson into the project's
-`.riprap/instructions/` so it survives the session. A correction that only lives in the
-conversation gets made again next week.
+**3. Capture corrections.** When a correction would come up again, write the lesson where the
+next session will read it: a rule about this repository into its `.riprap/instructions/`, a
+preference about how this user wants you to work into your memory. A correction that only
+lives in the conversation gets made again next week.
+→ [interaction-preferences.md](interaction-preferences.md)
 
 **4. Verify before claiming done.** Never mark work complete without evidence: tests run,
-output shown, behavior checked. If tests fail, say so and show the failure. If you skipped
-a step, say which.
+output shown, behavior checked. The check has to exercise the change — a syntax check alone,
+or a test command that failed to start, is not evidence. If tests fail, say so and show the
+failure. If you skipped a step, say which, and why.
 
 **5. Prefer the simpler solution.** When two designs both work, ship the one with less code
 in it. Add structure at the second occurrence, not in anticipation of one. Skip this for
@@ -105,7 +114,9 @@ no** — this is the one gate that does not proceed-and-record.
 → [tech-footprint.md](tech-footprint.md)
 
 **Never open a pull request on a diff nobody reviewed, and never abandon one you opened.**
-Before opening: run `/riprap:review` over the diff; every BLOCKER and MAJOR fixed first;
+Before opening: run `/riprap:review` over the diff; every BLOCKER and MAJOR fixed first,
+except the two cases that skill names (a MAJOR outside the branch's scope, deferred with a
+tracking link; a BLOCKER still standing after its second pass, which opens as a draft);
 every finding published in the body with a disposition — implemented, deferred or ignored —
 and the reason. A finding dropped in silence is indistinguishable from one nobody made, and
 the reviewer repeats the search you already did. After opening: stay in the loop until it
@@ -133,8 +144,8 @@ configured, the hook that calls it enforces nothing; `bin/riprap verify` says wh
 you expect is the most common cause of an agent editing the wrong copy of a file.
 
 **Never write outside your worktree.** Scratch goes in its `tmp/` — once `git check-ignore
-tmp/probe` confirms git ignores it — not `/tmp` or a sibling checkout: nothing cleans up a file
-the diff cannot see. → [git.md](git.md)
+tmp/probe` confirms git ignores it — not `/tmp`, a sibling checkout, or a scratchpad directory
+the host suggests: nothing cleans up a file the diff cannot see. → [git.md](git.md)
 
 ---
 
@@ -145,53 +156,53 @@ beat one 215-line file when either would answer the question.
 
 **Starting work**
 
-- First session in a repo? → [project-standards.md](project-standards.md) (~175)
+- First session in a repo? → [project-standards.md](project-standards.md) (~180)
 - Handed a request that could be read more than one way? Proposing a plan, an approach, or
-  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
+  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~440)
 - Writing anything a person reads — a reply, a plan, a task, a commit message, a pull request
-  body? → [writing-style.md](writing-style.md) (~110). Checking a finished document against the
+  body? → [writing-style.md](writing-style.md) (~115). Checking a finished document against the
   full standard? → `/riprap:write`
-- How long should this reply be, and does it need bullets? → [communication-preferences.md](communication-preferences.md) (~60)
+- How long should this reply be, and does it need bullets? → [communication-preferences.md](communication-preferences.md) (~75)
 - Planning anything a user will see? Mock it up first, in the project's design system, and get
   the mockup and the built result approved in the UI → [design.md](design.md) (~335)
 - Deciding whether to plan or just do it? Finishing up, and what to do with what you noticed
-  on the way? → [development-workflow.md](development-workflow.md) (~110)
+  on the way? → [development-workflow.md](development-workflow.md) (~115)
 - Handed a requirement, and the plan has to be built by somebody who was not here? →
   `/riprap:architect`. Handed an approved plan and building it? → `/riprap:implement`, which
   runs the tests, the reviews and the pull request in one loop.
-- Picking up from a previous session, or ending one? → [handoffs.md](handoffs.md) (~105)
+- Picking up from a previous session, or ending one? → [handoffs.md](handoffs.md) (~150)
 
 **Writing code**
 
-- Choosing between two designs, or wondering whether an abstraction is worth it? → [design-principles.md](design-principles.md) (~115)
-- Naming things, sizing functions, writing comments? → [code-style.md](code-style.md) (~110)
+- Choosing between two designs, or wondering whether an abstraction is worth it? → [design-principles.md](design-principles.md) (~120)
+- Naming things, sizing functions, writing comments? → [code-style.md](code-style.md) (~115)
 - Catching, raising, suppressing, or logging an error? → [error-handling.md](error-handling.md) (~80)
-- Fixing a bug and wondering how far the pattern spreads? → [development-workflow.md](development-workflow.md) (~110)
-- Reaching for a new language, framework, database, or build tool? → [tech-footprint.md](tech-footprint.md) (~130)
-- Reaching for an external tool or integration? → [mcp-servers.md](mcp-servers.md) (~90)
+- Fixing a bug and wondering how far the pattern spreads? → [development-workflow.md](development-workflow.md) (~115)
+- Reaching for a new language, framework, database, or build tool? → [tech-footprint.md](tech-footprint.md) (~155)
+- Reaching for an external tool or integration? → [mcp-servers.md](mcp-servers.md) (~95)
 
 **Testing**
 
 - About to implement, and the plan is approved? Staring at a failing test and deciding
-  whether the code or the test is wrong? → [testing.md](testing.md) (~215)
+  whether the code or the test is wrong? → [testing.md](testing.md) (~220)
 
 **Committing and merging**
 
-- Branching, worktrees, writing outside one, when to commit, opening a pull request? → [git.md](git.md) (~250)
-- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~155)
-- A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~125)
-- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~155)
+- Branching, worktrees, writing outside one, when to commit, opening a pull request? → [git.md](git.md) (~255)
+- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~160)
+- A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~135)
+- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~165)
 - CI is red, or needs re-running? → [ci-hygiene.md](ci-hygiene.md) (~60)
 
 **Security**
 
 - Handling a credential, a token, or a key? → [secret-hygiene.md](secret-hygiene.md) (~85)
-- Wondering what the allow/deny lists actually stop? → [permissions.md](permissions.md) (~55)
+- Wondering what the allow/deny lists actually stop? → [permissions.md](permissions.md) (~50)
 
 **Extending the guardrails**
 
-- Turning a fixed inconsistency into a rule that holds? → [guardrail-template.md](guardrail-template.md) (~85)
-- Adding a doc, a hook, or a stack command? → [project-standards.md](project-standards.md) (~175)
+- Turning a fixed inconsistency into a rule that holds? → [guardrail-template.md](guardrail-template.md) (~90)
+- Adding a doc, a hook, or a stack command? → [project-standards.md](project-standards.md) (~180)
 
 **Check this map before opening anything.** Guessing from filenames costs more than
 reading one list: `git.md` and `git-hooks.md` cover different problems, `design.md` is what

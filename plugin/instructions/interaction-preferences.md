@@ -84,12 +84,14 @@ switch is a transport requirement, not approval of a plan or of any option.
 from distinct angles plus the devil's advocate — and five where the plan can bear it: four
 critics plus the advocate.** There is no exemption for plans that look small.
 
-**One carve-out, and only one: an unattended run.** Plan mode's whole purpose is to give a
-human a review surface, so an agent running with nobody watching — a scheduled job, a
-queue worker, a fleet member picking up a ticket — has no surface to present to and
-nothing to wait for. It should still stress-test, but it then proceeds on its own findings
-and records them alongside the work rather than blocking on approval that will never
-come. Blocking there does not buy review; it buys a stalled job.
+**One carve-out, and only one: no answer can come back.** Plan mode's whole purpose is to give
+a human a review surface, so a run where nobody can answer — a scheduled job, a queue worker, a
+fleet member picking up a ticket — has no surface to present to and nothing to wait for. It
+still stress-tests, but it then proceeds on its own findings and records them alongside the
+work rather than blocking on approval that will never come. Blocking there does not buy
+review; it buys a stalled job. As with every other question, you do not guess that you are
+unattended: you learn it because the answer does not come — see
+[When there is nobody to answer](#when-there-is-nobody-to-answer).
 
 **Why there is no exemption:** a plan's own author is the worst available judge of whether
 it is trivial. "Trivial" is exactly the verdict a plan returns about itself once it feels
@@ -162,11 +164,8 @@ condition for self-review.
 
 The unattended carve-out stated above applies here unchanged.
 
-`/riprap:advise` runs a critic roster of this shape and is a reasonable starting point, but
-it is not a substitute for the rule: none of its critics is the devil's advocate — its Alternative Proponent is asked for *other ways to achieve the same
-objective*, which presupposes the objective — and it classifies findings its own way rather
-than as BLOCKER/MAJOR/MINOR/NON-ISSUE. Use it, then add the advocate, and
-classify as above.
+`/riprap:advise` runs a critic roster of this shape, the devil's advocate included, and
+classifies its findings with the table above, so a plan it produces has met this rule.
 
 ### Enforcement
 
@@ -227,6 +226,10 @@ Below the gate, asking *is* the failure mode. A confirmation request on a typo f
 a round trip to learn nothing and teaches the user that your questions are noise — which
 is what makes the important question get skimmed later.
 
+This table sizes questions, not plans. Whether the work needs a plan is the planning gate in
+[development-workflow.md](development-workflow.md): a single-file change you have nothing to
+ask about can still be long enough to need one.
+
 ### The 95% bar, and the sequence that follows from it
 
 The table above sizes the questions. What decides whether to ask at all is a single threshold:
@@ -255,9 +258,22 @@ and the reader cannot check reasoning they were never shown.
 **4. Wait for the signal.** The summary is not a status update to talk past. Stop there, and
 start only when the user says to.
 
+**Above the planning gate, the plan is the summary.** Work that touches more than one file,
+runs past about five lines, or makes an architectural decision goes through plan mode
+([development-workflow.md](development-workflow.md)), so beats 3 and 4 happen there: put what
+made you confident at the top of the plan, and its approval is the signal. Summarising in chat
+first and then entering plan mode is the failure the table under
+[Plan mode is the review surface](#plan-mode-is-the-review-surface) describes.
+
+**After the signal, carry the work through.** A step that follows from what was approved is
+something to run, not to announce and end the turn on, and not to ask about again. Stop
+again only for a destructive action, a genuine change of scope, a gate a critical rule names,
+or a checkpoint the skill you are running defines.
+
 The bar is a floor on confidence, not a quota on questions. At 95% you have nothing to ask, so
 do not manufacture something: that is the same failure the gate above describes, arriving by a
-different route.
+different route. Beats 1 to 4 belong to the questions; a task you were sure of from the start
+skips them and goes straight to the work — through plan mode if it is above the planning gate.
 
 ### When there is nobody to answer
 
@@ -360,11 +376,34 @@ The one-line announcement costs nothing and buys a history shaped like the work.
 
 ---
 
+## Delegating to subagents
+
+**Delegate what would flood the main context, and nothing smaller.** A wide multi-file
+investigation, research across several sources, independent tracks of analysis: those are worth
+a subagent. A few file reads, one search, a handful of edits are not. A subagent rebuilds
+context before it starts, re-explores, and hands back a report you then have to read, and on
+small work that overhead is the whole cost.
+
+- **Brief it completely the first time** — the goal, what is already known, and what to return
+  in what shape. Launching, waiting and re-briefing spends two subagents on one answer.
+- **Send independent tasks together**, in one message, so they run at the same time.
+- **Use what it reports.** Do not redo its work or re-derive its findings. Check only the
+  claims your next step rests on, because a subagent can be wrong with confidence.
+
+The review roles riprap requires — the plan critics and the devil's advocate above, the test
+critics in [testing.md](testing.md), the `/riprap:review` roster — are not this judgement call.
+They exist to get a reading from someone other than the author, which is the one thing you
+cannot do yourself.
+
+---
+
 ## Capturing feedback
 
-**When corrected, write the correction into `.riprap/instructions/` in the same turn** —
-not at the end of the session, not in a later cleanup pass. The specifics that make a rule
-bind are gone by then, and what survives is a vague version that does not.
+**When a correction would come up again, write it down in the same turn** — not at the end
+of the session, not in a later cleanup pass. The specifics that make a rule bind are gone by
+then, and what survives is a vague version that does not. A one-off slip that no later session
+would repeat is not a rule; writing it down anyway teaches the next session to step around a
+pothole that is not there.
 
 Where it goes depends on what kind of thing it is:
 

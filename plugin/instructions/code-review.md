@@ -1,7 +1,7 @@
 # Code review: before the pull request opens, and until it closes
 
 **Before you open a pull request, run `/riprap:review` over the diff — fix everything it
-classifies BLOCKER or MAJOR, and publish every finding in the pull request body with a
+classifies BLOCKER or MAJOR (it names the two exceptions), and publish every finding in the pull request body with a
 disposition and the reason behind it.**
 
 **And a pull request is not finished when it opens.** Watch it until CI is green, every
@@ -48,7 +48,10 @@ of each.
 
 What remains yours, and is not the skill's to do:
 
-- **Fix every BLOCKER and MAJOR before opening.** The skill reports; it never edits.
+- **Fix every BLOCKER and MAJOR before opening.** The skill reports; it never edits. Its
+  disposition table names the only two exceptions: a MAJOR genuinely outside this branch's
+  scope, deferred with a tracking link, and a BLOCKER that survives the second pass, which opens
+  the pull request as a draft with the disagreement stated.
 - **Publish every finding in the pull request body with a disposition and a reason** —
   including the ones you rejected. The skill produces that table and hands it over; putting it
   in the body is the part it cannot do for you.

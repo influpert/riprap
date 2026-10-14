@@ -80,17 +80,21 @@ wherever there is one. Never ask what could be read instead; research first, and
 on what research cannot settle.
 
 Once over the bar, what happens next depends on what was handed over. **A question** gets an
-answer and stops there — answering is not a licence to start building on it. **A task** gets a
-summary of *what made you confident and what you are going to do*, and then waits for the user's
-signal. **A task already over the bar** gets done: the bar is a floor on confidence, not a quota
-on questions, so at 95% there is nothing to ask and nothing should be manufactured. That last
-case is what stops the rule taxing a typo — asking there spends a round trip to learn nothing and
-teaches the user that these questions are noise, which is what makes the important one get
-skimmed later.
+answer and stops there — answering is not a licence to start building on it. **A task that took
+questions** gets a summary of *what made you confident and what you are going to do*, and then
+waits for the user's signal. **A task already over the bar** goes straight to the work: the bar
+is a floor on confidence, not a quota on questions, so at 95% there is nothing to ask and nothing
+should be manufactured. That last case is what stops the rule taxing a typo — asking there spends
+a round trip to learn nothing and teaches the user that these questions are noise, which is what
+makes the important one get skimmed later.
 
-Only then plan: enter plan mode for anything non-trivial — three or more steps, or any
-architectural decision — and use it for verification steps too, not just for building. If work
-goes sideways, stop and re-plan rather than pushing through.
+Either way, work above the planning gate — more than one file, more than about five lines, or
+any architectural decision — goes through plan mode first, verification steps included. There
+the plan *is* the summary, and its approval is the signal: summarising in chat and then entering
+plan mode would walk the user past a decision before giving them anything they can reject. Once
+the signal comes, the work is carried through — a step that follows from what was approved is
+run, not announced and left waiting. If work goes sideways, stop and re-plan rather than pushing
+through.
 
 **With nobody to answer — a scheduled run, a trigger, CI — proceed and record.** A question that
 cannot be answered is not permission to guess freely, and not a reason to produce nothing. Take
@@ -106,16 +110,23 @@ because it gates *adding* something whose cost is permanent — refusing ends wh
 Rule 1 gates *understanding*, where refusing produces nothing, burns the run, and leaves the
 same ambiguity waiting next time.
 
-**2. Use subagents.** Offload research, exploration, and parallel analysis to keep the main
-context clean. One task per subagent.
+**2. Use subagents.** Offload wide research, exploration, and parallel analysis that would
+otherwise flood the main context — one task per subagent, briefed completely the first time.
+Work that fits in a few reads or one search stays in the main session: a subagent rebuilds
+context before it starts and hands back a report that then has to be read, and on small work
+that overhead is the whole cost. The critics the stress-test rule requires are not covered by
+this judgement; they are required.
 
-**3. Capture corrections.** After any correction, write the lesson into the project's
-`.riprap/instructions/` so it survives the session. A correction that only lives in the
-conversation gets made again next week.
+**3. Capture corrections.** When a correction would come up again, write the lesson where the
+next session will read it: a rule about the repository into its `.riprap/instructions/`, a
+preference about how this user wants the agent to work into the agent's memory. A correction
+that only lives in the conversation gets made again next week; a one-off slip written down as a
+rule teaches every later session to avoid a problem that is not there.
 
 **4. Verify before claiming done.** Never mark work complete without evidence: tests run,
-output shown, behaviour checked. If tests fail, say so and show the failure. If you skipped
-a step, say which.
+output shown, behaviour checked. The check has to exercise the change — a syntax check alone,
+or a test command that failed to start, is not evidence. If tests fail, say so and show the
+failure. If you skipped a step, say which, and why.
 
 **5. Prefer the simpler solution.** When two designs both work, ship the one with less code in
 it, and add structure at the second occurrence rather than in anticipation of one. Skip this
@@ -159,7 +170,8 @@ practice, because reversing it means rewriting code that works.
 
 **Never open a pull request on a diff nobody reviewed, and never abandon one you opened.**
 Before it opens: `/riprap:review` runs over the diff, every BLOCKER and MAJOR is fixed
-first, and every finding is published in the body with a disposition — implemented, deferred
+first — except a MAJOR outside the branch's scope, deferred with a tracking link, and a BLOCKER
+still standing after the second pass, which opens the pull request as a draft — and every finding is published in the body with a disposition — implemented, deferred
 or ignored — and the reason behind it. A finding that was made and then dropped in
 silence is indistinguishable from a finding nobody made, so the reviewer repeats the search
 you already did. After it opens: a red CI run on your own pull request is the task rather

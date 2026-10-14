@@ -19,9 +19,9 @@
 # iteration of a running /loop, since "stale" means any file changed since the handoff was
 # last written; a one-time gate on absence, mirroring require-plan-stress-test.sh's gate on
 # ExitPlanMode, doesn't have that problem. This also can't simply be folded into
-# handoff-stop.sh's existing Stop-time nudge: a scheduled wakeup or a cron job runs on its
+# handoff-stop.sh's existing Stop-time reminder: a scheduled wakeup or a cron job runs on its
 # own clock, independent of whether this session is even still alive by the time it fires, so
-# a nudge that waits for this session's own next Stop cannot guarantee anything is written
+# a reminder that waits for this session's own next Stop cannot guarantee anything is written
 # before that job runs — only a block on the dispatch itself can.
 #
 # Like require-plan-stress-test.sh, this checks presence only: it cannot verify the handoff

@@ -64,8 +64,8 @@ routine, a background workflow, a remote trigger, or a background subagent — a
 already exist for the branch, or the call is refused. A wakeup that is itself ending a loop, and
 an ordinary foreground subagent dispatch, are both exempt — neither leaves the session
 unattended in the sense this milestone means. Unlike every other check in this document, this one
-blocks rather than asks: nothing can be reminded once nobody is watching, so refusing the call is
-the only mechanism left that still works at that exact moment.
+refuses a tool call: nothing can be reminded once nobody is watching, so refusing the call is the
+only mechanism left that still works at that exact moment.
 
 It checks presence only, never quality or currency — the same floor the plan-stress-test
 guardrail holds itself to. A placeholder handoff satisfies it as readily as a real one; what
@@ -74,7 +74,7 @@ for a first handoff to exist: once one does, keeping it current as the tree move
 hook's job, described below, not this one's.
 
 If a session ends without ever writing one at all — a crash, an abrupt exit, anything that
-skipped the Stop hook's own nudge cleanly — a last-resort capture of the observable git state is
+skipped the Stop hook's own reminder cleanly — a last-resort capture of the observable git state is
 recorded on the way out, the same idea as the pre-compaction capture and labelled the same way:
 raw material, not a handoff, with a heading that says so.
 
@@ -118,14 +118,29 @@ Two rules follow, and both are cheap:
   from, so re-check it against the tree, and drop the line on the next rewrite. The rule
   against appending governs what a *session* writes.
 
+## When a turn ends with the handoff behind the tree
+
+If a turn ends while the handoff for this branch is older than the work — a file changed, or a
+commit landed, after it was written — the Stop hook holds the turn open once. The extra turn
+carries one instruction, signed as riprap's hook rather than the user: rewrite that handoff in
+place, then stop. Do exactly that. It is not a new request from the user, and it is not leave to
+pick up whatever else looked unfinished.
+
+It holds a turn open once, never twice in a row: a turn some Stop hook has already continued is
+let go, so a handoff left stale is raised again at the end of the next turn rather than in a
+loop. It never asks for a *first* handoff, only for one that exists and has fallen behind — a
+hook that fired on every two-line fix without one would be switched off, taking the cases that
+mattered with it.
+
 ## Compacting proactively, once the handoff already covers it
 
 Once the Stop hook finds the handoff already up to date, it also checks how full the context
 window is; past roughly 60% of the model's assumed budget (capped at 300k tokens either way),
-it recommends running `/compact` directly rather than waiting for the harness's own
-auto-compact to pick its own moment. This only ever fires once the handoff is confirmed
-current — recommending compaction before the safety net is in place is the sequencing error
-the check exists to avoid.
+it shows the user a notice recommending `/compact` now rather than waiting for the harness's own
+auto-compact to pick its own moment. The notice goes to the user because only the user can run
+`/compact`; it holds nothing open, and the model is not asked to relay it. This only ever fires
+once the handoff is confirmed current — recommending compaction before the safety net is in place
+is the sequencing error the check exists to avoid.
 
 "Current" here means the tree: no tracked or untracked file has changed since the handoff was
 written. It does not mean every open question or piece of reasoning discussed but never

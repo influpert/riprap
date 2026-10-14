@@ -332,12 +332,44 @@ handoff_write_capture() {
   } >"$out" 2>/dev/null || return 1
 }
 
-# Emit a hook JSON response carrying context for the model.
+# The three shapes of hook response the handoff hooks send, one per reader.
 #
-# jq builds it rather than a printf template, because the text contains paths and
-# quoting a path by hand into JSON is how a hook starts emitting something the
-# harness discards in silence.
+# Which shape an event accepts is the harness's contract, not ours, and getting it wrong
+# fails without a sound: Claude Code validates a hook's JSON against the event that ran it,
+# and an object it does not accept for that event is rejected WHOLE, so the message is
+# dropped and the hook looks exactly like one that had nothing to say. That is how the Stop
+# reminder shipped: as hookSpecificOutput, which current Claude Code accepts for Stop and
+# older releases reject outright. riprap cannot choose which release an adopter runs, so
+# each emitter below uses the form old and current releases both accept for its event.
+#
+# jq builds every one rather than a printf template, because the text contains paths and
+# quoting a path by hand into JSON is how a hook starts emitting something the harness
+# discards in silence.
+
+# Context for the model, beside a tool result. For PostToolUse (and SessionStart, whose
+# copy lives in plugin/hooks/session-start). Not for Stop — see handoff_emit_block — and
+# not for PreCompact or SessionEnd, which cannot speak to the model at all.
 handoff_emit_context() {  # $1 = hook event name, $2 = the text
   jq -cn --arg e "$1" --arg c "$2" \
     '{hookSpecificOutput: {hookEventName: $e, additionalContext: $c}}'
+}
+
+# Hold a Stop open for one more turn, with $1 as the model's instruction for it.
+#
+# decision "block" with a reason is the long-standing Stop contract, accepted by old and
+# current Claude Code releases alike, so it reaches the model wherever riprap is installed.
+# JSON on exit 0 rather than exit 2, which would also hold the turn but is reported to the
+# user as a hook error, and this is the hook working as designed. The caller owns the loop
+# guard (stop_hook_active): this only says what to send.
+handoff_emit_block() {  # $1 = the reason, which the model receives as its next instruction
+  jq -cn --arg r "$1" '{decision: "block", reason: $r}'
+}
+
+# A notice for the user, shown in the terminal, that the model does not act on.
+#
+# For advice only the user can take — /compact is a command the model cannot run, so
+# holding a turn open to have the model relay it costs a turn and achieves nothing. Accepted
+# by Stop; PreCompact and SessionEnd discard it, so neither hook uses it.
+handoff_emit_notice() {  # $1 = the text
+  jq -cn --arg m "$1" '{systemMessage: $m}'
 }

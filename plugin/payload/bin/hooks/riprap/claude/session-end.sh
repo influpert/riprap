@@ -11,7 +11,7 @@
 #
 # What this does: a last-resort capture, mirroring handoff-precompact.sh, for a session that
 # ends without one existing at all -- a crash, an abrupt exit, anything that skipped Stop's
-# own nudge cleanly. Deliberately narrower than precompact's own condition: precompact
+# own reminder cleanly. Deliberately narrower than precompact's own condition: precompact
 # treats "only a capture exists" the same as "nothing exists" and writes (or refreshes) one
 # either way, because it needs the LATEST state before the context is lost. Here, if a
 # capture already exists -- written by an earlier PreCompact in the same session, say -- a

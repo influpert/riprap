@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # Regression tests for the handoff hooks: handoff-plan-approved.sh, handoff-precompact.sh,
-# handoff-stop.sh, session-end.sh, and the one that blocks, require-handoff-before-unattended.sh.
+# handoff-stop.sh, session-end.sh, and the one that refuses a tool call,
+# require-handoff-before-unattended.sh.
 #
 # These do not use test-support.sh. Its contract is "pipe a payload in, assert the exit
-# code", which is right for a guardrail that blocks — and says nothing about the four that
-# only ask, which always exit 0 and communicate entirely through stdout (or, for
-# session-end.sh, through a file on disk rather than either channel). What has to be
-# asserted for those four is the CALIBRATION: the cases where a hook stays silent are as
-# load-bearing as the case where it speaks, because a hook that nags on a correct tree is
-# one that gets switched off. The one hook that blocks gets the inverse discipline instead —
-# see assert_blocked below — but the same principle: a case that should stay silent and
-# doesn't is exactly as much a regression as one that should speak and doesn't.
+# code", which is right for a guardrail that refuses a call — and says nothing about the
+# other four, which always exit 0 and communicate entirely through stdout (or, for
+# session-end.sh, through a file on disk rather than either channel). handoff-stop.sh is
+# one of those four even though it can hold a turn open: a Stop decision is JSON on stdout
+# under exit 0, so its exit code says nothing either. What has to be asserted for those four
+# is the CALIBRATION: the cases where a hook stays silent are as load-bearing as the case
+# where it speaks, because a hook that nags on a correct tree is one that gets switched off.
+# The one hook that refuses a call gets the inverse discipline instead — see assert_blocked
+# below — but the same principle: a case that should stay silent and doesn't is exactly as
+# much a regression as one that should speak and doesn't.
 #
 # THREE THINGS THIS HARNESS LEARNED FROM MUTATION TESTING, each of which left an
 # earlier version of the whole suite green:
@@ -93,6 +96,62 @@ assert_context_says() {  # $1 = label, $2 = needle
 assert_event() {  # $1 = label, $2 = expected hookEventName
   local got; got=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.hookEventName // empty' 2>/dev/null)
   if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 — expected event $2, got '${got:-<invalid json>}'"; fi
+}
+
+# What handoff-stop.sh says, and to whom. Its two messages go to different readers through
+# different fields, and each is extracted by name for the reason in point 2 above:
+#   - reason_of: the instruction the model is held for one more turn to act on. Read only
+#     under decision "block" — a reason without that decision holds nothing open and
+#     reaches nobody.
+#   - notice_of: the line shown to the user, who is the only one who can run /compact.
+reason_of() {
+  printf '%s' "$OUT" | jq -r 'select(.decision == "block") | .reason // empty' 2>/dev/null
+}
+notice_of() {
+  printf '%s' "$OUT" | jq -r '.systemMessage // empty' 2>/dev/null
+}
+
+# The stale-handoff reminder: exit 0 with decision "block" on stdout, so the model gets
+# one more turn with the reason as its instruction. Exit 0, not 2, because the JSON is only
+# read on a clean exit. And nothing under hookSpecificOutput: a harness that does not accept
+# that object for Stop rejects the whole output, decision included, and the reminder is
+# dropped without a word — which is how this hook shipped.
+assert_holds_turn() {  # $1 = label, $2 = needle the reason must contain
+  local r; r=$(reason_of)
+  if [ "$RC" -ne 0 ]; then bad "$1 — hook exited $RC; a Stop decision is only read on exit 0"
+  elif [ -n "$ERR" ]; then bad "$1 — hook wrote to stderr: $ERR"
+  elif [ -z "$r" ]; then bad "$1 — no decision:block with a reason in output: ${OUT:-<empty>}"
+  elif printf '%s' "$OUT" | jq -e 'has("hookSpecificOutput")' >/dev/null 2>&1; then
+    bad "$1 — carries hookSpecificOutput, which a Stop hook must not: $OUT"
+  else case "$r" in
+    *"$2"*) ok "$1" ;;
+    *) bad "$1 — reason did not mention '$2': $r" ;;
+  esac; fi
+}
+
+# The /compact recommendation: shown to the user, and holding nothing open. The model
+# cannot run /compact, so a turn spent relaying the advice is a turn spent on nothing.
+assert_notice_says() {  # $1 = label, $2 = needle
+  local n; n=$(notice_of)
+  if [ "$RC" -ne 0 ]; then bad "$1 — hook exited $RC (a dead hook is not a quiet one)"
+  elif [ -n "$ERR" ]; then bad "$1 — hook wrote to stderr: $ERR"
+  elif [ -z "$n" ]; then bad "$1 — no systemMessage in output: ${OUT:-<empty>}"
+  elif printf '%s' "$OUT" | jq -e 'has("decision") or has("hookSpecificOutput")' >/dev/null 2>&1; then
+    bad "$1 — a notice for the user must not hold the turn open or address the model: $OUT"
+  else case "$n" in
+    *"$2"*) ok "$1" ;;
+    *) bad "$1 — notice did not mention '$2': $n" ;;
+  esac; fi
+}
+
+# A real Stop payload always carries stop_hook_active as a boolean, and handoff-stop.sh
+# holds a turn open only on an explicit false — anything else is a state it cannot verify,
+# and it fails open. So every case below that expects it to speak sends one, and so does
+# every case that expects silence for some OTHER reason: a silence test fed `{}` would pass
+# on the missing field alone and prove nothing about the condition it names.
+STOP='{"stop_hook_active":false}'
+stop_with_transcript() {  # $1 = transcript path
+  jq -cn --arg t "$1" '{stop_hook_active:false, transcript_path:$t}'
 }
 
 # The inverse of assert_silent, for the one hook that actually blocks: exit 2 and a
@@ -242,37 +301,53 @@ run_hook_with_local_override() {  # $1=project dir  $2=stdin JSON  $3=.local.sh 
 echo "--- handoff-stop.sh: when it must stay silent ---"
 
 P=$(new_project); B=$(branch_of "$P")
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "clean tree, no handoff"
 
 printf 'changed\n' >>"$P/tracked.txt"
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "changes but no handoff — never demands a first one"
 
 mkdir -p "$P/tmp/handoff"
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "handoff directory exists but is empty"
 
 H=$(write_handoff "$P" "$WORK" "$B")
 touch -t "$OLD" "$P/tracked.txt"
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "handoff newer than every change"
 
 touch -t "$NEW" "$P/tracked.txt"
 run_hook handoff-stop.sh "$P" '{"stop_hook_active":true}'
 assert_silent "stale, but a Stop hook already continued this turn"
 
+# Still stale. Each payload below leaves the hook unable to tell whether a Stop hook has
+# already continued this turn, and holding a turn open on a guess is how a loop starts —
+# one the harness only breaks after eight rounds of the same message. So it fails open.
+run_hook handoff-stop.sh "$P" '{}'
+assert_silent "stale, but the payload does not say whether this turn was already continued"
+run_hook handoff-stop.sh "$P" '{"stop_hook_active":"false"}'
+assert_silent "stale, but stop_hook_active is not a boolean"
+run_hook handoff-stop.sh "$P" '{"stop_hook_active":null}'
+assert_silent "stale, but stop_hook_active is null"
+run_hook handoff-stop.sh "$P" 'not json at all'
+assert_silent "stale, but the payload is not JSON"
+run_hook handoff-stop.sh "$P" ''
+assert_silent "stale, but no payload arrived"
+run_hook handoff-stop.sh "$P" '[false]'
+assert_silent "stale, but the payload is not an object"
+
 # A handoff belonging to another unit of work must not be adopted. Before the
 # branch marker existed this was the worst failure in the feature: the hook named
 # a finished document from another task and said "rewrite it in place".
 rm -f "$H"
 write_handoff "$P" "$OTHER" "some-other-branch" >/dev/null
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "a handoff claiming another branch is not this work's"
 
 rm -f "$P/tmp/handoff/$OTHER"
 printf '# NOT A HANDOFF — automatic capture\n\nstuff\n' >"$P/tmp/handoff/$CAPTURE"
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "a machine capture is not a handoff to update"
 rm -rf "$P"
 
@@ -287,7 +362,7 @@ for b in bash sh git sed awk grep ls head cat date mktemp rm mkdir find touch \
          dirname basename pwd env; do
   p=$(command -v "$b" 2>/dev/null) && ln -sf "$p" "$SANDBOX/$b"
 done
-O=$( (cd "$P" && printf '{}' | PATH="$SANDBOX" CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/handoff-stop.sh" 2>&1) ); R=$?
+O=$( (cd "$P" && printf '%s' "$STOP" | PATH="$SANDBOX" CLAUDE_PROJECT_DIR="$P" "$CLAUDE_DIR/handoff-stop.sh" 2>&1) ); R=$?
 { [ -z "$O" ] && [ "$R" -eq 0 ]; } && ok "handoff-stop is silent and exits 0 without jq" \
   || bad "handoff-stop without jq: rc=$R out=$O"
 O=$( (cd "$P" && printf '%s' '{"tool_name":"ExitPlanMode","tool_response":"## Approved Plan:"}' \
@@ -302,30 +377,39 @@ echo "--- handoff-stop.sh: when it must speak ---"
 P=$(new_project); B=$(branch_of "$P")
 H=$(write_handoff "$P" "$WORK" "$B")
 printf 'changed\n' >>"$P/tracked.txt"; touch -t "$NEW" "$P/tracked.txt"
-run_hook handoff-stop.sh "$P" '{}'
-assert_event "stale handoff emits a Stop event" "Stop"
-assert_context_says "names the handoff it means" "tmp/handoff/$WORK"
-assert_context_says "names the change that outdated it" "tracked.txt"
+run_hook handoff-stop.sh "$P" "$STOP"
+assert_holds_turn "a stale handoff holds the turn open once" "tmp/handoff/$WORK"
+assert_holds_turn "names the change that outdated it" "tracked.txt"
+# The reason arrives where the model expects the user's next instruction. Unsigned, it
+# reads as the user asking, and the model answers the user instead of doing the rewrite.
+assert_holds_turn "says it is riprap's hook speaking" "riprap handoff hook:"
+assert_holds_turn "says it is not the user speaking" "not a message from the user"
+# The instruction names the file, not "it": the model has just been released into a turn
+# it did not plan, and a pronoun is one more thing to resolve before it can act.
+assert_holds_turn "says exactly which file to rewrite" "Rewrite tmp/handoff/$WORK in place"
+# And it ends. Without an explicit stop, the extra turn becomes an invitation to carry on
+# with whatever looked unfinished, which is not what anyone asked for.
+assert_holds_turn "says to stop once the handoff is rewritten" "Then stop"
 
 # THE CASE THE HOOK SHIPPED WITHOUT: work finished and committed. A clean tree
 # made both change lists empty, so the hook fell silent at exactly the moment
 # there was something worth recording.
 git -C "$P" add -A >/dev/null 2>&1
 git -C "$P" commit -qm "did the work" >/dev/null 2>&1
-run_hook handoff-stop.sh "$P" '{}'
-assert_context_says "still speaks after the work is committed" "tracked.txt"
+run_hook handoff-stop.sh "$P" "$STOP"
+assert_holds_turn "still speaks after the work is committed" "tracked.txt"
 
 # ...and correctly goes quiet once the handoff is rewritten after that commit.
 touch -t "$NEWEST" "$H"
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "quiet once the handoff is newer than the commit"
 rm -rf "$P"
 
 P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 printf 'new\n' >"$P/untracked.txt"; touch -t "$NEW" "$P/untracked.txt"
-run_hook handoff-stop.sh "$P" '{}'
-assert_context_says "an untracked file counts as a change" "untracked.txt"
+run_hook handoff-stop.sh "$P" "$STOP"
+assert_holds_turn "an untracked file counts as a change" "untracked.txt"
 rm -rf "$P"
 
 # A project rooted in a subdirectory of the repository. `git diff` prints
@@ -337,8 +421,8 @@ mkdir -p "$P/app"; printf 'tmp/\n' >"$P/app/.gitignore"; printf 'x\n' >"$P/app/c
 git -C "$P" add -A >/dev/null 2>&1; git -C "$P" commit -qm app >/dev/null 2>&1
 write_handoff "$P/app" "$WORK" "$B" >/dev/null
 printf 'edited\n' >>"$P/app/code.txt"; touch -t "$NEW" "$P/app/code.txt"
-run_hook handoff-stop.sh "$P/app" '{}'
-assert_context_says "fires when the project root is a repo subdirectory" "code.txt"
+run_hook handoff-stop.sh "$P/app" "$STOP"
+assert_holds_turn "fires when the project root is a repo subdirectory" "code.txt"
 rm -rf "$P"
 
 echo
@@ -355,7 +439,7 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "${LOW_USAGE}:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
 assert_silent "fresh handoff, usage well under the trigger"
 rm -f "$T"; rm -rf "$P"
 
@@ -363,9 +447,9 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_context_says "fresh handoff, usage over the trigger, recommends /compact" "/compact"
-assert_context_says "names the handoff that is already safe" "tmp/handoff/$WORK"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
+assert_notice_says "fresh handoff, usage over the trigger, recommends /compact" "/compact"
+assert_notice_says "names the handoff that is already safe" "tmp/handoff/$WORK"
 rm -f "$T"; rm -rf "$P"
 
 # The boundary itself: claude-sonnet-5's trigger is exactly 300000 (the cap
@@ -376,7 +460,7 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "299999:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
 assert_silent "one token short of the trigger stays silent"
 rm -f "$T"; rm -rf "$P"
 
@@ -384,21 +468,21 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "300000:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_context_says "exactly at the trigger fires" "/compact"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
+assert_notice_says "exactly at the trigger fires" "/compact"
 rm -f "$T"; rm -rf "$P"
 
 # The sequencing this feature exists to protect: never recommend compacting
-# before the safety net is confirmed fresh. The existing rewrite message must
-# still fire, unchanged, and must not also suggest /compact.
+# before the safety net is confirmed fresh. The rewrite message must still fire,
+# and neither it nor a notice beside it may suggest /compact.
 P=$(new_project); B=$(branch_of "$P")
 H=$(write_handoff "$P" "$WORK" "$B")
 printf 'changed\n' >>"$P/tracked.txt"; touch -t "$NEW" "$P/tracked.txt"
 T=$(mktemp)
 write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_context_says "stale handoff still gets the rewrite message" "Rewrite it in place"
-c=$(context_of); case "$c" in
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
+assert_holds_turn "stale handoff still gets the rewrite message" "Rewrite tmp/handoff/$WORK in place"
+c="$(reason_of)$(notice_of)"; case "$c" in
   *"/compact"*) bad "stale handoff must not also recommend /compact: $c" ;;
   *) ok "stale handoff never recommends /compact, even at high usage" ;;
 esac
@@ -417,7 +501,7 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "${LOW_USAGE}:claude-sonnet-5" "999999:claude-sonnet-5:sidechain"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
 assert_silent "a huge sidechain turn after the real usage does not trigger the recommendation"
 rm -f "$T"; rm -rf "$P"
 
@@ -428,8 +512,8 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5" "synthetic"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_context_says "a trailing zero-usage entry does not mask real high usage" "/compact"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
+assert_notice_says "a trailing zero-usage entry does not mask real high usage" "/compact"
 rm -f "$T"; rm -rf "$P"
 
 # The transcript is a file the live session may still be appending to. A torn
@@ -444,8 +528,8 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "malformed" "${HIGH_USAGE}:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_context_says "a malformed line before the real entry does not blank it out" "/compact"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
+assert_notice_says "a malformed line before the real entry does not blank it out" "/compact"
 rm -f "$T"; rm -rf "$P"
 
 # THE BUG THE CEILING TABLE WAS FIXED FOR: a trailing wildcard (claude-*-5*)
@@ -458,8 +542,8 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "150000:claude-3-5-sonnet-20241022"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
-assert_context_says "a dated model correctly gets the 200k fallback, not a false 1M match" "/compact"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
+assert_notice_says "a dated model correctly gets the 200k fallback, not a false 1M match" "/compact"
 rm -f "$T"; rm -rf "$P"
 
 # ...and the true 5-family model genuinely gets the larger ceiling: the same
@@ -468,7 +552,7 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "150000:claude-sonnet-5"
-run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript "$T")"
 assert_silent "the true 5-family model is not nagged at the same token count"
 rm -f "$T"; rm -rf "$P"
 
@@ -479,9 +563,9 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "6000:some-future-model"
-run_hook_with_local_override "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')" \
+run_hook_with_local_override "$P" "$(stop_with_transcript "$T")" \
   'context_usage_ceiling() { echo 10000; }'
-assert_context_says "a local override moves the trigger for an unrecognized model" "/compact"
+assert_notice_says "a local override moves the trigger for an unrecognized model" "/compact"
 rm -f "$T"; rm -rf "$P"
 
 # A malformed override must fail open, not crash — this is the exact shape of
@@ -491,7 +575,7 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
-run_hook_with_local_override "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')" \
+run_hook_with_local_override "$P" "$(stop_with_transcript "$T")" \
   'context_usage_ceiling() { echo 080000; }'
 assert_silent "a leading-zero override value fails open instead of crashing"
 rm -f "$T"; rm -rf "$P"
@@ -500,7 +584,7 @@ P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "100:claude-sonnet-5"
-run_hook_with_local_override "$P" "$(jq -cn --arg t "$T" '{transcript_path:$t}')" \
+run_hook_with_local_override "$P" "$(stop_with_transcript "$T")" \
   'context_usage_ceiling() { echo 99999999999999999999999; }'
 assert_silent "an overflowing override value fails open instead of a false trigger"
 rm -f "$T"; rm -rf "$P"
@@ -510,21 +594,27 @@ rm -f "$T"; rm -rf "$P"
 # mode here is strictly worse than staying silent.
 P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "no transcript_path at all"
-run_hook handoff-stop.sh "$P" "$(jq -cn '{transcript_path:"/nonexistent/path.jsonl"}')"
+run_hook handoff-stop.sh "$P" "$(stop_with_transcript /nonexistent/path.jsonl)"
 assert_silent "a transcript_path that does not exist"
 rm -rf "$P"
 
-# stop_hook_active guards the usage check too, not just the staleness one — a
-# model that already got one forced continuation this turn must not get a
-# second, whichever of the two messages would otherwise have fired.
+# stop_hook_active guards only the message that holds a turn open. The /compact
+# notice holds nothing open, so it cannot loop — and the turn a Stop hook just
+# continued is often the one where the model brought the handoff up to date,
+# which is exactly when compacting becomes safe. Suppressing it there would hide
+# the notice at the one moment it is newly true.
 P=$(new_project); B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 T=$(mktemp)
 write_transcript "$T" "${HIGH_USAGE}:claude-sonnet-5"
 run_hook handoff-stop.sh "$P" "$(jq -cn --arg t "$T" '{stop_hook_active:true, transcript_path:$t}')"
-assert_silent "already continued once this turn, so high usage is not raised again"
+assert_notice_says "a continued turn still tells the user /compact is safe" "/compact"
+# ...and with a payload it cannot read at all, it says nothing: the transcript
+# path comes from the same payload, so there is no usage to report.
+run_hook handoff-stop.sh "$P" 'not json at all'
+assert_silent "an unreadable payload yields no /compact notice either"
 rm -f "$T"; rm -rf "$P"
 
 echo
@@ -618,10 +708,10 @@ rm -rf "$P"
 P=$(new_project)
 write_handoff "$P" "$WORK" "" >/dev/null
 printf 'x\n' >>"$P/tracked.txt"; touch -t "$NEW" "$P/tracked.txt"
-run_hook handoff-stop.sh "$P" '{}'
-assert_context_says "a lone unmarked handoff still counts" "tmp/handoff/$WORK"
+run_hook handoff-stop.sh "$P" "$STOP"
+assert_holds_turn "a lone unmarked handoff still counts" "tmp/handoff/$WORK"
 write_handoff "$P" "$OTHER" "" >/dev/null
-run_hook handoff-stop.sh "$P" '{}'
+run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "two unmarked handoffs are ambiguous, so neither is claimed"
 rm -rf "$P"
 
@@ -646,15 +736,15 @@ case "$(cat "$P/tmp/handover/handover-old.md")" in
 esac
 
 printf 'x\n' >>"$P/tracked.txt"; touch -t "$NEW" "$P/tracked.txt"
-run_hook handoff-stop.sh "$P" '{}'
-assert_context_says "the stop hook finds a handoff in the old directory" "tmp/handover/handover-old.md"
+run_hook handoff-stop.sh "$P" "$STOP"
+assert_holds_turn "the stop hook finds a handoff in the old directory" "tmp/handover/handover-old.md"
 
 # ...but never in preference to one in the current directory.
 B=$(branch_of "$P")
 write_handoff "$P" "$WORK" "$B" >/dev/null
 touch -t "$OLD" "$P/tmp/handoff/$WORK"
-run_hook handoff-stop.sh "$P" '{}'
-assert_context_says "the current directory wins once it has anything in it" "tmp/handoff/$WORK"
+run_hook handoff-stop.sh "$P" "$STOP"
+assert_holds_turn "the current directory wins once it has anything in it" "tmp/handoff/$WORK"
 rm -rf "$P"
 
 echo
@@ -755,8 +845,8 @@ rm -rf "$P"
 echo
 echo "--- require-handoff-before-unattended.sh: presence is enough, staleness is not this hook's job ---"
 
-# Keeping a handoff CURRENT as the tree moves stays handoff-stop.sh's job — a soft nudge
-# that fires every time it's stale, never blocks. A per-call block on staleness would
+# Keeping a handoff CURRENT as the tree moves stays handoff-stop.sh's job — it holds a
+# turn open once when the handoff is stale, and never refuses a call. A per-call block on staleness would
 # refuse nearly every iteration of a running /loop, since "stale" means any file changed
 # since the handoff was last written; this hook checks presence only.
 P=$(new_project); B=$(branch_of "$P")
@@ -919,12 +1009,12 @@ run_hook_in "$UNATTENDED_HOOK" "$P/app" "$W/app" "$(with_cwd "$W/app" "$BG")"
 assert_silent "a project in a subdirectory resolves to the same subdirectory of the worktree"
 rm -rf "$P" "$(dirname "$W")"
 
-# The four hooks that only ask or write follow the same resolution.
+# The four hooks that ask, hold a turn open, or write follow the same resolution.
 P=$(new_project); W=$(new_worktree "$P" feature)
 H=$(write_handoff "$W" "$WORK" feature); touch -t "$OLD" "$H"
 printf 'changed\n' >>"$W/tracked.txt"; touch -t "$NEW" "$W/tracked.txt"
-run_hook_in handoff-stop.sh "$P" "$W" "$(with_cwd "$W" '{}')"
-assert_context_says "handoff-stop.sh finds the worktree's stale handoff" "tmp/handoff/$WORK"
+run_hook_in handoff-stop.sh "$P" "$W" "$(with_cwd "$W" "$STOP")"
+assert_holds_turn "handoff-stop.sh finds the worktree's stale handoff" "tmp/handoff/$WORK"
 run_hook_in handoff-plan-approved.sh "$P" "$W" \
   "$(with_cwd "$W" '{"tool_name":"ExitPlanMode","tool_response":"User has approved your plan."}')"
 assert_context_says "handoff-plan-approved.sh asks for the worktree's handoff to be rewritten" "Rewrite tmp/handoff/$WORK"

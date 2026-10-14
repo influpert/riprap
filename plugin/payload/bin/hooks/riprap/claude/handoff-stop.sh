@@ -1,10 +1,28 @@
 #!/usr/bin/env bash
 # Stop hook: the turn is ending. Has the handoff kept up with the work?
 #
-# Stop carries additionalContext, so this asks rather than blocks — the model
-# gets one more turn with the message below and the session is never held open.
-# That matters: `preventContinuation` on a model that declines produces a session
-# that cannot end, and the harness overrides it after eight tries anyway.
+# It has two things to say, to two different readers, and each goes by the channel
+# that reader actually receives:
+#
+#   A stale handoff is the model's to fix, so that message BLOCKS THE STOP ONCE:
+#   decision "block" with a reason, which Claude Code hands the model as the
+#   instruction for one more turn — the long-standing Stop contract, delivered by
+#   old and current releases alike. This hook used to send the reminder as
+#   hookSpecificOutput instead, which older releases reject whole — so it was
+#   dropped without a sound, and a reminder nobody receives is the same as none.
+#
+#   High context usage on a current handoff is the user's to act on, because only
+#   the user can run /compact. That goes out as a systemMessage, shown in the
+#   terminal and holding nothing open: blocking the model to have it relay advice
+#   it cannot follow would spend a turn and achieve nothing.
+#
+# Blocking once, never twice. `stop_hook_active` is true when this Stop is the end
+# of a turn some Stop hook already continued, and the block below fires only when
+# the payload says, explicitly, that it is false. A model that declines to rewrite
+# the handoff is therefore asked once per turn, not eight times until the
+# harness's own cap breaks the loop — and a payload that does not say (absent,
+# not a boolean, not JSON at all) is treated as "cannot tell", so the hook fails
+# open and lets the turn end, as every handoff hook does on what it cannot verify.
 #
 # THE CALIBRATION IS THE POINT, so it is stated rather than left to the code:
 #
@@ -27,10 +45,11 @@
 #   confirmed in place is the sequencing error to avoid, and it is unreachable
 #   from the stale/absent branch above.
 #
-#   `stop_hook_active` below guards BOTH checks, not just the staleness one: a
-#   model that declines to act on either message must not be asked again on the
-#   very next Stop of the same turn. Losing that would recreate the loop the
-#   harness's own block cap exists to catch.
+#   `stop_hook_active` guards the block only. The /compact notice holds nothing
+#   open, so it cannot loop, and the turn a Stop hook just continued is often the
+#   one where the model brought the handoff up to date — exactly when compacting
+#   becomes safe. Suppressing the notice there would hide it at the one moment it
+#   is newly true.
 #
 # See riprap's handoffs guardrail (riprap.dev/reference).
 set -uo pipefail
@@ -45,12 +64,15 @@ command -v jq >/dev/null 2>&1 || exit 0
 
 INPUT=$(cat 2>/dev/null || true)
 
-# Already continued once by a Stop hook. Without this, a model that declines to
-# act on either message below gets asked again every turn, which is the loop the
-# harness has a block cap for. Ask once; whatever is true now is still true next
-# time if it genuinely matters.
-ACTIVE=$(printf '%s' "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || echo false)
-[ "$ACTIVE" != "true" ] || exit 0
+# "false" only when the payload is an object whose stop_hook_active is the boolean
+# false; "true" when it is the boolean true; empty for everything else. Only the first
+# permits a block, below. Claude Code sends the field as a required boolean on every
+# Stop, so anything else means this is not the payload the guard was written against —
+# and blocking on a guess about whether this turn was already continued is how a loop
+# starts.
+ACTIVE=$(printf '%s' "$INPUT" \
+  | jq -r 'if type == "object" and (.stop_hook_active | type) == "boolean"
+           then .stop_hook_active else empty end' 2>/dev/null) || ACTIVE=""
 
 handoff_resolve_project "$INPUT"
 PROJECT="$HANDOFF_PROJECT"
@@ -70,13 +92,24 @@ handoff_is_capture "$CURRENT" && exit 0
 
 CHANGED=$(handoff_newer_change "$CURRENT" 2>/dev/null || true)
 if [ -n "$CHANGED" ]; then
-  handoff_emit_context Stop \
-"The handoff at ${REL} is older than the work in the tree — ${CHANGED} changed after it was
-written, so it no longer describes where this work actually stopped.
+  # Already continued, or cannot tell: let the turn end. Whatever is stale now is still
+  # stale at the next Stop, which will ask again — once.
+  [ "$ACTIVE" = "false" ] || exit 0
 
-Rewrite it in place before you finish: what has landed since (with the evidence), what the next
-action is, and anything now decided that was open. If the work is genuinely complete, say so in
-the document rather than leaving it describing a middle."
+  # The reason arrives where the model expects the user's next instruction, so it says
+  # whose it is: unsigned, it reads as the user asking, and the model answers the user
+  # instead of doing the rewrite. It names the file rather than saying "it", and it ends
+  # with "stop", because a turn the model did not plan is otherwise an invitation to
+  # carry on with whatever looked unfinished.
+  handoff_emit_block \
+"riprap handoff hook: this is an automated check, not a message from the user. The handoff at
+${REL} is older than the work in the tree — ${CHANGED} changed after it was written, so it no
+longer describes where this work actually stopped.
+
+Rewrite ${REL} in place now: what has landed since (with the evidence), what the next action is,
+and anything now decided that was open. If the work is genuinely complete, say so in the
+document rather than leaving it describing a middle. Then stop. Do not start anything else; this
+hook holds a turn open once and will not ask again this turn."
   exit 0
 fi
 
@@ -130,9 +163,9 @@ TRIGGER=$(( CEILING * CONTEXT_USAGE_TRIGGER_PCT / 100 ))
 [ "$TOKENS" -ge "$TRIGGER" ] || exit 0
 
 PCT=$(( TOKENS * 100 / CEILING ))
-handoff_emit_context Stop \
-"Context usage is high — roughly ${PCT}% of this session's assumed budget (~${TOKENS} tokens).
+handoff_emit_notice \
+"riprap: context usage is high — roughly ${PCT}% of this session's assumed budget (~${TOKENS} tokens).
 The handoff at ${REL} reflects the current tree, so compacting now should not lose anything
-that has been written down — run /compact rather than wait for it to happen automatically."
+that has been written down. Run /compact rather than wait for it to happen automatically."
 
 exit 0

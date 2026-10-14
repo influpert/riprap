@@ -35,7 +35,7 @@ format what you just wrote, keep the handoff current, and mark the end of a sess
 | plan approved | ExitPlanMode | Asks for the handoff to be written, or rewritten, from the plan just approved | no |
 | unattended stretch begins | ScheduleWakeup, CronCreate, Workflow, RemoteTrigger, a backgrounded Agent/Task | Refuses the call unless a handoff already exists for the branch — checks presence only, never staleness | **yes** |
 | pre-compaction | before compaction | Stamps the handoff, or records git state under a heading saying it is not one. Does nothing unless `tmp/` is already git-ignored | no |
-| turn ending | Stop | Asks for a handoff that has fallen behind the tree to be brought up to date | no |
+| turn ending | Stop | Holds the turn open once so a handoff that has fallen behind the tree is rewritten. Once the handoff is current and the context is filling, tells you `/compact` is safe | once — the end of a turn, never a tool call |
 | session end | session end | Writes the same last-resort capture as pre-compaction, but only when no handoff exists at all — a net for a session that ends without ever going through either of the other two | no |
 
 The handoff hooks read and write `tmp/handoff/`, and pre-compaction and session-end both
@@ -106,14 +106,17 @@ blockers — secret hygiene, the destructive-command blocker, the worktree bound
 gate, tech footprint, and the plan stress test — refuse every call they inspect rather than waving it through, and
 say why.
 
-**The handoff hooks that only ask deliberately fail the other way**, and it is worth being
-explicit about the asymmetry: they block nothing, so without `jq` they exit silently rather
-than refusing. Nothing is unsafe when a reminder does not arrive, and turning every approved
-plan into an error over a convenience dependency is how a hook gets switched off.
+**The handoff hooks that ask rather than refuse deliberately fail the other way**, and it is
+worth being explicit about the asymmetry: they refuse no tool call, so without `jq` they exit
+silently rather than refusing. Nothing is unsafe when a reminder does not arrive, and turning
+every approved plan into an error over a convenience dependency is how a hook gets switched
+off. The turn-ending hook belongs here even though it holds a turn open: it does so only when
+the payload says outright that no Stop hook has already continued the turn, and on anything it
+cannot read it lets the turn end. Holding a turn open on a guess is how a loop starts.
 
 **The unattended-stretch gate sits in neither bucket, and that is deliberate too.** It can
-block — unlike the hooks that only ask — but it fails open on a missing dependency exactly
-like they do, rather than fail closed like the six rule-enforcing blockers above. It guards
+refuse a call — unlike the handoff hooks above — but it fails open on a missing dependency
+exactly like they do, rather than fail closed like the six rule-enforcing blockers above. It guards
 a behavioural rule, not one of the five critical ones, and it can fire on nearly every tool
 call in a session: refusing to schedule work or dispatch a subagent because `jq` is absent
 would block far more than the guardrail it exists to enforce, which is a worse outcome than

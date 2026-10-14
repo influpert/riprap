@@ -177,6 +177,40 @@ EXPECT="$B||56" check "the same merge, harmless where it really runs -> allow" 0
   "$(bash_at "$A" "cd $A && gh pr merge 56")"
 
 echo
+echo "--- A merge through the REST API is the same merge ---"
+# PUT on a pull request's /merge endpoint is what gh pr merge does underneath, and
+# gh api is the first thing a model reaches for once gh pr merge is refused. Every
+# one of these was allowed when the gate knew only the one spelling. The seam still
+# answers "gated" only for the exact pull request, so each block proves which one
+# was looked up, and the harmless case below proves it is checked, not blanket-refused.
+asks "gh api -X PUT -> that pull request" "$A|o/r|5" "gh api -X PUT repos/o/r/pulls/5/merge"
+asks "--method PUT, with fields" "$A|o/r|5" "gh api --method PUT repos/o/r/pulls/5/merge -f merge_method=squash"
+asks "--method=PUT and a leading slash" "$A|o/r|5" "gh api --method=PUT /repos/o/r/pulls/5/merge"
+asks "-X run together with a lower-case method" "$A|o/r|5" "gh api -Xput repos/o/r/pulls/5/merge"
+asks "placeholders, method last -> the repository it runs in" "$B||5" \
+  "cd $B && gh api repos/{owner}/{repo}/pulls/5/merge -X PUT"
+asks "placeholders with GH_REPO in front" "$A|o/r|5" "GH_REPO=o/r gh api -X PUT repos/{owner}/{repo}/pulls/5/merge"
+asks "a full API URL" "$A|o/r|5" "gh api -X PUT https://api.github.com/repos/o/r/pulls/5/merge"
+asks "--hostname -> that host's repository" "$A|ghe.example.com/o/r|5" \
+  "gh api --hostname ghe.example.com -X PUT repos/o/r/pulls/5/merge"
+asks "after &&" "$A|o/r|5" "git push && gh api -X PUT repos/o/r/pulls/5/merge"
+asks "curl PUT on the merge endpoint" "$A|o/r|5" "curl -fsS -X PUT https://api.github.com/repos/o/r/pulls/5/merge"
+EXPECT="$A|o/r|5" check "an API merge of a harmless pull request -> allow" 0 \
+  "$(bash_at "$A" "gh api -X PUT repos/o/r/pulls/6/merge")"
+
+echo
+echo "--- The GitHub MCP merge tools reach the same gate ---"
+# They never reached it at all: the hook was registered for Bash only, so an MCP
+# merge went straight through. The pull request is the one the tool input names.
+mcp_at() { jq -cn --arg d "$1" --arg t "$2" --argjson i "$3" '{tool_name: $t, cwd: $d, tool_input: $i}'; }
+EXPECT="$A|o/r|5" check "merge_pull_request -> that pull request" 2 \
+  "$(mcp_at "$A" mcp__github__merge_pull_request '{"owner":"o","repo":"r","pullNumber":5,"merge_method":"squash"}')"
+EXPECT="$A|o/r|5" check "under any server prefix" 2 \
+  "$(mcp_at "$A" mcp__plugin_gh_github__merge_pull_request '{"owner":"o","repo":"r","pullNumber":5}')"
+EXPECT="$A|o/r|5" check "an MCP merge of a harmless pull request -> allow" 0 \
+  "$(mcp_at "$A" mcp__github__merge_pull_request '{"owner":"o","repo":"r","pullNumber":6}')"
+
+echo
 echo "--- What cannot be read is refused, not guessed ---"
 export EXPECT="nothing"   # the seam calls everything harmless from here on
 check "cd to a variable -> block" 2 "$(bash_at "$A" 'cd "$REPO" && gh pr merge 5')"
@@ -189,7 +223,59 @@ check "an unknown shorthand -> block" 2 "$(bash_at "$A" 'gh pr merge -x 5')"
 check "two pull requests -> block" 2 "$(bash_at "$A" 'gh pr merge 5 6')"
 check "the number is a variable -> block" 2 "$(bash_at "$A" 'gh pr merge "$PR"')"
 check "--repo with no value -> block" 2 "$(bash_at "$A" 'gh pr merge 5 --repo')"
+check "an API merge through timeout -> block" 2 "$(bash_at "$A" 'timeout 60 gh api -X PUT repos/o/r/pulls/5/merge')"
+check "an API merge handed to bash -c -> block" 2 "$(bash_at "$A" "bash -c 'gh api -X PUT repos/o/r/pulls/5/merge'")"
+check "an API merge in a double-quoted \$( ) -> block" 2 \
+  "$(bash_at "$A" 'echo "$(gh api -X PUT repos/o/r/pulls/5/merge)"')"
+check "an API merge of a variable -> block" 2 "$(bash_at "$A" 'gh api -X PUT "repos/o/r/pulls/$PR/merge"')"
+check "an API merge with a variable method -> block" 2 "$(bash_at "$A" 'gh api -X "$M" repos/o/r/pulls/5/merge')"
+check "only one of the two placeholders -> block" 2 "$(bash_at "$A" 'gh api -X PUT repos/{owner}/r/pulls/5/merge')"
+# A GraphQL merge names its pull request by node ID, which this gate does not
+# resolve. Refused as unverifiable rather than looked up some other way.
+check "GraphQL mergePullRequest -> block" 2 \
+  "$(bash_at "$A" "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"PR_x\"}) { clientMutationId } }'")"
+check "GraphQL mergePullRequest in a heredoc -> block" 2 \
+  "$(bash_at "$A" "gh api graphql -F query=@- <<'EOF'${NL}mutation { mergePullRequest(input: {pullRequestId: \"PR_x\"}) { clientMutationId } }${NL}EOF")"
+check "an MCP merge with no pullNumber -> block" 2 \
+  "$(mcp_at "$A" mcp__github__merge_pull_request '{"owner":"o","repo":"r"}')"
+check "an MCP merge whose pullNumber is not a number -> block" 2 \
+  "$(mcp_at "$A" mcp__github__merge_pull_request '{"owner":"o","repo":"r","pullNumber":"$PR"}')"
+
+echo
+echo "--- --admin and auto-merge are refused on every pull request ---"
+# merge-gates.md forbids --admin outright, gated paths or not: it overrides the
+# checks the merge was supposed to wait for. Auto-merge merges later, on whatever
+# head the branch has by then, so what this gate checked is not what merges. Both
+# passed whenever the files happened to be harmless, and the seam still says they are.
+check "--admin on a harmless pull request -> block" 2 "$(bash_at "$A" 'gh pr merge 5 --admin')"
+check "--admin before the number -> block" 2 "$(bash_at "$A" 'gh pr merge --admin --squash 5')"
+check "--auto on a harmless pull request -> block" 2 "$(bash_at "$A" 'gh pr merge 5 --auto --squash')"
+check "GraphQL enablePullRequestAutoMerge -> block" 2 \
+  "$(bash_at "$A" "gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {pullRequestId: \"PR_x\"}) { clientMutationId } }'")"
+check "the MCP auto-merge tool -> block" 2 \
+  "$(mcp_at "$A" mcp__github__enable_pr_auto_merge '{"owner":"o","repo":"r","pullNumber":5}')"
+check "the same merge without either -> allow" 0 "$(bash_at "$A" 'gh pr merge 5 --squash')"
+
+echo
+echo "--- Reading, or turning auto-merge off, is not a merge ---"
+# The seam says "gated" for everything from here, so anything wrongly taken for a
+# merge is refused. A guardrail that blocks reading a pull request gets disabled.
 with_files "src/auth/login.ts"
+check "GET on the merge endpoint (has it merged?) -> allow" 0 "$(bash_at "$A" 'gh api repos/o/r/pulls/5/merge')"
+check "curl GET on the merge endpoint -> allow" 0 \
+  "$(bash_at "$A" 'curl -s https://api.github.com/repos/o/r/pulls/5/merge')"
+check "a pull request's mergeable state -> allow" 0 "$(bash_at "$A" 'gh api repos/o/r/pulls/5 --jq .mergeable')"
+check "PUT on another pull request endpoint -> allow" 0 \
+  "$(bash_at "$A" 'gh api -X PUT repos/o/r/pulls/5/update-branch')"
+check "a GraphQL query about merging -> allow" 0 \
+  "$(bash_at "$A" "gh api graphql -f query='query { repository(owner: \"o\", name: \"r\") { pullRequest(number: 5) { mergeable merged } } }'")"
+check "an API merge quoted in a commit message -> allow" 0 \
+  "$(bash_at "$A" 'git commit -m "use gh api -X PUT repos/o/r/pulls/5/merge"')"
+check "gh pr merge --disable-auto, on a gated pull request -> allow" 0 "$(bash_at "$A" 'gh pr merge 5 --disable-auto')"
+check "the MCP tool that turns auto-merge off -> allow" 0 \
+  "$(mcp_at "$A" mcp__github__disable_pr_auto_merge '{"owner":"o","repo":"r","pullNumber":5}')"
+check "another GitHub MCP tool -> allow" 0 \
+  "$(mcp_at "$A" mcp__github__pull_request_read '{"owner":"o","repo":"r","pullNumber":5,"method":"get"}')"
 
 echo
 echo "--- The refusal has to be actionable ---"
@@ -197,5 +283,19 @@ with_files "bin/hooks/riprap/claude/lint-secrets.sh"
 check_contains "names the gated file" "lint-secrets.sh" "$MERGE"
 check_contains "explains the hold procedure" "hold comment" "$MERGE"
 check_contains "warns against holding a broken PR" "unresolved bug" "$MERGE"
+check_contains "a gated refusal says it is riprap's merge gate" "riprap's merge gate" "$MERGE"
+with_files "src/app.ts"
+ADMIN='{"tool_name":"Bash","tool_input":{"command":"gh pr merge 42 --admin"}}'
+AUTO='{"tool_name":"Bash","tool_input":{"command":"gh pr merge 42 --auto"}}'
+check_contains "--admin says it is riprap's merge gate" "riprap's merge gate" "$ADMIN"
+check_contains "--admin names what it refused" "--admin" "$ADMIN"
+check_contains "--admin gives the way forward" "fix the check" "$ADMIN"
+check_contains "--auto says it is riprap's merge gate" "riprap's merge gate" "$AUTO"
+check_contains "--auto says why" "never saw" "$AUTO"
+check_contains "--auto gives the way forward" "without --auto" "$AUTO"
+check_contains "the MCP auto-merge tool is named in its refusal" "mcp__github__enable_pr_auto_merge" \
+  '{"tool_name":"mcp__github__enable_pr_auto_merge","tool_input":{"owner":"o","repo":"r","pullNumber":5}}'
+check_contains "a GraphQL merge is refused as unverifiable" "Cannot verify" \
+  "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \\\"PR_x\\\"}) { clientMutationId } }'\"}}"
 
 summary

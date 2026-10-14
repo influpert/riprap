@@ -204,5 +204,44 @@ case "$(ctx '{"source":"compact"}')" in
   *"tmp/handoff/work.md"*) bad "with no .cwd the router reached into a worktree it was never told about" ;;
   *) ok "with no .cwd the router answers for CLAUDE_PROJECT_DIR, as before" ;; esac
 
+echo
+echo "--- hooks.json routes every merge tool to the merge gate ---"
+
+# A hook only sees the tool calls its matcher sends it, and the payload's own tests
+# pipe a payload straight in, so nothing there can notice a matcher that never fires.
+# The merge gate was registered for Bash alone and the GitHub MCP merge tools went
+# round it entirely. This evaluates each PreToolUse matcher the way Claude Code's
+# hooks reference documents it: a value of only letters, digits, `_`, `-`, spaces,
+# `,` and `|` is a list of exact names; anything else is a regular expression tested
+# unanchored, which is why the MCP matcher anchors itself. Bash's ERE stands in for
+# JavaScript's RegExp, which agree on every construct the matchers use.
+routes() {  # $1 = tool name, $2 = hook script; true when a PreToolUse matcher sends $1 there
+  local m name
+  while IFS= read -r m; do
+    [ -n "$m" ] && [ "$m" != "*" ] || return 0
+    if [[ "$m" =~ ^[A-Za-z0-9_\ ,\|-]+$ ]]; then
+      while IFS= read -r name; do
+        name="${name#"${name%%[! ]*}"}"; name="${name%"${name##*[! ]}"}"
+        [ "$name" != "$1" ] || return 0
+      done < <(printf '%s\n' "$m" | tr '|,' '\n\n')
+    elif [[ "$1" =~ $m ]]; then
+      return 0
+    fi
+  done < <(jq -r --arg s "$2" '.hooks.PreToolUse[]
+             | select(any(.hooks[]; .command | endswith("run-payload-hook " + $s)))
+             | .matcher // ""' "$PLUGIN/hooks/hooks.json")
+  return 1
+}
+gate=block-unreviewed-merge.sh
+for tool in Bash mcp__github__merge_pull_request mcp__github__enable_pr_auto_merge \
+            mcp__plugin_gh_github__merge_pull_request; do
+  routes "$tool" "$gate" && ok "$tool reaches the merge gate" || bad "$tool never reaches the merge gate"
+done
+for tool in Read mcp__github__pull_request_read mcp__github__disable_pr_auto_merge \
+            mcp__github__merge_pull_request_status; do
+  routes "$tool" "$gate" && bad "$tool is sent to the merge gate, which has nothing to check in it" \
+    || ok "$tool is not sent to the merge gate"
+done
+
 printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

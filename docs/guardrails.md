@@ -119,6 +119,12 @@ call in a session: refusing to schedule work or dispatch a subagent because `jq`
 would block far more than the guardrail it exists to enforce, which is a worse outcome than
 a reminder that never arrives.
 
+**The worktree boundary fails closed even though it guards neither a behavioural nor a critical
+rule, and the reason is that it costs nothing.** It fires on Bash, Edit and Write — the same
+tools secret hygiene already refuses without `jq` — so failing open would let through no call
+that is not already blocked, and would leave the one hook that can tell where a write lands
+silent in exactly the state where nothing else is checking.
+
 **Scanning strategy is part of the rule, not an implementation detail.** Secrets are scanned
 on *added lines only*: a secret already committed is a rotation problem, not a reason to
 block today's unrelated commit. Rules that depend on co-occurrence or proximity scan the

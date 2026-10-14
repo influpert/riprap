@@ -26,13 +26,17 @@
 #   - The host's own state for plans and memory, under ${CLAUDE_CONFIG_DIR:-~/.claude}:
 #     plan mode writes its plan there, and refusing it would wedge plan mode.
 #   - Whatever the project adds to WORKTREE_WRITE_ALLOWED_PREFIXES in
-#     bin/hooks/lib/worktree-write.local.sh, which riprap never writes.
+#     bin/hooks/lib/worktree-write-patterns.local.sh, which riprap never writes.
 #
 # Limits, by design, because this runs on every Bash call: a variable other than
 # $HOME and $TMPDIR is not expanded, so `> "$OUT"` is not checked; a command that
 # writes through its own flags (`git worktree add`, `curl -o`, a compiler's output
 # directory) is not parsed. `cd <dir>` is followed through a command line, and a
-# parenthesised subshell restores the directory it started in.
+# parenthesised subshell restores the directory it started in; a `cd` the hook cannot
+# expand leaves relative targets after it unchecked. A redirection glued to the word
+# before it (`echo hi>/tmp/x`), `>|`, and `pushd` are not recognised, and a quoted
+# `>` argument (`grep '>' f`) is read as a redirection, because the shared tokenizer
+# does not record which words were quoted.
 #
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
 # refused, since there is nothing to resolve it against.
@@ -54,7 +58,7 @@ unset _riprap_host_state
 
 # Project-specific exemptions go here, never in this file: riprap overwrites it on
 # every update. Append absolute directory prefixes, each ending in `/`.
-_riprap_local="$SCRIPT_DIR/../../lib/worktree-write.local.sh"
+_riprap_local="$SCRIPT_DIR/../../lib/worktree-write-patterns.local.sh"
 if [ -r "$_riprap_local" ]; then
   # shellcheck source=/dev/null
   . "$_riprap_local"
@@ -139,6 +143,10 @@ absolute_target() {  # $1 = raw target, $2 = base directory (may be empty)
   esac
 }
 
+# The working directory after a `cd` the hook could not follow. Distinct from empty,
+# which means the payload carried no cwd at all and a relative target fails closed.
+UNKNOWN_DIR="<unknown>"
+
 BLOCK_TARGET=""
 BLOCK_RESOLVED=""
 BLOCK_UNRESOLVABLE=0
@@ -154,6 +162,11 @@ check_target() {
   case "$raw" in
     /* | "~"* | '$'*) ;;
     *)
+      # A `cd` to a directory the hook cannot expand (`cd "$REPO"`, `cd -`) leaves
+      # relative targets unknown, which is the same case as an unexpandable target:
+      # not checked, by design. Refusing them would block `cd "$(git rev-parse
+      # --show-toplevel)" && make > tmp/log`, which is the router's own advice.
+      [ "$base" != "$UNKNOWN_DIR" ] || return 0
       if [ -z "$base" ]; then
         BLOCK_TARGET="$raw"; BLOCK_UNRESOLVABLE=1; return 0
       fi
@@ -264,6 +277,10 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   EFF="$CWD"
   STACK=()
   SEG=()
+  # Kept in variables: a regex written inline after =~ is quoted differently across
+  # bash versions, and a `\>` that reaches regcomp is a word boundary, not a `>`.
+  REDIR_BARE_RE='^[0-9]*>>?$'
+  REDIR_RE='^([0-9]*|&)>>?(.*)$'
   i=0
   while [ "$i" -le "$N" ]; do
     if [ "$i" -lt "$N" ]; then t="${TOKS[$i]}"; op="${OPS[$i]}"; else t=";"; op=1; fi
@@ -271,7 +288,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     if [ "$op" -eq 1 ]; then
       # `&` straight after a redirection is a descriptor duplication (`2>&1`,
       # `>&2`), not a separator: swallow it and the descriptor that follows.
-      if [ "$t" = "&" ] && [ "${#SEG[@]}" -gt 0 ] && [[ "${SEG[$((${#SEG[@]} - 1))]}" =~ ^[0-9]*\>\>?$ ]]; then
+      if [ "$t" = "&" ] && [ "${#SEG[@]}" -gt 0 ] && [[ "${SEG[$((${#SEG[@]} - 1))]}" =~ $REDIR_BARE_RE ]]; then
         unset 'SEG[${#SEG[@]}-1]'
         i=$((i + 2))
         continue
@@ -280,10 +297,15 @@ if [ "$TOOL_NAME" = "Bash" ]; then
       if [ "${#SEG[@]}" -gt 0 ]; then
         if [ "${SEG[0]}" = "cd" ]; then
           dest="${SEG[1]:-${HOME:-}}"
+          # Relative to an unknown or missing directory, the result is still that.
+          # Otherwise expand it, and a destination that cannot be expanded (`-`, a
+          # variable, a substitution) makes the directory unknown.
           case "$dest" in
+            /* | "~"* | '$'*) EFF=$(absolute_target "$dest" "") ;;
             -) EFF="" ;;
-            *) EFF=$(absolute_target "$dest" "$EFF") ;;
+            *) [ -z "$EFF" ] || [ "$EFF" = "$UNKNOWN_DIR" ] || EFF=$(absolute_target "$dest" "$EFF") ;;
           esac
+          [ -n "$EFF" ] || [ -z "$CWD" ] || EFF="$UNKNOWN_DIR"
         else
           check_simple_command "$EFF"
         fi
@@ -304,7 +326,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
 
     # A redirection, glued to its target or followed by it. Redirections are
     # stripped from the command's words either way, so `echo hi >f` has no operand f.
-    if [[ "$t" =~ ^([0-9]*|\&)\>\>?(.*)$ ]]; then
+    if [[ "$t" =~ $REDIR_RE ]]; then
       rtarget="${BASH_REMATCH[2]}"
       if [ -z "$rtarget" ]; then
         if [ "$((i + 1))" -lt "$N" ] && [ "${OPS[$((i + 1))]}" -eq 0 ]; then

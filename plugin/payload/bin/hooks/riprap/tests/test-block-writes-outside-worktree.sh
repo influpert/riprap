@@ -16,7 +16,7 @@ HOOK="$SCRIPT_DIR/../claude/block-writes-outside-worktree.sh"
 source "$SCRIPT_DIR/test-support.sh"
 
 BASE=$(mktemp -d)
-LOCAL_LIB="$SCRIPT_DIR/../../lib/worktree-write.local.sh"
+LOCAL_LIB="$SCRIPT_DIR/../../lib/worktree-write-patterns.local.sh"
 CREATED_LOCAL=0
 cleanup() {
   rm -rf "$BASE"
@@ -127,6 +127,20 @@ check "a subshell's cd does not leak out -> allow" 0 \
   "$(bash_in "$REPO" "(cd $OTHER && ls) && touch inside.txt")"
 
 echo
+echo "--- A cd the hook cannot expand leaves relative targets unchecked, not refused ---"
+check "cd to a command substitution, then a relative write -> allow" 0 \
+  "$(bash_in "$REPO" "cd \\\"\$(git rev-parse --show-toplevel)\\\" && bin/test > tmp/test.log 2>&1")"
+check "cd to a variable, then a relative write -> allow" 0 \
+  "$(bash_in "$REPO" "cd \\\"\$REPO\\\" && echo hi > tmp/x")"
+check "cd to a loop variable inside a subshell -> allow" 0 \
+  "$(bash_in "$REPO" "for d in a b; do (cd \\\"\$d\\\" && touch stamp); done")"
+check "cd - then a relative write -> allow" 0 "$(bash_in "$REPO" "cd /x; cd -; touch y")"
+check "...but an absolute write after it is still checked -> block" 2 \
+  "$(bash_in "$REPO" "cd \\\"\$REPO\\\" && touch $OTHER/x")"
+check "no cwd at all, cd -, then a relative write -> block (still fails closed)" 2 \
+  '{"tool_name":"Bash","tool_input":{"command":"cd -; touch y"}}'
+
+echo
 echo "--- Fail closed ---"
 check "relative write with no cwd -> block" 2 \
   '{"tool_name":"Bash","tool_input":{"command":"echo hi > out.txt"}}'
@@ -139,7 +153,7 @@ echo "--- Project-local exemptions survive an update ---"
 if [ ! -e "$LOCAL_LIB" ] && mkdir -p "$(dirname "$LOCAL_LIB")" 2>/dev/null; then
   CREATED_LOCAL=1
   printf 'WORKTREE_WRITE_ALLOWED_PREFIXES+=("%s/")\n' "$OTHER" >"$LOCAL_LIB"
-  check "a prefix added in worktree-write.local.sh -> allow" 0 "$(write "$OTHER/a.txt")"
+  check "a prefix added in worktree-write-patterns.local.sh -> allow" 0 "$(write "$OTHER/a.txt")"
   rm -f "$LOCAL_LIB"
   rmdir "$(dirname "$LOCAL_LIB")" 2>/dev/null || true
   CREATED_LOCAL=0

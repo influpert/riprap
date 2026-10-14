@@ -20,14 +20,14 @@
 #
 # The simple commands, and the directory each one runs in, come from the walk in
 # lib/shell-walk.sh, the same walk the destructive guard reads, so a command one
-# guard finds — in an `if` or loop body, a brace group, after `cd -P` or `builtin
-# cd` — the other finds too. So does the command behind a prefix: both read it
-# through walk_command_start, which sees past sudo, env -C, timeout, nice, time,
-# xargs and the rest. The hook used to carry its own copy of the walk, and when the
-# tokenizer began splitting `<` out as a word, that copy read the input source as
-# the last operand and passed `cp a /outside/x<in` as a copy to `in`. Its own,
-# shorter list of prefixes read `timeout 60 cp a /outside` as a command called
-# timeout.
+# guard finds — in an `if` or loop body, a brace group, a "$(...)" inside double
+# quotes, after `cd -P` or `builtin cd` — the other finds too. So does the command
+# behind a prefix: both read it through walk_command_start, which sees past sudo,
+# env -C, timeout, nice, time, xargs and the rest. The hook used to carry its own
+# copy of the walk, and when the tokenizer began splitting `<` out as a word, that
+# copy read the input source as the last operand and passed `cp a /outside/x<in` as
+# a copy to `in`. Its own, shorter list of prefixes read `timeout 60 cp a /outside`
+# as a command called timeout.
 #
 # The boundary is the worktree that contains the project: `git rev-parse
 # --show-toplevel` of CLAUDE_PROJECT_DIR, which run-payload-hook has already pointed at
@@ -57,7 +57,8 @@
 # is an argument, not a redirection, and is not checked. A word xargs reads from its
 # stdin is unknown, so `xargs cp a b`, whose destination is the last of those words,
 # has no destination to check; with -I or -t it has one. And unlike the destructive
-# guard, this does not walk the text handed to `bash -c` or `eval`.
+# guard, this does not walk the text handed to `bash -c` or `eval`, or a heredoc fed
+# to a shell as its script.
 #
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
 # refused, since there is nothing to resolve it against.
@@ -242,17 +243,24 @@ fi
 # carried no cwd, WALK_UNKNOWN after a cd the walk could not follow. The operands
 # resolve against WALK_CMD_DIR instead, which an `env -C` in front may have moved.
 on_command() {
-  local base k cmd w via_xargs repl
+  local base k cmd w via_xargs repl s dir="$WALK_DIR"
   local -a words=(${WALK_WORDS[@]+"${WALK_WORDS[@]}"})
+  local -a redirs=(${WALK_REDIRECTS[@]+"${WALK_REDIRECTS[@]}"})
+  local -a substs=(${WALK_SUBSTS[@]+"${WALK_SUBSTS[@]}"})
   local n=${#words[@]}
   local -a operands=()
+  # A substitution inside double quotes runs before the command, in a subshell of
+  # where it runs: `x="$(touch /outside)"` writes, quotes or not, and the destructive
+  # guard already reads it. Walked first, and from copies taken above, because the
+  # nested walk calls this function again and overwrites every WALK_ global.
+  for s in ${substs[@]+"${substs[@]}"}; do walk_commands "$s" "$dir" on_command; done
   # The shell opens a redirection itself, before any prefix runs, so it lands where
   # the shell is: `env -C dir cmd >f` writes f here, not in dir.
-  for w in ${WALK_REDIRECTS[@]+"${WALK_REDIRECTS[@]}"}; do check_target "$w" "$WALK_DIR"; done
+  for w in ${redirs[@]+"${redirs[@]}"}; do check_target "$w" "$dir"; done
   # The command behind its prefixes (sudo -u root, env -C dir, timeout 30, xargs
   # -I{}, ...), found as the destructive guard finds it, and the directory an
   # `env -C` or `sudo -D` among them runs it in.
-  walk_command_start "$WALK_DIR" ${words[@]+"${words[@]}"}
+  walk_command_start "$dir" ${words[@]+"${words[@]}"}
   k=$WALK_CMD_AT
   base="$WALK_CMD_DIR"
   via_xargs=$WALK_CMD_XARGS

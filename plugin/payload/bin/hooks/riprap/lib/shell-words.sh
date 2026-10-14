@@ -27,6 +27,10 @@
 #                still part of its word in TOKENIZED. Single-quoted text is
 #                literal and is not here, and neither is an escaped backtick,
 #                which is a literal one, nor `$((...))`, which is arithmetic.
+#   TOKEN_SUBST_AT
+#                parallel to TOKEN_SUBST: the index in TOKENIZED of the word the
+#                substitution sits in, so a reader walking the tokens knows which
+#                command runs it, and so where it runs.
 
 # tokenize_words TEXT — split TEXT into words, like `read -ra` but with quoting.
 #
@@ -108,6 +112,7 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
   TOKEN_HEREDOC_AT=()
   TOKEN_HEREDOC_BODY=()
   TOKEN_SUBST=()
+  TOKEN_SUBST_AT=()
   # Everything command mode does, redirects mode does too, and reads mode does
   # everything redirects mode does.
   [ "$mode" = words ] || cmd=1
@@ -144,6 +149,8 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
             else
               TOKEN_SUBST+=("${s:$((start + 2))}")
             fi
+            # The word in progress is the next one TOKENIZED will hold.
+            TOKEN_SUBST_AT+=("${#TOKENIZED[@]}")
           fi
           cur+="${s:$start:$((i - start + 1))}"
         elif [ "$ch" = '`' ]; then
@@ -365,8 +372,9 @@ _tw_op() { TOKENIZED+=("$1"); TOKEN_OP+=(1); TOKEN_QUOTED+=(0); }
 
 # _tw_subst_body START — from START, just after an opening backtick inside double
 # quotes, find the next unescaped backtick: record the text between in
-# TOKEN_SUBST, and leave the closing backtick's index in _tw_end (the end of the
-# text, when it never comes). A `$(` inside double quotes is _tw_subst_end's.
+# TOKEN_SUBST, and the word it sits in in TOKEN_SUBST_AT, and leave the closing
+# backtick's index in _tw_end (the end of the text, when it never comes). A `$(`
+# inside double quotes is _tw_subst_end's.
 _tw_subst_body() {
   local j="$1" c
   while [ "$j" -lt "$len" ]; do
@@ -377,5 +385,6 @@ _tw_subst_body() {
   done
   [ "$j" -le "$len" ] || j=$len
   TOKEN_SUBST+=("${s:$1:$((j - $1))}")
+  TOKEN_SUBST_AT+=("${#TOKENIZED[@]}")
   _tw_end="$j"
 }

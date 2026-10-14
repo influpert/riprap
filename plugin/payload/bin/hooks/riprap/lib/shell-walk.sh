@@ -9,13 +9,14 @@
 # from its sibling is a hook with a hole the other one closed. The worktree-write hook
 # grew its own walk first; this is that walk lifted out, and extended with what the
 # destructive-command hook needed (reserved words, `&>`, backticks, `cd -P`, input
-# redirections, heredoc bodies), so the next hook starts from the shared definition
-# instead of a third copy. The worktree-write hook now runs on it too. Its own copy
-# knew only output redirections, so once the tokenizer split `<` out as a word, that
-# copy read `cp a OUT<in` as a copy to `in` and let a write outside through — the
-# hole two copies of one walk leave when only one of them is taught something.
-# walk_command_start, at the end of this file, is the same answer for the prefixes
-# in front of a command (`sudo`, `timeout 30`, `xargs -I{}`).
+# redirections, heredoc bodies, substitutions inside double quotes), so the next hook
+# starts from the shared definition instead of a third copy. The worktree-write hook
+# now runs on it too. Its own copy knew only output redirections, so once the
+# tokenizer split `<` out as a word, that copy read `cp a OUT<in` as a copy to `in`
+# and let a write outside through — the hole two copies of one walk leave when only
+# one of them is taught something. walk_command_start, at the end of this file, is
+# the same answer for the prefixes in front of a command (`sudo`, `timeout 30`,
+# `xargs -I{}`).
 #
 # Like the tokenizer it reads, this never expands or runs anything: a directory it
 # cannot work out from the text alone is reported as unknown, never guessed.
@@ -37,6 +38,14 @@
 #                     creates it when it is missing. Never an input source.
 #     WALK_HEREDOCS   the bodies of its heredocs, in order. Data to most commands;
 #                     the script itself to a shell that has no script file.
+#     WALK_SUBSTS     the bodies of the `$(...)` and backtick substitutions that sit
+#                     inside double quotes in its words and redirections, in order.
+#                     Unlike a heredoc these always run: before the command, each in
+#                     a subshell of WALK_DIR. They are handed over rather than walked
+#                     here because a nested walk calls the callback again, and a
+#                     callback that carries state from one command to the next (a
+#                     find feeding a pipe) has to walk them where that state is safe.
+#                     A callback that does not walk them does not see them.
 #     WALK_DIR        the directory it runs in: absolute and normalized, empty when
 #                     there was none to start from, or WALK_UNKNOWN.
 #     WALK_PREV_OP    the operator before it (`;` `&&` `||` `|` `&` `(` `)` or a
@@ -55,14 +64,15 @@
 #   makes the directory WALK_UNKNOWN; so do `pushd` with no directory or `+N`, and a
 #   `popd` with no `pushd` before it.
 #   A parenthesised subshell, a `$(...)` substitution and a backtick pair each restore
-#   the directory they started in when they end, as the shell does.
+#   the directory they started in when they end, as the shell does. A substitution
+#   inside double quotes goes to the callback in WALK_SUBSTS; walked from WALK_DIR in a
+#   walk of its own, its cd is forgotten in the same way.
 #   A cd is followed even when it is backgrounded or in a pipeline, where the shell
 #   would run it in a subshell and forget it. Following it there can only make a
 #   relative path look further away than it is, which a guard would rather do than
 #   the reverse; and nobody pipes a cd on purpose.
 #
-# Limits: a command substitution inside double quotes ("$(cmd)") is part of a word
-# and is not walked; nor is a function body run later, or a script a command reads.
+# Limits: a function body run later, and a script a command reads, are not walked.
 
 WALK_UNKNOWN="<unknown>"
 
@@ -142,9 +152,9 @@ _walk_is_reserved() {
 
 walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
   local text="$1" start="$2" callback="$3"
-  local dir="$2" prev_op="" t q op k n bt=0 hd=0
+  local dir="$2" prev_op="" t q op k n bt=0 hd=0 sb=0
   local -a toks=() ops=() quoted=() seg=() redirs=() substack=() pushed=()
-  local -a hd_at=() hd_body=() heres=()
+  local -a hd_at=() hd_body=() heres=() sub_at=() sub_body=() substs=()
   # Kept in variables: a regex written inline after =~ is quoted differently across
   # bash versions, and a `\>` that reaches regcomp is a word boundary, not a `>`.
   # redir_re is output only, because it is also what makes `&>` one redirection.
@@ -156,6 +166,8 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
   quoted=(${TOKEN_QUOTED[@]+"${TOKEN_QUOTED[@]}"})
   hd_at=(${TOKEN_HEREDOC_AT[@]+"${TOKEN_HEREDOC_AT[@]}"})
   hd_body=(${TOKEN_HEREDOC_BODY[@]+"${TOKEN_HEREDOC_BODY[@]}"})
+  sub_at=(${TOKEN_SUBST_AT[@]+"${TOKEN_SUBST_AT[@]}"})
+  sub_body=(${TOKEN_SUBST[@]+"${TOKEN_SUBST[@]}"})
   n=${#toks[@]}
 
   k=0
@@ -180,12 +192,19 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
         heres+=("${hd_body[$hd]}")
         hd=$((hd + 1))
       done
+      # Its quoted substitutions are the ones in the words before this operator.
+      substs=()
+      while [ "$sb" -lt "${#sub_at[@]}" ] && [ "${sub_at[$sb]}" -lt "$k" ]; do
+        substs+=("${sub_body[$sb]}")
+        sb=$((sb + 1))
+      done
       if [ "${#seg[@]}" -gt 0 ] || [ "${#redirs[@]}" -gt 0 ]; then
         # shellcheck disable=SC2034  # the WALK_ globals are what the callback reads
         {
           WALK_WORDS=(${seg[@]+"${seg[@]}"})
           WALK_REDIRECTS=(${redirs[@]+"${redirs[@]}"})
           WALK_HEREDOCS=(${heres[@]+"${heres[@]}"})
+          WALK_SUBSTS=(${substs[@]+"${substs[@]}"})
           WALK_DIR="$dir"
           WALK_PREV_OP="$prev_op"
           WALK_NEXT_OP="$t"

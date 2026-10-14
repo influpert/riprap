@@ -46,9 +46,9 @@
 #
 # Heuristic by design, like everything at this layer: it catches an honest
 # agent's slip and the obvious retry after a block — a different reader, a
-# wrapper, a quoted substitution, a loop over the files, a cd first. It does not
-# follow a variable set at runtime, a script's own file access, or a command
-# assembled at runtime.
+# wrapper, a quoted substitution, a heredoc into a shell, a loop over the files,
+# a cd first. It does not follow a variable set at runtime, a script's own file
+# access, text piped into a shell, or a command assembled at runtime.
 
 _secret_reads_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./shell-words.sh
@@ -1854,22 +1854,23 @@ _secret_for() {
   done
 }
 
-# _secret_simple DEPTH — one simple command, its words in _SR_W and _SR_Q.
+# _secret_simple DEPTH — one simple command, its words in _SR_W and _SR_Q, and
+# its heredoc bodies in _SR_HD.
 _secret_simple() {
-  local depth="$1" n=${#_SR_W[@]} j=0 k ci w q cmd t
-  local -a w2=() q2=()
+  local depth="$1" n=${#_SR_W[@]} j=0 k ci w q cmd t h stdin=0
+  local -a w2=() q2=() hs=()
   _SR_FIND_SRC="" _SR_FIND_SRCQ=""
 
   # Input redirections read, whichever command they are attached to and wherever
   # in it they sit: `done < .env`, `$(< .env)`, `2<.env`, `cat<.env`. A
-  # here-string's word is data, and a quoted `<` on its own is an argument, as in
-  # `grep '<' file`.
+  # here-string's word is data, kept aside for a shell that runs it, and a quoted
+  # `<` on its own is an argument, as in `grep '<' file`.
   while [ "$j" -lt "$n" ]; do
     w="${_SR_W[$j]}"
     q="${_SR_Q[$j]}"
     case "$w" in
-      '<<<') j=$((j + 2)); continue ;;
-      '<<<'*) j=$((j + 1)); continue ;;
+      '<<<') hs+=("${_SR_W[$((j + 1))]:-}"); j=$((j + 2)); continue ;;
+      '<<<'*) hs+=("${w#<<<}"); j=$((j + 1)); continue ;;
       '<&' | [0-9]'<&') j=$((j + 2)); continue ;;
       '<&'* | [0-9]'<&'*) j=$((j + 1)); continue ;;
       '<' | '<>' | [0-9]'<' | [0-9]'<>')
@@ -1973,8 +1974,17 @@ _secret_simple() {
       # `bash -c 'cat .env'`: the script is a quoted word, so read it as a
       # command. The words after it are its $0, $1, ...: `find ... -exec sh -c
       # 'cat "$1"' _ {} \;` hands each file in as $1.
+      #
+      # Without -c, a shell runs its first operand as a script file, which is not
+      # read — or, with no operand or with -s, reads its script from stdin, and
+      # then a heredoc's body or a here-string's word is that script. Read as
+      # data, as every other command's stdin is, `bash <<'EOF'` was the spelling
+      # to try once `bash -c` was refused. A heredoc fed to `bash -c` or to a
+      # script is that command's data, and is not read.
       for ((j = k; j < n; j++)); do
         case "${_SR_W[$j]}" in
+          -o | +o | -O | +O) j=$((j + 1)) ;;   # bash -o pipefail, whose value is no script
+          --) j=$((j + 1)); break ;;
           --*) ;;
           -*c*)
             for ((t = 0; j + 2 + t < n && t < 10; t++)); do
@@ -1989,10 +1999,17 @@ _secret_simple() {
             [ -z "$SECRET_HIT_PATH" ] || return 0
             return 1
             ;;
-          -*) ;;
+          -*s*) stdin=1 ;;
+          -* | +*) ;;
           *) break ;;
         esac
       done
+      if [ "$j" -ge "$n" ] || [ "$stdin" -eq 1 ]; then
+        for h in "${_SR_HD[@]+"${_SR_HD[@]}"}" "${hs[@]+"${hs[@]}"}"; do
+          _secret_analyze "$h" "${_SR_BASE:-}" "$((depth + 1))"
+          [ -z "$SECRET_HIT_PATH" ] || return 0
+        done
+      fi
       ;;
     eval)
       _secret_analyze "${_SR_W[*]:$k}" "${_SR_BASE:-}" "$((depth + 1))"
@@ -2031,12 +2048,14 @@ _secret_simple() {
 # resolve it. A `(` after `<`, `>` or `$` opens a substitution, whose words are
 # their own command and whose output is one word of the command around it; any
 # other `(` is a subshell. A `cd` in either does not outlive it: `X=$(cd src &&
-# pwd); grep -r KEY .` still searches here.
+# pwd); grep -r KEY .` still searches here. Each command's heredoc bodies are
+# handed to _secret_simple in _SR_HD, for a shell that reads its script from them.
 _secret_analyze() {
-  local text="$1" depth="$3" body i n t op lw glued last
+  local text="$1" depth="$3" body i n t op lw glued last hd=0
   local _SR_BASE="$2"
-  local -a _SR_W=() _SR_Q=() toks=() ops=() quoted=() bodies=() seg=() segq=()
+  local -a _SR_W=() _SR_Q=() _SR_HD=() toks=() ops=() quoted=() bodies=() seg=() segq=()
   local -a kinds=() saved_base=() saved_seg=() saved_segq=() sub_start=() sub_glued=()
+  local -a hd_at=() hd_body=() seghd=() saved_hd=()
   # In a variable: a regex written inline after =~ is quoted differently across
   # bash versions, and a `\>` that reaches regcomp is a word boundary, not a `>`.
   local out_re='^[0-9]*>[>|]?$'
@@ -2047,6 +2066,9 @@ _secret_analyze() {
   ops=("${TOKEN_OP[@]+"${TOKEN_OP[@]}"}")
   quoted=("${TOKEN_QUOTED[@]+"${TOKEN_QUOTED[@]}"}")
   bodies=("${TOKEN_SUBST[@]+"${TOKEN_SUBST[@]}"}")
+  # Taken before the substitutions below are read, which tokenize again.
+  hd_at=("${TOKEN_HEREDOC_AT[@]+"${TOKEN_HEREDOC_AT[@]}"}")
+  hd_body=("${TOKEN_HEREDOC_BODY[@]+"${TOKEN_HEREDOC_BODY[@]}"}")
 
   # `echo "$(cat .env)"`: a substitution inside double quotes is part of a word.
   for body in "${bodies[@]+"${bodies[@]}"}"; do
@@ -2060,6 +2082,11 @@ _secret_analyze() {
     if [ "$i" -lt "$n" ]; then t="${toks[$i]}"; op="${ops[$i]}"; else t=";"; op=1; fi
 
     if [ "$op" -eq 1 ]; then
+      # A heredoc opened before this operator belongs to the command it ends.
+      while [ "$hd" -lt "${#hd_at[@]}" ] && [ "${hd_at[$hd]}" -le "$i" ]; do
+        seghd+=("${hd_body[$hd]}")
+        hd=$((hd + 1))
+      done
       # Never index an empty array from the end: bash 3.2 rejects the subscript.
       lw=""
       [ "${#seg[@]}" -eq 0 ] || lw="${seg[${#seg[@]}-1]}"
@@ -2077,21 +2104,25 @@ _secret_analyze() {
         fi
         saved_seg+=("$(_secret_join "${seg[@]+"${seg[@]}"}")")
         saved_segq+=("$(_secret_join "${segq[@]+"${segq[@]}"}")")
+        saved_hd+=("$(_secret_join "${seghd[@]+"${seghd[@]}"}")")
         kinds+=(subst)
         saved_base+=("$_SR_BASE")
         sub_start+=("$((i + 1))")
         sub_glued+=("$glued")
         seg=()
         segq=()
+        seghd=()
         i=$((i + 1))
         continue
       fi
       if [ "${#seg[@]}" -gt 0 ]; then
         _SR_W=("${seg[@]}")
         _SR_Q=("${segq[@]}")
+        _SR_HD=("${seghd[@]+"${seghd[@]}"}")
         _secret_simple "$depth" || true
         [ -z "$SECRET_HIT_PATH" ] || return 0
       fi
+      seghd=()
       # A find that only lists names, piped on: the next command gets its list.
       if [ "$t" = "|" ]; then
         _SR_PIPE_FIND="$_SR_FIND_SRC" _SR_PIPE_FINDQ="$_SR_FIND_SRCQ"
@@ -2114,7 +2145,9 @@ _secret_analyze() {
             if [ "${kinds[$last]}" = subst ]; then
               _secret_split "${saved_seg[${#saved_seg[@]}-1]}" seg
               _secret_split "${saved_segq[${#saved_segq[@]}-1]}" segq
-              unset 'saved_seg[${#saved_seg[@]}-1]' 'saved_segq[${#saved_segq[@]}-1]'
+              _secret_split "${saved_hd[${#saved_hd[@]}-1]}" seghd
+              unset 'saved_seg[${#saved_seg[@]}-1]' 'saved_segq[${#saved_segq[@]}-1]' \
+                'saved_hd[${#saved_hd[@]}-1]'
               # The substitution's output: one word that names nothing the hook
               # can see, kept so the command around it still has its operands.
               _secret_placeholder "${sub_start[$last]}" "$i"

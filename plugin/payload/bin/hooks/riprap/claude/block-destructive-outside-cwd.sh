@@ -31,10 +31,12 @@
 # What is read, through the walk in lib/shell-walk.sh — the worktree-write hook's
 # way of following `cd`, lifted into the library rather than written a third time:
 #   - every simple command, whatever separates it: ; && || | & or a newline, glued or
-#     spaced, and inside a subshell, a $(...) or backtick substitution, a brace group,
-#     or an if / loop body. A heredoc body, a comment, a quoted argument and an input
-#     redirection are not commands or operands, so `git commit -m "remove the rm -rf
-#     step"` is not an rm and `xargs rm < list` has no operand `list`.
+#     spaced, and inside a subshell, a $(...) or backtick substitution — quoted or not,
+#     `x="$(rm -rf ../other)"` runs the rm all the same — a brace group, or an if /
+#     loop body. A heredoc body, a comment, a quoted argument and an input redirection
+#     are not commands or operands, so `git commit -m "remove the rm -rf step"` is not
+#     an rm, `git commit -m "$(cat <<'EOF' ...` runs only cat, and `xargs rm < list`
+#     has no operand `list`.
 #   - the command behind the prefixes agents write — VAR=value, sudo, env, command,
 #     builtin, exec, nohup, time, nice, timeout, xargs — compared by basename, so
 #     /bin/rm and \rm are rm. The list is walk_command_start's, in the library, so
@@ -57,8 +59,8 @@
 # nothing has turned them into names: basename, find's own -printf %f or %P, and an
 # xargs -I template that does not start with the input all hand on names that land
 # wherever the next command runs. A script a command runs, text piped into a shell
-# (`cat <<EOF | bash`, `echo ... | sh`), a "$(...)" inside double quotes, and anything
-# decoded before it reaches a shell are not read.
+# (`cat <<EOF | bash`, `echo ... | sh`), and anything decoded before it reaches a
+# shell are not read.
 #
 # Quoted arguments, spaces and all, are single words, and backslash escapes follow
 # shell rules (lib/shell-words.sh). A literal `--` ends flag parsing for rm, so every
@@ -433,8 +435,9 @@ on_command() {
   local dir="$WALK_DIR" prev="$WALK_PREV_OP" next="$WALK_NEXT_OP"
   local -a w=(${WALK_WORDS[@]+"${WALK_WORDS[@]}"})
   local -a stdin_bodies=(${WALK_HEREDOCS[@]+"${WALK_HEREDOCS[@]}"})
+  local -a substs=(${WALK_SUBSTS[@]+"${WALK_SUBSTS[@]}"})
   local n=${#w[@]} k=0 a argv0 via_xargs=0 env_work_tree="" env_git_dir=""
-  local xargs_repl="" takes_input=0
+  local xargs_repl="" takes_input=0 s
   local -a piped=()
   local piped_dir=""
   # What find, earlier in this pipeline, is feeding in — taken before anything
@@ -445,6 +448,16 @@ on_command() {
   fi
   PIPED_FIND=()
   PIPED_FIND_DIR=""
+  [ -z "$BLOCK_REASON" ] || return 0
+
+  # A substitution inside double quotes runs before the command, in a subshell of
+  # where the command runs: `x="$(rm -rf ../other)"` deletes, quotes or not. Walked
+  # here, once what this pipeline carries is saved above, because the nested walk
+  # calls this function again and resets it. A redirection's target counts, so this
+  # comes before the check for a command with no words.
+  for s in ${substs[@]+"${substs[@]}"}; do
+    walk_commands "$s" "$dir" on_command
+  done
   [ -z "$BLOCK_REASON" ] || return 0
   [ "$n" -gt 0 ] || return 0
 

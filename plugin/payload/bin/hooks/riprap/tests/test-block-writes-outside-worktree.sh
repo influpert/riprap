@@ -162,6 +162,26 @@ check "process substitutions are commands, the redirect after them a write -> bl
 check "...inside -> allow" 0 "$(bash_in "$REPO" "diff <(sort a) <(sort b) > tmp/d")"
 
 echo
+echo "--- A substitution runs its command, inside double quotes or not ---"
+# The walk hands a "$(...)" inside double quotes to its callback rather than walking
+# it, and the destructive guard walks it. Left unread here, `x="$(touch OUT)"` was
+# the next spelling to try once `x=$(touch OUT)` was refused.
+check "a write in a substitution inside double quotes -> block" 2 \
+  "$(bash_in "$REPO" "x=\\\"\$(touch $OTHER/x)\\\"")"
+check "...the same write, inside -> allow" 0 "$(bash_in "$REPO" "x=\\\"\$(touch tmp/x)\\\"")"
+check "...unquoted -> block" 2 "$(bash_in "$REPO" "x=\$(touch $OTHER/x)")"
+check "a redirection in a quoted substitution -> block" 2 \
+  "$(bash_in "$REPO" "echo \\\"\$(date > $OTHER/d)\\\"")"
+check "a quoted backtick pair -> block" 2 "$(bash_in "$REPO" "echo \\\"\`touch $OTHER/x\`\\\"")"
+check "a quoted substitution runs where its command does, after a cd -> block" 2 \
+  "$(bash_in "$REPO" "cd $OTHER && echo \\\"\$(touch x)\\\"")"
+check "...after a cd that stays inside -> allow" 0 "$(bash_in "$REPO" "cd src && echo \\\"\$(touch x)\\\"")"
+check "a cd in a quoted substitution does not leak out -> allow" 0 \
+  "$(bash_in "$REPO" "echo \\\"\$(cd $OTHER)\\\" && touch x")"
+check "the commit-message idiom: a heredoc to cat is its data -> allow" 0 \
+  "$(bash_in "$REPO" "git commit -m \\\"\$(cat <<'EOF'\\nsend it > $OTHER/x\\nEOF\\n)\\\"")"
+
+echo
 echo "--- A socket or a device is opened, not created ---"
 # `exec 3<>/dev/tcp/HOST/PORT` is how bash opens a socket, usually to probe a local
 # port with no curl or nc to hand. It was refused, with advice to move it to tmp/,

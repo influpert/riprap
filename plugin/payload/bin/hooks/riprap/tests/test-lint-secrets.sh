@@ -524,6 +524,69 @@ check "a here-string -> allow" 0 "$(bash_cmd 'grep -c x <<< "$y"')"
 check "sort<input.txt -> allow" 0 "$(bash_cmd 'sort<input.txt')"
 
 echo
+echo "--- A heredoc or here-string fed to a shell is its script ---"
+# A heredoc body is data to whatever reads it, except a shell given no script of
+# its own, which runs its stdin. Read as data everywhere, `bash <<'EOF'` was the
+# next spelling to try once `bash -c 'cat .env'` was refused; the destructive
+# guard and the merge gate already read it.
+check "bash <<EOF that cats .env -> block" 2 "$(bash_cmd "bash <<'EOF'
+cat .env
+EOF")"
+check "sh <<EOF, unquoted delimiter -> block" 2 "$(bash_cmd "sh <<EOF
+grep API_KEY .env.local
+EOF")"
+check "bash -s <<EOF -> block" 2 "$(bash_cmd "bash -s <<'EOF'
+cat .env
+EOF")"
+check "sudo bash <<-EOF, tab-indented -> block" 2 "$(bash_cmd "sudo bash <<-'EOF'
+	cat .env
+	EOF")"
+check "bash <<< here-string -> block" 2 "$(bash_cmd "bash <<< 'cat .env'")"
+# -o takes a value, and the value is not a script file: read as one, it ended the
+# options before the -c after it was seen.
+check "bash -o pipefail <<EOF -> block" 2 "$(bash_cmd "bash -o pipefail <<'EOF'
+cat .env
+EOF")"
+check "bash -o pipefail -c -> block" 2 "$(bash_cmd "bash -o pipefail -c 'cat .env'")"
+check "bash -o pipefail with a script file and a heredoc -> allow" 0 \
+  "$(bash_cmd "bash -o pipefail scripts/setup.sh <<'EOF'
+cat .env
+EOF")"
+check "the second heredoc on a line belongs to the second command -> block" 2 \
+  "$(bash_cmd "cat <<'A' > notes.md && bash <<'B'
+echo notes
+A
+cat .env
+B")"
+check "a heredoc fed to a shell inside \"\$(...)\" -> block" 2 "$(bash_cmd "echo \"\$(bash <<'EOF'
+cat .env
+EOF
+)\"")"
+check "a cd before the shell is where its script runs -> block" 2 "$(bash_in "$MONO" "cd secrets && bash <<'EOF'
+cat api.json
+EOF")"
+check "bash <<EOF reading the example -> allow (must not false-block)" 0 "$(bash_cmd "bash <<'EOF'
+cat .env.example
+EOF")"
+check "the first heredoc on a line is the cat's data -> allow" 0 \
+  "$(bash_cmd "cat <<'A' > notes.md && bash <<'B'
+cat .env
+A
+echo done
+B")"
+check "a heredoc fed to a script is that script's data -> allow" 0 "$(bash_cmd "bash scripts/setup.sh <<'EOF'
+cat .env
+EOF")"
+check "a heredoc fed to bash -c is the command's data -> allow" 0 "$(bash_cmd "bash -c 'wc -l' <<'EOF'
+cat .env
+EOF")"
+check "a here-string fed to a script is that script's data -> allow" 0 \
+  "$(bash_cmd "bash scripts/setup.sh <<< 'cat .env'")"
+check "a heredoc into a file, naming .env -> allow" 0 "$(bash_cmd "cat > notes.md <<'EOF'
+Run cat .env to see it.
+EOF")"
+
+echo
 echo "--- A path in a loop variable, or a literal assignment ---"
 check "for f in .env*; do cat \"\$f\" -> block" 2 \
   "$(bash_in "$PROJ" 'for f in .env*; do echo "== $f"; cat "$f"; done')"

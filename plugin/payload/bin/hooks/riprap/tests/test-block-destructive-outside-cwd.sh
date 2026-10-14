@@ -246,6 +246,46 @@ check "an escaped \$( inside double quotes opens nothing -> block" 2 \
   "$(bash_in "$WORK" "echo \"\\\$(\" ; rm -rf $OTHER")"
 
 echo
+echo "--- A substitution inside double quotes runs, where its command runs ---"
+# Unquoted, \$(...) and backticks are split out as commands of their own. Inside
+# double quotes they stay part of one word, and that word was all this read, so
+# quoting the substitution was the way past a refused rm. The secret hook and the
+# merge gate already read these bodies.
+check "x=\"\$(rm -rf <outside>)\" -> block" 2 "$(bash_in "$WORK" "x=\"\$(rm -rf $OTHER)\"")"
+check "the backtick form inside double quotes -> block" 2 "$(bash_in "$WORK" "x=\"\`rm -rf $OTHER\`\"")"
+check "a cd inside the substitution, then rm -> block" 2 \
+  "$(bash_in "$WORK" "echo \"\$(cd $OTHER && rm -rf build)\"")"
+check "the substitution runs where its command runs, after a cd -> block" 2 \
+  "$(bash_in "$WORK" "cd $OTHER && echo \"\$(rm -rf build)\"")"
+check "nested in another quoted substitution -> block" 2 \
+  "$(bash_in "$WORK" "echo \"\$(echo \"\$(rm -rf $OTHER)\")\"")"
+check "in a redirection's target -> block" 2 "$(bash_in "$WORK" "echo hi > \"\$(rm -rf $OTHER; echo f)\"")"
+# Walking the substitution calls the same checks again, and they must not lose what
+# find is feeding down the pipeline around it.
+check "find outside, through a filter holding a quoted substitution, into xargs rm -> block" 2 \
+  "$(bash_in "$WORK" "find $OTHER -name '*.orig' | grep -v \"\$(cat keep.txt)\" | xargs rm -f")"
+check "the same find inside -> allow" 0 \
+  "$(bash_in "$WORK" "find . -name '*.orig' | grep -v \"\$(cat keep.txt)\" | xargs rm -f")"
+check "x=\"\$(rm -rf ./build)\" inside -> allow (must not false-block)" 0 \
+  "$(bash_in "$WORK" "x=\"\$(rm -rf ./build)\"")"
+check "the substitution's cd ends with it -> allow" 0 \
+  "$(bash_in "$WORK" "echo \"\$(cd $OTHER && pwd)\" && rm -rf build")"
+check "after a cd into a subdirectory, the substitution runs there -> allow" 0 \
+  "$(bash_in "$WORK" "cd sub && echo \"\$(rm -rf build)\"")"
+check "an escaped backtick inside double quotes is text -> allow" 0 \
+  "$(bash_in "$WORK" "git commit -m \"drop the \\\`rm -rf $OTHER\\\` step\"")"
+check "a single-quoted \$( is text -> allow" 0 "$(bash_in "$WORK" "echo '\$(rm -rf $OTHER)'")"
+# The idiom every commit and pull request is written with. Its substitution does
+# run, but what it runs is cat, and the heredoc is cat's data.
+check "a commit message from a heredoc quoting rm -rf on an absolute path -> allow" 0 \
+  "$(bash_in "$WORK" "git commit -m \"\$(cat <<'EOF'
+Stop the cleanup reaching outside
+
+It used to run rm -rf /x on every build.
+EOF
+)\"")"
+
+echo
 echo "--- rm by any other spelling, and behind the prefixes agents write ---"
 check "/bin/rm by full path -> block" 2 "$(bash_in "$WORK" "/bin/rm -rf $OTHER")"
 check "\\rm, alias-bypassing -> block" 2 "$(bash_in "$WORK" "\\rm -rf $OTHER")"
@@ -456,7 +496,7 @@ check_contains "names the section the rule is in" "\"Never write outside your wo
   "$(bash_in "$WORK" "rm -rf $OTHER/.git")"
 check_contains "links git.md itself, not a page that only links on to it" "plugin/instructions/git.md" \
   "$(bash_in "$WORK" "rm -rf $OTHER/.git")"
-check_not_contains "does not cite a project-standards rule that does not exist" "project-standards" \
+check_lacks "does not cite a project-standards rule that does not exist" "project-standards" \
   "$(bash_in "$WORK" "rm -rf $OTHER/.git")"
 check_contains "a cd hop names where the target really lands" "$OTHER/build" \
   "$(bash_in "$WORK" "cd $OTHER && rm -rf build")"
@@ -468,7 +508,7 @@ check_contains "offers a way past a misread of quoted text" "--body-file" \
   "$(bash_in "$WORK" "rm -rf $OTHER/.git")"
 HOME=/tmp/riprap-home check_contains "says caches and /tmp are in scope on purpose" "caches and /tmp included" \
   "$(bash_in "$WORK" 'rm -rf "$HOME/.npm/_cacache"')"
-HOME=/tmp/riprap-home check_not_contains "does not call a tool cache another checkout" \
+HOME=/tmp/riprap-home check_lacks "does not call a tool cache another checkout" \
   "Anything outside it is another checkout" "$(bash_in "$WORK" 'rm -rf "$HOME/.npm/_cacache"')"
 check_contains "in a checkout, names the worktree as the boundary" "outside the worktree" \
   "$(bash_in "$APP" "rm -rf ../../../elsewhere")"

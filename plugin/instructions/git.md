@@ -96,11 +96,11 @@ deletion passes is the rephrasing. The rule is about what gets destroyed, not ho
 spelled, and a rephrasing that slips past the check is the same deletion with its one safeguard
 gone. Show the user the exact command and let them run it. `block-destructive-outside-cwd.sh`
 follows `cd`, `pushd`, `popd` and subshells, reads past `sudo`, `env`, `timeout`, `xargs` and a
-full path like `/bin/rm`, reads a heredoc fed to a shell, and checks `git -C` and `find`'s
-starting points; a path held in a variable passes it, so here too the hook only catches the
-slips. If it refuses a command that deletes nothing — a commit message or pull request body
-that quotes one — the text is what it misread: pass it from a file under `tmp/` with
-`git commit -F` or `gh pr create --body-file`.
+full path like `/bin/rm`, reads a heredoc fed to a shell and a `"$(…)"` inside double quotes,
+and checks `git -C` and `find`'s starting points; a path held in a variable passes it, so here
+too the hook only catches the slips. If it refuses a command that deletes nothing — a commit
+message or pull request body that quotes one — the text is what it misread: pass it from a file
+under `tmp/` with `git commit -F` or `gh pr create --body-file`.
 
 ## Do not run `git diff` before committing
 

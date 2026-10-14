@@ -71,13 +71,14 @@ prose alone does not survive a busy afternoon.
      `git log -- .env` does not, until `-p` asks for the patch.
    - **The same command, however it is dressed.** A wrapper is looked through, options and
      all — `timeout 30`, `sudo -u deploy`, `nice -n 10`, `xargs`, `stdbuf -oL`. A
-     substitution (`"$(cat .env)"`), a `bash -c '…'` script and its `$1` are read as
+     substitution (`"$(cat .env)"`), a `bash -c '…'` script and its `$1`, and a heredoc
+     or here-string fed to a shell with no script of its own (`bash <<'EOF'`) are read as
      commands. Globs and brace expansion are expanded as the shell would (`cat .env*`,
      `cat .env{,.local}`). A `cd` is followed, by path or by `$CLAUDE_PROJECT_DIR`, `$PWD`,
      `~` or `$(git rev-parse --show-toplevel)`, so `cd secrets && cat api.json` reads
      `secrets/api.json`. A literal path put in a variable, or walked by a `for` loop, is
-     followed into the commands after it. Comments, heredoc bodies and quoted prose are not
-     read as commands — the backticks in a commit message are text.
+     followed into the commands after it. Comments, quoted prose and a heredoc fed to any
+     other command are not read as commands — the backticks in a commit message are text.
    - **A copy to a name the patterns do not recognise**, such as `cp .env /tmp/env-copy`:
      the next read of the copy would go through.
    - **A file handed to a program that then prints it**: `--env-file .env` with a container
@@ -166,7 +167,7 @@ refuses them is one people switch off.
 It catches an honest slip and the obvious retry after a block. It does not follow:
 
 - a path computed at runtime (`F=$(ls .env*)`), or a script or program that opens the file
-  itself (`python -c 'open(".env")'`), or a command fed to a shell on stdin;
+  itself (`python -c 'open(".env")'`), or a command piped into a shell (`echo … | sh`);
 - a `cd` to a place it cannot work out — a variable other than `$HOME`, `$PWD` or
   `$CLAUDE_PROJECT_DIR`, `cd -`, `cd "$(dirname …)"`. A search or a relative glob after
   one is not checked;

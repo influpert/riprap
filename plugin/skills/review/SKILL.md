@@ -228,24 +228,32 @@ nobody to ask, the answer is no. That document's own Enforcement section notes t
 only file extensions and manifest changes, so the judgment half, *is this dependency
 necessary*, has had no enforcer at all. This angle is it.
 
-**Five at minimum, and these four are always among them:** correctness, simplicity &
-conciseness, maintainability, dependency creep. The fifth and any beyond it are chosen by
-blast radius — a migration wants contracts and tests, a parser wants security. A one-file fix
-does not need eleven.
+**Three at minimum, five recommended.** The floor is two angles, correctness and
+dependency creep, plus should-this-exist. The recommendation adds simplicity & conciseness
+and maintainability. Anything beyond those is chosen by blast radius — a migration wants
+contracts and tests, a parser wants security. A one-file fix does not need eleven.
 
-**Should-this-exist is mandatory and does not count towards the five**, so the floor is six
+**The two at the floor are the two nothing else covers.** A diff that is wrong fails every
+other angle anyway, so correctness comes first. Dependency creep is the only enforcer of the
+judgment half of tech-footprint.md's critical rule, as above, so dropping it drops the rule.
+Simplicity and maintainability are the angles nobody asks about unprompted, because each
+costs the author something they have already decided, and that is why they are recommended.
+But a short, plain diff loses less without them than a wrong one, or one that adds a
+dependency.
+
+**Should-this-exist is mandatory and does not count towards the two**, so the floor is three
 agents. Every other angle asks how to do this well and so presupposes doing it; that one is
 the only reviewer that can come back with *"don't"*, which makes it the only one that can
 catch a diff that is excellent at something not worth shipping. It is the devil's advocate
 from the plan stress-test arriving one stage later, and for the same reason it is not left on
 the menu: an angle that valuable gets picked exactly when it is least needed.
 
-**Why five, when reviewing a plan demands five for a different reason:** a plan is reviewed
-against futures that have not happened, so its angles are the only thing standing in for the
-world. A diff is text that exists and can be read, so these reviewers are checking rather than
-predicting — but the four named above are the ones nobody asks unprompted, because each costs
-the author something they have already decided. What does not scale down is the floor itself:
-below it the angles stop being distinct and you have one reviewer with a longer prompt.
+**Why the same numbers as a plan, for a different reason:** a plan is reviewed against
+futures that have not happened, so its angles are the only thing standing in for the world. A
+diff is text that exists and can be read, so these reviewers are checking rather than
+predicting, and past five they mostly check the same lines twice. What does not scale down is
+the floor itself: below two angles there is no second reading to disagree with the first, and
+you have one reviewer with a longer prompt.
 
 Every reviewer prompt carries these, whatever its angle:
 

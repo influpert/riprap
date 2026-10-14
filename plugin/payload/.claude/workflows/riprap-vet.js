@@ -102,15 +102,14 @@ const CYCLE_RESULT = {
 // A workflow can spawn genuinely separate contexts, so it does.
 //
 // Row labels, verbatim from that table, because they are how each agent finds its
-// row. Five is the skill's floor and should-this-exist does not count toward it,
-// so six is the minimum. Override for blast radius: a migration wants contracts
-// and tests, a parser wants security.
+// row. The default is the skill's recommended five, not its floor of three: a vet
+// run is the thorough path, and a caller who wants fewer passes them. Override for
+// blast radius: a migration wants contracts and tests, a parser wants security.
 const ANGLES = args?.angles ?? [
   'Correctness & edge cases',
   'Simplicity & conciseness',
   'Maintainability',
   'Dependency creep',
-  'Tests',
   'Should this exist',
 ]
 

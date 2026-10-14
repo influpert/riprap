@@ -37,7 +37,8 @@
 #     step"` is not an rm and `xargs rm < list` has no operand `list`.
 #   - the command behind the prefixes agents write — VAR=value, sudo, env, command,
 #     builtin, exec, nohup, time, nice, timeout, xargs — compared by basename, so
-#     /bin/rm and \rm are rm.
+#     /bin/rm and \rm are rm. The list is walk_command_start's, in the library, so
+#     the write guard sees past exactly the same ones.
 #   - rm and unlink: every operand. find: its starting points, when it runs -delete
 #     or -exec rm, or pipes its paths into xargs rm. git clean -f and git reset
 #     --hard: the directory git runs in after any cd and -C, and any --work-tree,
@@ -72,7 +73,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # tokenize_redirects, which the walk reads its words from.
 # shellcheck source=../lib/shell-words.sh
 . "$SCRIPT_DIR/../lib/shell-words.sh"
-# walk_commands, walk_expand, walk_normalize.
+# walk_commands, walk_command_start, walk_expand, walk_normalize.
 # shellcheck source=../lib/shell-walk.sh
 . "$SCRIPT_DIR/../lib/shell-walk.sh"
 # git_env_isolated, for finding the worktree.
@@ -422,68 +423,6 @@ check_shell_c() {
 
 # --- one simple command ------------------------------------------------------
 
-_is_one_of() {  # $1 = word, $2 = a whitespace-separated list
-  local o
-  # Unquoted on purpose: splitting the list into its words is the point.
-  # shellcheck disable=SC2086
-  for o in $2; do
-    if [ "$1" = "$o" ]; then return 0; fi
-  done
-  return 1
-}
-
-# skip_options TAKES_VALUE [MOVES_DIR] — step `k` past a prefix command's own
-# options, to the command it runs. TAKES_VALUE lists the options whose value is the
-# next word; MOVES_DIR the ones that run the command somewhere else (`env -C dir`),
-# which move `dir` with them. Reads and writes on_command's locals.
-skip_options() {
-  local a d
-  while [ "$k" -lt "$n" ]; do
-    a="${w[$k]}"
-    case "$a" in
-      --) k=$((k + 1)); return 0 ;;
-      -*) ;;
-      *) return 0 ;;
-    esac
-    if _is_one_of "${a%%=*}" "${2:-}"; then
-      case "$a" in
-        *=*) d="${a#*=}"; k=$((k + 1)) ;;
-        *) d="${w[$((k + 1))]:-}"; k=$((k + 2)) ;;
-      esac
-      dir=$(walk_expand "$d" "$dir") || dir="$WALK_UNKNOWN"
-    elif _is_one_of "$a" "$1"; then
-      k=$((k + 2))
-    else
-      k=$((k + 1))
-    fi
-  done
-  return 0
-}
-
-# skip_xargs_options — skip_options for xargs, which also has to remember the
-# replace string -I, -i or --replace names (xargs_repl): with one, the words after
-# the command are a template each input line is pasted into, not its operands.
-# Reads and writes on_command's locals.
-skip_xargs_options() {
-  local a
-  while [ "$k" -lt "$n" ]; do
-    a="${w[$k]}"
-    case "$a" in
-      -I) xargs_repl="${w[$((k + 1))]:-}"; k=$((k + 2)) ;;
-      -I?*) xargs_repl="${a#-I}"; k=$((k + 1)) ;;
-      -i | --replace) xargs_repl="{}"; k=$((k + 1)) ;;
-      -i?*) xargs_repl="${a#-i}"; k=$((k + 1)) ;;
-      --replace=*) xargs_repl="${a#*=}"; k=$((k + 1)) ;;
-      -L | -n | -P | -s | -d | -E | -a | --arg-file | --delimiter | --max-args | --max-procs \
-        | --max-chars | --process-slot-var) k=$((k + 2)) ;;
-      --) k=$((k + 1)); return 0 ;;
-      -*) k=$((k + 1)) ;;
-      *) return 0 ;;
-    esac
-  done
-  return 0
-}
-
 # find's starting points while its output is still flowing down a pipeline, so the
 # xargs rm at the end of `find <dir> ... | xargs rm` is checked against them.
 PIPED_FIND=()
@@ -509,33 +448,18 @@ on_command() {
   [ -z "$BLOCK_REASON" ] || return 0
   [ "$n" -gt 0 ] || return 0
 
-  # The prefixes that run the rest of the words as the command, each with the
-  # options that take a value of their own, so `nice -n 10 rm` and `timeout -s KILL
-  # 30 rm` both arrive at rm. The second list is the options that move the
-  # directory the command runs in.
-  while [ "$k" -lt "$n" ]; do
-    a="${w[$k]}"
+  # The command behind its prefixes (sudo, env -C, timeout 30, xargs -I{}, ...),
+  # found by the same walk_command_start the write guard reads, and the directory
+  # an `env -C` or `sudo -D` among them runs it in.
+  walk_command_start "$dir" ${w[@]+"${w[@]}"}
+  k=$WALK_CMD_AT
+  dir="$WALK_CMD_DIR"
+  via_xargs=$WALK_CMD_XARGS
+  xargs_repl="$WALK_CMD_REPL"
+  for a in ${WALK_CMD_ASSIGNS[@]+"${WALK_CMD_ASSIGNS[@]}"}; do
     case "$a" in
-      GIT_WORK_TREE=*) env_work_tree="${a#*=}"; k=$((k + 1)); continue ;;
-      GIT_DIR=*) env_git_dir="${a#*=}"; k=$((k + 1)); continue ;;
-      [A-Za-z_]*=*) k=$((k + 1)); continue ;;
-    esac
-    k=$((k + 1))
-    case "${a##*/}" in
-      sudo | doas) skip_options "-u -g -p -C -r -t -U -T --user --group --prompt --close-from
-        --role --type --other-user --command-timeout" "-D --chdir" ;;
-      env) skip_options "-u --unset" "-C --chdir" ;;
-      command)
-        case "${w[$k]:-}" in -v | -V) return 0 ;; esac   # asks where a command is; runs nothing
-        skip_options ""
-        ;;
-      builtin | nohup | noglob) ;;
-      exec) skip_options "-a" ;;
-      time) skip_options "-f -o --format --output" ;;
-      nice) skip_options "-n --adjustment" ;;
-      timeout) skip_options "-s -k --signal --kill-after"; k=$((k + 1)) ;;   # then the duration
-      xargs) via_xargs=1; skip_xargs_options ;;
-      *) k=$((k - 1)); break ;;
+      GIT_WORK_TREE=*) env_work_tree="${a#*=}" ;;
+      GIT_DIR=*) env_git_dir="${a#*=}" ;;
     esac
   done
   [ "$k" -lt "$n" ] || return 0

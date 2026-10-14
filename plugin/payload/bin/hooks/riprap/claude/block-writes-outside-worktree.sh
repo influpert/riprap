@@ -21,9 +21,13 @@
 # The simple commands, and the directory each one runs in, come from the walk in
 # lib/shell-walk.sh, the same walk the destructive guard reads, so a command one
 # guard finds — in an `if` or loop body, a brace group, after `cd -P` or `builtin
-# cd` — the other finds too. The hook used to carry its own copy of that walk, and
-# when the tokenizer began splitting `<` out as a word, that copy read the input
-# source as the last operand and passed `cp a /outside/x<in` as a copy to `in`.
+# cd` — the other finds too. So does the command behind a prefix: both read it
+# through walk_command_start, which sees past sudo, env -C, timeout, nice, time,
+# xargs and the rest. The hook used to carry its own copy of the walk, and when the
+# tokenizer began splitting `<` out as a word, that copy read the input source as
+# the last operand and passed `cp a /outside/x<in` as a copy to `in`. Its own,
+# shorter list of prefixes read `timeout 60 cp a /outside` as a command called
+# timeout.
 #
 # The boundary is the worktree that contains the project: `git rev-parse
 # --show-toplevel` of CLAUDE_PROJECT_DIR, which run-payload-hook has already pointed at
@@ -33,6 +37,9 @@
 #
 # Allowed outside the worktree, and nothing else:
 #   - /dev/null, /dev/stdout, /dev/stderr, /dev/tty and /dev/fd/*: not files.
+#   - /dev/tcp/HOST/PORT and /dev/udp/HOST/PORT, which bash opens as a socket, and
+#     a character device that already exists (a serial port, /dev/urandom): neither
+#     leaves a file behind. A block device is still refused.
 #   - The host's own state for plans and memory, under ${CLAUDE_CONFIG_DIR:-~/.claude}:
 #     plan mode writes its plan there, and refusing it would wedge plan mode.
 #   - Whatever the project adds to WORKTREE_WRITE_ALLOWED_PREFIXES in
@@ -47,7 +54,10 @@
 # parenthesised subshell or backtick pair restores the directory it started in; a
 # `cd` or `pushd` the walk cannot expand, and any other form of `pushd` or `popd`,
 # leaves relative targets after it unchecked. A quoted or escaped `>` (`grep '>' f`)
-# is an argument, not a redirection, and is not checked.
+# is an argument, not a redirection, and is not checked. A word xargs reads from its
+# stdin is unknown, so `xargs cp a b`, whose destination is the last of those words,
+# has no destination to check; with -I or -t it has one. And unlike the destructive
+# guard, this does not walk the text handed to `bash -c` or `eval`.
 #
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
 # refused, since there is nothing to resolve it against.
@@ -173,6 +183,10 @@ check_target() {
   [ -n "$raw" ] || return 0
   case "$raw" in
     /dev/null | /dev/stdout | /dev/stderr | /dev/tty | /dev/fd/*) return 0 ;;
+    # bash opens a socket for these in a redirection, and nothing on disk:
+    # `exec 3<>/dev/tcp/HOST/PORT` is how a script probes a port with no curl or nc.
+    # The same pattern bash matches, so /dev/tcp/HOST alone is still a path.
+    /dev/tcp/*/* | /dev/udp/*/*) return 0 ;;
   esac
   case "$raw" in
     /* | "~"* | '$'*) ;;
@@ -191,6 +205,11 @@ check_target() {
   esac
   abs=$(absolute_target "$raw" "$base")
   [ -n "$abs" ] || return 0
+  # A character device that already exists — a terminal, a serial port,
+  # /dev/urandom — is opened, not created, and leaves nothing behind. A block device
+  # is not let through on that reasoning: it holds a filesystem, and no other riprap
+  # guard looks at a write to one.
+  [ ! -c "$abs" ] || return 0
   if ! phys=$(physical_path "$abs"); then
     BLOCK_TARGET="$raw"; BLOCK_UNRESOLVABLE=1; return 0
   fi
@@ -220,22 +239,24 @@ fi
 # The walk's callback (lib/shell-walk.sh): check one simple command — the files its
 # redirections write, then the operands of a command that writes. WALK_DIR is the
 # directory relative targets resolve against at that point: empty when the payload
-# carried no cwd, WALK_UNKNOWN after a cd the walk could not follow.
+# carried no cwd, WALK_UNKNOWN after a cd the walk could not follow. The operands
+# resolve against WALK_CMD_DIR instead, which an `env -C` in front may have moved.
 on_command() {
-  local base="$WALK_DIR" k=0 cmd w
+  local base k cmd w via_xargs repl
   local -a words=(${WALK_WORDS[@]+"${WALK_WORDS[@]}"})
   local n=${#words[@]}
   local -a operands=()
-  for w in ${WALK_REDIRECTS[@]+"${WALK_REDIRECTS[@]}"}; do check_target "$w" "$base"; done
-  # Leading assignments and transparent wrappers are not the command.
-  while [ "$k" -lt "$n" ]; do
-    w="${words[$k]}"
-    case "$w" in
-      [A-Za-z_]*=*) k=$((k + 1)) ;;
-      sudo | env | command | nohup | exec) k=$((k + 1)) ;;
-      *) break ;;
-    esac
-  done
+  # The shell opens a redirection itself, before any prefix runs, so it lands where
+  # the shell is: `env -C dir cmd >f` writes f here, not in dir.
+  for w in ${WALK_REDIRECTS[@]+"${WALK_REDIRECTS[@]}"}; do check_target "$w" "$WALK_DIR"; done
+  # The command behind its prefixes (sudo -u root, env -C dir, timeout 30, xargs
+  # -I{}, ...), found as the destructive guard finds it, and the directory an
+  # `env -C` or `sudo -D` among them runs it in.
+  walk_command_start "$WALK_DIR" ${words[@]+"${words[@]}"}
+  k=$WALK_CMD_AT
+  base="$WALK_CMD_DIR"
+  via_xargs=$WALK_CMD_XARGS
+  repl="$WALK_CMD_REPL"
   [ "$k" -lt "$n" ] || return 0
   cmd="${words[$k]##*/}"
   k=$((k + 1))
@@ -268,6 +289,11 @@ on_command() {
     cp | mv | install | ln)
       if [ -n "$target_dir" ]; then
         check_target "$target_dir" "$base"
+      elif [ "$via_xargs" -eq 1 ] && [ -z "$repl" ]; then
+        # xargs with no template appends the words it reads to the line, so the
+        # destination is the last of those, which only its stdin knows; every
+        # word on the line is a source. Only -t names a destination here.
+        :
       elif [ "${#operands[@]}" -ge 2 ]; then
         check_target "${operands[$((${#operands[@]} - 1))]}" "$base"
       fi

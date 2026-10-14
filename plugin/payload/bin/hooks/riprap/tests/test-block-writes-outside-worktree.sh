@@ -162,6 +162,27 @@ check "process substitutions are commands, the redirect after them a write -> bl
 check "...inside -> allow" 0 "$(bash_in "$REPO" "diff <(sort a) <(sort b) > tmp/d")"
 
 echo
+echo "--- A socket or a device is opened, not created ---"
+# `exec 3<>/dev/tcp/HOST/PORT` is how bash opens a socket, usually to probe a local
+# port with no curl or nc to hand. It was refused, with advice to move it to tmp/,
+# once `<>` became a write. A character device already exists. Neither leaves a file.
+check "exec 3<> a TCP socket -> allow (bash opens a socket, not a file)" 0 \
+  "$(bash_in "$REPO" "exec 3<>/dev/tcp/localhost/8080")"
+check "...and talking over it -> allow" 0 \
+  "$(bash_in "$REPO" "exec 3<>/dev/tcp/localhost/8080 && echo ping >&3 && cat <&3")"
+check "...spaced -> allow" 0 "$(bash_in "$REPO" "exec 3<> /dev/tcp/example.com/80")"
+check "exec 3<> a UDP socket -> allow" 0 "$(bash_in "$REPO" "exec 3<>/dev/udp/localhost/53")"
+check "> a TCP socket -> allow" 0 "$(bash_in "$REPO" "cat </dev/null >/dev/tcp/localhost/5432")"
+check "exec 5<> a character device -> allow (it exists; nothing is created)" 0 \
+  "$(bash_in "$REPO" "exec 5<>/dev/zero")"
+check "> a character device -> allow" 0 "$(bash_in "$REPO" "echo seed > /dev/urandom")"
+check "a name under /dev that is no device is a file it would create -> block" 2 \
+  "$(bash_in "$REPO" "exec 5<>/dev/riprap-no-such-device")"
+check "/dev/tcp with no port is a path bash opens as a file -> block" 2 \
+  "$(bash_in "$REPO" "exec 3<>/dev/tcp/localhost")"
+check "cp into /dev, a directory -> block (it creates a file there)" 2 "$(bash_in "$REPO" "cp a /dev/")"
+
+echo
 echo "--- Bash commands that write ---"
 check "tee outside -> block" 2 "$(bash_in "$REPO" "echo hi | tee -a $OTHER/log")"
 check "tee inside -> allow" 0 "$(bash_in "$REPO" "echo hi | tee tmp/log")"
@@ -221,6 +242,43 @@ check "a cd inside backticks does not leak out -> allow" 0 \
   "$(bash_in "$REPO" "echo \`cd $OTHER\`; touch inside.txt")"
 check "...but a write inside them is still checked -> block" 2 \
   "$(bash_in "$REPO" "echo \`touch $OTHER/x\`")"
+
+echo
+echo "--- ...and behind the same prefixes (walk_command_start in lib/shell-walk.sh) ---"
+# The destructive guard saw through these and the write guard did not, so `timeout
+# 60 rm -rf <outside>` was refused while `timeout 60 cp a <outside>` was a command
+# called timeout. An option's value is not the command: `nice -n 10` runs no `10`.
+check "timeout does not hide the command -> block" 2 "$(bash_in "$REPO" "timeout 60 cp a $OTHER/x")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "timeout 60 cp a ./x")"
+check "time does not hide the command -> block" 2 "$(bash_in "$REPO" "time cp -r build $OTHER/bak")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "time cp -r build tmp/bak")"
+check "nice -n 10 does not hide the command -> block" 2 "$(bash_in "$REPO" "nice -n 10 touch $OTHER/x")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "nice -n 10 touch ./x")"
+check "sudo -u root does not hide the command -> block" 2 "$(bash_in "$REPO" "sudo -u root touch $OTHER/x")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "sudo -u root touch ./x")"
+check "a prefix named by its path -> block" 2 "$(bash_in "$REPO" "/usr/bin/env touch $OTHER/x")"
+check "env -C moves where a relative write lands -> block" 2 "$(bash_in "$REPO" "env -C $OTHER touch x")"
+check "...into a subdirectory -> allow" 0 "$(bash_in "$REPO" "env -C src touch x")"
+check "...relative, with no cwd at all -> block (still fails closed)" 2 \
+  '{"tool_name":"Bash","tool_input":{"command":"env -C src touch x"}}'
+check "...to a variable -> allow (not checked, like a cd to one)" 0 "$(bash_in "$REPO" "env -C \$D touch x")"
+check "a redirection lands where the shell is, not where env -C runs -> block" 2 \
+  "$(bash_in "$REPO" "env -C src make > ../../elsewhere/log")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "env -C $OTHER make > tmp/log")"
+check "xargs -I: the template's last word is the destination -> block" 2 \
+  "$(bash_in "$REPO" "xargs -I{} cp {} $OTHER/dir/ < list")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "xargs -I{} cp {} tmp/dir/ < list")"
+check "...copying in from outside -> allow (the source is only read)" 0 \
+  "$(bash_in "$REPO" "xargs -I{} cp $OTHER/{} tmp/ < list")"
+check "xargs cp -t outside -> block" 2 "$(bash_in "$REPO" "find . -name '*.log' | xargs cp -t $OTHER")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "find . -name '*.log' | xargs cp -t tmp/")"
+check "xargs touch writes the operands it is given -> block" 2 \
+  "$(bash_in "$REPO" "echo x | xargs touch $OTHER/stamp")"
+# Without a template, xargs appends its input to the line: the destination of cp
+# is the last word it reads, and every word on the line is a source.
+check "xargs cp with no template: its last word on the line is a source -> allow" 0 \
+  "$(bash_in "$REPO" "echo tmp/d | xargs cp $OTHER/a $OTHER/b")"
+check "command -v only asks where a command is -> allow" 0 "$(bash_in "$REPO" "command -v touch")"
 
 echo
 echo "--- A cd the hook cannot expand leaves relative targets unchecked, not refused ---"

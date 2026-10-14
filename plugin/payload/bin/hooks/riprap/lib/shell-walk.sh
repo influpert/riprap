@@ -14,6 +14,8 @@
 # knew only output redirections, so once the tokenizer split `<` out as a word, that
 # copy read `cp a OUT<in` as a copy to `in` and let a write outside through — the
 # hole two copies of one walk leave when only one of them is taught something.
+# walk_command_start, at the end of this file, is the same answer for the prefixes
+# in front of a command (`sudo`, `timeout 30`, `xargs -I{}`).
 #
 # Like the tokenizer it reads, this never expands or runs anything: a directory it
 # cannot work out from the text alone is reported as unknown, never guessed.
@@ -312,4 +314,134 @@ _walk_cd() {
   else
     dir=""
   fi
+}
+
+# walk_command_start DIR WORD... — find the command a simple command runs, behind
+# the prefixes agents put in front of one: VAR=value, sudo and doas, env, command,
+# builtin, exec, nohup, noglob, time, nice, timeout and xargs, compared by basename
+# so /usr/bin/env is env. Each prefix's own options are stepped over with their
+# values, so `nice -n 10 rm` and `timeout -s KILL 30 rm` both arrive at rm. DIR is
+# where the words run: WALK_DIR, for the words in WALK_WORDS. Sets:
+#
+#   WALK_CMD_AT       the index of the command among the WORDs, or their count when
+#                     the prefixes leave none (`env`, `command -v rm`).
+#   WALK_CMD_DIR      where the command runs: DIR, moved by `env -C D` or `sudo -D
+#                     D`. When D cannot be expanded it is WALK_UNKNOWN, or still
+#                     empty if DIR was.
+#   WALK_CMD_ASSIGNS  the VAR=value words in front of it, in order.
+#   WALK_CMD_XARGS    1 when xargs runs it, and so appends the words it reads from
+#                     stdin to the command's own; 0 otherwise.
+#   WALK_CMD_REPL     xargs' replace string (-I, -i, --replace), empty without one.
+#                     With one, the words after the command are a template each
+#                     input line is pasted into, not a line it is appended to.
+#
+# Why it is here and not in each hook: a prefix one guard sees through and another
+# does not is a way past the second that nobody chose. The write guard carried a
+# shorter list of its own, so `timeout 60 cp a /outside` reached it as a command
+# called timeout while the destructive guard refused `timeout 60 rm -rf /outside`.
+walk_command_start() {  # $1 = directory, then the words
+  local dir="$1" a k=0 n repl="" xargs=0
+  shift
+  local -a w=(${@+"$@"}) assigns=()
+  n=${#w[@]}
+  while [ "$k" -lt "$n" ]; do
+    a="${w[$k]}"
+    case "$a" in
+      [A-Za-z_]*=*) assigns+=("$a"); k=$((k + 1)); continue ;;
+    esac
+    k=$((k + 1))
+    case "${a##*/}" in
+      sudo | doas) _walk_skip_options "-u -g -p -C -r -t -U -T --user --group --prompt
+        --close-from --role --type --other-user --command-timeout" "-D --chdir" ;;
+      env) _walk_skip_options "-u --unset" "-C --chdir" ;;
+      command)
+        # `command -v rm` asks where rm is, and runs nothing.
+        case "${w[$k]:-}" in -v | -V) k=$n; break ;; esac
+        _walk_skip_options ""
+        ;;
+      builtin | nohup | noglob) ;;
+      exec) _walk_skip_options "-a" ;;
+      time) _walk_skip_options "-f -o --format --output" ;;
+      nice) _walk_skip_options "-n --adjustment" ;;
+      timeout) _walk_skip_options "-s -k --signal --kill-after"; k=$((k + 1)) ;;   # then the duration
+      xargs) xargs=1; _walk_skip_xargs_options ;;
+      *) k=$((k - 1)); break ;;
+    esac
+  done
+  [ "$k" -le "$n" ] || k=$n
+  # shellcheck disable=SC2034  # the WALK_CMD_ globals are what the caller reads
+  {
+    WALK_CMD_AT=$k
+    WALK_CMD_DIR="$dir"
+    WALK_CMD_ASSIGNS=(${assigns[@]+"${assigns[@]}"})
+    WALK_CMD_XARGS=$xargs
+    WALK_CMD_REPL="$repl"
+  }
+  return 0
+}
+
+_walk_is_one_of() {  # $1 = word, $2 = a whitespace-separated list
+  local o
+  # Unquoted on purpose: splitting the list into its words is the point.
+  # shellcheck disable=SC2086
+  for o in $2; do
+    if [ "$1" = "$o" ]; then return 0; fi
+  done
+  return 1
+}
+
+# _walk_skip_options TAKES_VALUE [MOVES_DIR] — step `k` past a prefix command's own
+# options, to the command it runs. TAKES_VALUE lists the options whose value is the
+# next word; MOVES_DIR the ones that run the command somewhere else (`env -C dir`),
+# which move `dir` with them. Reads and writes walk_command_start's locals.
+_walk_skip_options() {
+  local a d
+  while [ "$k" -lt "$n" ]; do
+    a="${w[$k]}"
+    case "$a" in
+      --) k=$((k + 1)); return 0 ;;
+      -*) ;;
+      *) return 0 ;;
+    esac
+    if _walk_is_one_of "${a%%=*}" "${2:-}"; then
+      case "$a" in
+        *=*) d="${a#*=}"; k=$((k + 1)) ;;
+        *) d="${w[$((k + 1))]:-}"; k=$((k + 2)) ;;
+      esac
+      # Unexpandable, the directory is unknown — or still missing, as _walk_cd
+      # leaves it, so a reader can tell there was never a directory to start from.
+      if ! d=$(walk_expand "$d" "$dir"); then
+        [ -z "$dir" ] || d="$WALK_UNKNOWN"
+      fi
+      dir="$d"
+    elif _walk_is_one_of "$a" "$1"; then
+      k=$((k + 2))
+    else
+      k=$((k + 1))
+    fi
+  done
+  return 0
+}
+
+# _walk_skip_xargs_options — _walk_skip_options for xargs, which also has to
+# remember the replace string -I, -i or --replace names (`repl`). Reads and writes
+# walk_command_start's locals.
+_walk_skip_xargs_options() {
+  local a
+  while [ "$k" -lt "$n" ]; do
+    a="${w[$k]}"
+    case "$a" in
+      -I) repl="${w[$((k + 1))]:-}"; k=$((k + 2)) ;;
+      -I?*) repl="${a#-I}"; k=$((k + 1)) ;;
+      -i | --replace) repl="{}"; k=$((k + 1)) ;;
+      -i?*) repl="${a#-i}"; k=$((k + 1)) ;;
+      --replace=*) repl="${a#*=}"; k=$((k + 1)) ;;
+      -L | -n | -P | -s | -d | -E | -a | --arg-file | --delimiter | --max-args | --max-procs \
+        | --max-chars | --process-slot-var) k=$((k + 2)) ;;
+      --) k=$((k + 1)); return 0 ;;
+      -*) k=$((k + 1)) ;;
+      *) return 0 ;;
+    esac
+  done
+  return 0
 }

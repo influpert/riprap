@@ -86,10 +86,12 @@ A separate turn, with the review's findings as input.
   Start on them without asking which to fix — `interaction-preferences.md`'s "fix, then
   offer".
 - **MINOR and NON-ISSUE** in the same scheme: **offer them while the blocking fixes run**, per
-  that same section, and fix what the user accepts. With no answer, **fix only what is
-  trivially correct**, and prefer deferring anything the task did not ask for. A review is not
-  a licence to grow the diff, and fixes to code near the change are how a separable pull
-  request stops being separable.
+  that same section, and fix what the user accepts. With no answer, that section's no-answer
+  default applies — fixes to code near the change are how a separable pull request stops being
+  separable. **Under the payload workflow the remediation turns are sub-agents with no route to
+  the user**, so they always take that default; the offer moves to the handover, where the
+  parent session puts the deferred MINORs to the user and a further cycle fixes what they
+  accept.
 - **Commit and push before the next cycle.** This is the step that quietly breaks the loop
   when it is skipped: the next review reads the pull request, so an unpushed fix is invisible
   to it, the finding reappears unchanged, and the loop reports non-convergence on a defect

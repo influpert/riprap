@@ -320,8 +320,16 @@ work does not depend on, so an answer that arrives mid-fix changes nothing alrea
 - **The user overrules a blocking finding.** Stop that fix, and record the overrule where the
   calling workflow records dispositions.
 
-With nobody to answer, the rule in the section above applies: proceed on the blocking fixes,
-leave the MINORs deferred and the NON-ISSUEs ignored, and record both.
+**On Codex the offer waits for the next stop.** `request_user_input` exists only in Plan mode,
+and Plan mode stops edits, so asking mid-fix would stall the very work the offer must not
+hold up. Make the blocking fixes in Code mode, commit them, and then ask for the mode switch
+and make the offer — the earliest point at which asking costs the fixes nothing.
+
+**With no answer — nobody there, or a sub-agent with no route to the user — this is the
+default, and it is the only one:** proceed on the blocking fixes, fix a MINOR only where it
+is trivially correct, defer the rest, ignore the NON-ISSUEs, and record every one of them.
+The section above gives the reason for proceeding at all; the bias towards deferral is that a
+review is not a licence to grow the diff.
 
 ### Trigger words in your own draft
 

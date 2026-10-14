@@ -75,11 +75,11 @@ its own under `/tmp`:** follow the worktree's `tmp/` instead, rather than trying
 directory first and being refused.
 
 `block-writes-outside-worktree.sh` refuses the common cases: Write and Edit outside the
-worktree, Bash redirections, `tee`, `touch`, `mkdir`, the destination of `cp`, `mv`, `install`
-and `ln`, and a bare `mktemp`. It cannot see everything — a command that writes through its own
-flags, a path held in a variable, a redirection glued to the word before it, and `pushd` all
-pass — so the rule is yours to keep, and the hook
-only catches the slips. A project that genuinely needs a directory outside the worktree adds its
+worktree, Bash redirections (`>`, `>>`, `>|`, `2>`, `&>`, spaced or glued), `tee`, `touch`,
+`mkdir`, the destination of `cp`, `mv`, `install` and `ln`, and a bare `mktemp`, and it follows
+`cd`, `pushd` and `popd` to resolve relative paths. It cannot see everything — a command that
+writes through its own flags and a path held in a variable both pass — so the rule is yours to
+keep, and the hook only catches the slips. A project that genuinely needs a directory outside the worktree adds its
 prefix to `WORKTREE_WRITE_ALLOWED_PREFIXES` in `bin/hooks/lib/worktree-write-patterns.local.sh`.
 
 ## Do not run `git diff` before committing

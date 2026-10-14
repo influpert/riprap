@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # PreToolUse hook: block a destructive command whose target resolves OUTSIDE the
-# worktree the session is working in — rm and unlink, find -delete and -exec rm, git
-# clean -f and git reset --hard.
+# worktree the session is working in — rm and unlink, PowerShell's Remove-Item, find
+# -delete and -exec rm, and the git commands that throw uncommitted work away: clean
+# -f, reset --hard, checkout and restore of files, switch --discard-changes, and stash
+# drop and clear.
 #
 # Why this exists: an agent working in one checkout ran `rm -f` against untracked
 # files in a *different* checkout on the same machine, and untracked files have no
@@ -37,18 +39,25 @@
 #     are not commands or operands, so `git commit -m "remove the rm -rf step"` is not
 #     an rm, `git commit -m "$(cat <<'EOF' ...` runs only cat, and `xargs rm < list`
 #     has no operand `list`.
-#   - the command behind the prefixes agents write — VAR=value, sudo, env, command,
-#     builtin, exec, nohup, time, nice, timeout, xargs — compared by basename, so
-#     /bin/rm and \rm are rm. The list is walk_command_start's, in the library, so
-#     the write guard sees past exactly the same ones.
-#   - rm and unlink: every operand. find: its starting points, when it runs -delete
-#     or -exec rm, or pipes its paths into xargs rm. git clean -f and git reset
-#     --hard: the directory git runs in after any cd and -C, and any --work-tree,
+#   - the command behind the prefixes agents write — VAR=value, PowerShell's `$x =`,
+#     sudo, env, command, builtin, exec, nohup, time, nice, ionice, stdbuf, setsid,
+#     flock, timeout, xargs, wsl and the rest — compared by basename, so /bin/rm and
+#     \rm are rm. The list is walk_command_start's, in the library, so the write
+#     guard sees past exactly the same ones.
+#   - rm and unlink: every operand, and a loop variable's words (`for d in ../x; do
+#     rm -rf "$d"; done`). An operand with a variable in it is placed by its literal
+#     start: /tmp/build-$USER is in /tmp. Remove-Item (ri, del, erase, rd, and rmdir
+#     in PowerShell): its -Path, -LiteralPath and positional paths. find: its
+#     starting points, when it runs -delete or -exec rm, or pipes its paths into
+#     xargs rm. git clean -f, reset --hard, checkout -f or of files (`checkout --
+#     .`), restore of the working tree, switch --discard-changes and stash drop or
+#     clear: the directory git runs in after any cd and -C, and any --work-tree,
 #     --git-dir, GIT_WORK_TREE or GIT_DIR.
-#   - `bash -c TEXT` (and sh, zsh, dash, ksh) and `eval TEXT`: TEXT is walked as a
-#     command of its own, starting where the shell was started. So is a heredoc or
-#     here-string fed to a shell that has no script file to run, which reads its
-#     stdin as the script.
+#   - a shell or an evaluator handed text (walk_run_text, in the library): `bash -c
+#     TEXT` (and sh, zsh, dash, ksh), `eval TEXT`, `pwsh -Command TEXT`,
+#     Invoke-Expression and `cmd /c`. TEXT is walked as a command of its own,
+#     starting where the shell was started. So is a heredoc or here-string fed to a
+#     shell that has no script file to run, which reads its stdin as the script.
 #   - the command of a Bash, PowerShell or Monitor call alike: all three run a shell
 #     command, and the same rm deletes the same files through any of them. PowerShell's
 #     text is read with the same grammar once what that grammar would misread is
@@ -66,10 +75,10 @@
 # xargs -I template that does not start with the input all hand on names that land
 # wherever the next command runs. A script a command runs, text piped into a shell
 # (`cat <<EOF | bash`, `echo ... | sh`), and anything decoded before it reaches a
-# shell are not read. Nor is the rest of PowerShell's own grammar: Set-Location and
-# Push-Location are not followed as cd is, Remove-Item is not an rm, and a
-# drive-letter path (C:\Users\x) is read as a relative one, inside the working
-# directory.
+# shell are not read. Of PowerShell's own vocabulary, Set-Location, Push-Location
+# and Pop-Location are followed as cd, pushd and popd are, and Remove-Item is read as
+# above; the rest is not, and a drive-letter path (C:\Users\x) is read as a relative
+# one, inside the working directory.
 #
 # Quoted arguments, spaces and all, are single words, and backslash escapes follow
 # shell rules (lib/shell-words.sh). A literal `--` ends flag parsing for rm, so every
@@ -196,24 +205,61 @@ path_is_inside() {
 
 is_path_destructive() {  # $1 = a word; compared by basename, so /bin/rm is rm
   local c
+  shell_cmd_name "${1##*/}"
   for c in "${PATH_DESTRUCTIVE_COMMANDS[@]}"; do
-    [ "${1##*/}" = "$c" ] && return 0
+    [ "$SHELL_CMD_NAME" = "$c" ] && return 0
   done
   return 1
+}
+
+# Remove-Item, and the names PowerShell gives it: every path it is handed, by -Path,
+# -LiteralPath or position. $1 = directory, $2 = the index after the cmdlet. The
+# parameters that take a value and are not a path are passed over with it.
+check_remove_item() {
+  local dir="$1" j="$2" k p
+  walk_ps_params "path literalpath lp pspath filter include exclude credential stream" "${w[@]:$j}"
+  local -a names=(${WALK_PS_NAMES[@]+"${WALK_PS_NAMES[@]}"}) values=(${WALK_PS_VALUES[@]+"${WALK_PS_VALUES[@]}"})
+  local -a paths=(${WALK_PS_POS[@]+"${WALK_PS_POS[@]}"})
+  for k in ${names[@]+"${!names[@]}"}; do
+    case "${names[$k]}" in path | literalpath | lp | pspath) paths+=("${values[$k]}") ;; esac
+  done
+  local -a each=()
+  for p in ${paths[@]+"${paths[@]}"}; do
+    walk_ps_list "$p"
+    each+=(${WALK_VALUES[@]+"${WALK_VALUES[@]}"})
+  done
+  for p in ${each[@]+"${each[@]}"}; do check_target "Remove-Item target" "$p" "$dir"; done
+  return 0
 }
 
 BLOCK_REASON=""
 
 # check_target LABEL RAW DIR — record a block if RAW, resolved against DIR, lands
 # outside the boundary. A path that cannot be expanded is not checked, by design.
+#
+# A word that starts with a loop variable is checked for each word the loop gave it
+# (walk_for_values), and a variable after a literal start is placed by that start
+# (walk_expand's loose mode): rm -rf /tmp/build-$USER deletes in /tmp, whatever $USER
+# is. A word that starts with its variable is still not checked.
 check_target() {
+  local label="$1" raw="$2" dir="$3" v
+  [ -z "$BLOCK_REASON" ] || return 0
+  if walk_for_values "$raw"; then
+    local -a vals=("${WALK_VALUES[@]}")
+    for v in "${vals[@]}"; do _check_one_target "$label" "$v" "$dir"; done
+    return 0
+  fi
+  _check_one_target "$label" "$raw" "$dir"
+}
+
+_check_one_target() {
   local label="$1" raw="$2" dir="$3" resolved
   [ -z "$BLOCK_REASON" ] || return 0
   if [ "$CWD_MISSING" -eq 1 ]; then
     BLOCK_REASON="$label '$raw' cannot be verified: the working directory could not be determined (missing/empty cwd), failing closed"
     return 0
   fi
-  resolved=$(walk_expand "$raw" "$dir") || return 0
+  resolved=$(walk_expand "$raw" "$dir" loose) || return 0
   resolve_boundary
   path_is_inside "$resolved" "$BOUNDARY" && return 0
   BLOCK_REASON="$label '$raw' resolves to '$resolved', which is outside the $BOUNDARY_NAME '$BOUNDARY'"
@@ -375,6 +421,52 @@ check_git() {
         j=$((j + 1))
       done
       ;;
+    # Once reset --hard is refused, these are the other ways to throw a checkout's
+    # uncommitted changes away, and nothing brings those back either. checkout
+    # restores files over them when it is given paths (after `--`, or `.`) and
+    # discards them with -f; restore does unless it touches only the index;
+    # switch does with --discard-changes. Moving to another branch is none of
+    # these: it keeps the changes or refuses.
+    checkout)
+      while [ "$j" -lt "$n" ]; do
+        case "${w[$j]}" in
+          --) [ "$((j + 1))" -ge "$n" ] || what="git checkout -- <paths>"; break ;;
+          -f | --force) what="git checkout -f" ;;
+          . | ./ | :/ | '*') what="git checkout ${w[$j]}" ;;
+          -b | -B | --orphan) j=$((j + 1)) ;;
+        esac
+        j=$((j + 1))
+      done
+      ;;
+    restore)
+      local staged=0 worktree=0 named=0
+      while [ "$j" -lt "$n" ]; do
+        case "${w[$j]}" in
+          -S | --staged) staged=1 ;;
+          -W | --worktree) worktree=1 ;;
+          -SW | -WS) staged=1; worktree=1 ;;
+          -s | --source) j=$((j + 1)) ;;
+          # -p asks about each hunk, which is a person's decision, not a script's.
+          -p | --patch) named=0; break ;;
+          --pathspec-from-file=* | --pathspec-from-file) named=1 ;;
+          -*) ;;
+          *) named=1 ;;
+        esac
+        j=$((j + 1))
+      done
+      if [ "$named" -eq 1 ] && { [ "$staged" -eq 0 ] || [ "$worktree" -eq 1 ]; }; then what="git restore"; fi
+      ;;
+    switch)
+      while [ "$j" -lt "$n" ]; do
+        case "${w[$j]}" in
+          --discard-changes | -f | --force) what="git switch --discard-changes" ;;
+        esac
+        j=$((j + 1))
+      done
+      ;;
+    stash)
+      case "${w[$j]:-}" in drop | clear) what="git stash ${w[$j]}" ;; esac
+      ;;
   esac
   [ -n "$what" ] || return 0
   [ -z "$BLOCK_REASON" ] || return 0
@@ -393,51 +485,6 @@ check_git() {
   fi
   if [ -n "$work_tree" ]; then check_target "$what work tree" "$work_tree" "$run"; fi
   if [ -n "$git_dir" ]; then check_target "$what git directory" "$git_dir" "$run"; fi
-  return 0
-}
-
-# bash -c TEXT and friends: walk TEXT where the shell starts. $1 = directory, $2 =
-# the index after the shell's name. A shell given a script file is not read.
-#
-# Without -c, a shell runs its first operand as a script — or, with no operand or
-# with -s, reads the script from stdin. Then a heredoc's body (in `stdin_bodies`, from
-# on_command) or a here-string's word is the script, and is walked like TEXT. A
-# heredoc fed to `bash -c` or to a script is that command's data, and is not.
-#
-# Where the options end is shell_script_at's (lib/shell-words.sh), shared with the
-# secret hook: an option's value, `-euo pipefail` as much as `-o pipefail`, is
-# neither the script nor a script file. It is read into locals before anything is
-# walked, because the walk can come back here and overwrite it.
-check_shell_c() {
-  local dir="$1" j="$2" reads_stdin h
-  shell_script_at "${w[@]:$j}"
-  j=$((j + SHELL_SCRIPT_AT))
-  reads_stdin="$SHELL_DASH_S"
-  if [ "$SHELL_DASH_C" -eq 1 ]; then
-    if [ "$j" -lt "$n" ]; then walk_commands "${w[$j]}" "$dir" on_command; fi
-    return 0
-  fi
-  # A here-string is a word like any other until here, so `bash <<< 'cmd'` ends the
-  # options at `<<<` — which is stdin, not a script.
-  if [ "$reads_stdin" -eq 0 ] && [ "$j" -lt "$n" ]; then
-    case "${w[$j]}" in
-      '<<<'*) ;;
-      *) return 0 ;;
-    esac
-  fi
-  for h in ${stdin_bodies[@]+"${stdin_bodies[@]}"}; do
-    walk_commands "$h" "$dir" on_command
-  done
-  while [ "$j" -lt "$n" ]; do
-    case "${w[$j]}" in
-      '<<<')
-        if [ "$((j + 1))" -lt "$n" ]; then walk_commands "${w[$((j + 1))]}" "$dir" on_command; fi
-        j=$((j + 1))
-        ;;
-      '<<<'*) walk_commands "${w[$j]#<<<}" "$dir" on_command ;;
-    esac
-    j=$((j + 1))
-  done
   return 0
 }
 
@@ -494,9 +541,18 @@ on_command() {
     esac
   done
   [ "$k" -lt "$n" ] || return 0
-  argv0="${w[$k]##*/}"
+  shell_cmd_name "${w[$k]##*/}"
+  argv0="$SHELL_CMD_NAME"
+
+  # A shell or an evaluator handed text, `bash -c`, `pwsh -Command` or eval among
+  # them: the text is walked as a command of its own, where the shell starts. A
+  # heredoc on the command is the script of a shell that has no other.
+  # shellcheck disable=SC2034  # read by walk_run_text, in lib/shell-walk.sh
+  WALK_RUN_STDIN=(${stdin_bodies[@]+"${stdin_bodies[@]}"})
+  if walk_run_text "$dir" on_command "${w[@]:$k}"; then argv0=""; fi
 
   case "$argv0" in
+    "") ;;
     find)
       check_find "$dir" $((k + 1))
       if [ "$next" = "|" ] && [ "$FIND_NAMES" -eq 0 ]; then
@@ -505,12 +561,9 @@ on_command() {
       fi
       ;;
     git) check_git "$dir" $((k + 1)) ;;
-    bash | sh | zsh | dash | ksh) check_shell_c "$dir" $((k + 1)) ;;
-    eval)
-      if [ "$((k + 1))" -lt "$n" ]; then
-        walk_commands "${w[*]:$((k + 1))}" "$dir" on_command
-      fi
-      ;;
+    remove-item | ri | del | erase | rd) check_remove_item "$dir" $((k + 1)) ;;
+    # rmdir in bash removes only empty directories; in PowerShell it is Remove-Item.
+    rmdir) [ "$TOOL_NAME" != PowerShell ] || check_remove_item "$dir" $((k + 1)) ;;
     *)
       if is_path_destructive "$argv0"; then
         check_operands "$argv0" "$dir" $((k + 1))
@@ -558,8 +611,9 @@ walk_commands "$COMMAND" "$START_DIR" on_command
   # Every sentence here has to be true of a tool cache and of /tmp as well as of a
   # sibling checkout: all three are refused, and a reason that only fits one of them
   # reads as a mistake to an agent clearing the other two.
-  echo "rm, unlink, find -delete, git clean -f and git reset --hard run unprompted only"
-  echo "on what is inside the $BOUNDARY_NAME. Everything outside it is in scope,"
+  echo "rm, unlink, Remove-Item, find -delete, and the git commands that throw away"
+  echo "uncommitted work (clean -f, reset --hard, checkout or restore of files, stash"
+  echo "drop) run unprompted only on what is inside the $BOUNDARY_NAME. Everything outside it is in scope,"
   echo "caches and /tmp included: from a path alone, another checkout, another session's"
   echo "scratch and a cache every project on this machine shares look the same, none of"
   echo "them is this task's to remove, and an untracked file deleted there has no"

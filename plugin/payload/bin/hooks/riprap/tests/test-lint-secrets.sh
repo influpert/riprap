@@ -439,6 +439,20 @@ check "cd config && cat credentials/prod.key -> block" 2 "$(bash_in "$MONO" 'cd 
 check "cd src && cat index.ts -> allow" 0 "$(bash_in "$MONO" 'cd src && cat index.ts')"
 check "cwd internal/secrets/: cat manager.go -> allow (tracked source)" 0 \
   "$(bash_in "$MONO/internal/secrets" 'cat manager.go')"
+# A substitution inside double quotes was read before the walk, from where the text
+# starts, so a cd earlier in the line was not where its read happened. Capturing a
+# value into a quoted variable after a cd is ordinary style.
+check 'cd secrets && x="$(cat api.json)" -> block' 2 "$(bash_in "$MONO" 'cd secrets && x="$(cat api.json)" && echo ok')"
+check 'cd secrets && echo "$(cat api.json)" -> block' 2 "$(bash_in "$MONO" 'cd secrets && echo "$(cat api.json)"')"
+check 'cd config/credentials && KEY="$(head -1 prod.key)" -> block' 2 \
+  "$(bash_in "$MONO" 'cd config/credentials && KEY="$(head -1 prod.key)"')"
+check 'cd config && echo "$(cat credentials/prod.key)" -> block' 2 \
+  "$(bash_in "$MONO" 'cd config && echo "$(cat credentials/prod.key)"')"
+check 'cd src && x="$(cat index.ts)" -> allow' 0 "$(bash_in "$MONO" 'cd src && x="$(cat index.ts)"')"
+check 'a cd inside a quoted substitution does not move the read after it -> allow' 0 \
+  "$(bash_in "$MONO" 'x="$(cd secrets && pwd)"; cat src/index.ts')"
+check '...and the read inside it is where its own cd went -> block' 2 \
+  "$(bash_in "$MONO" 'x="$(cd secrets && cat api.json)"')"
 
 echo
 echo "--- A directory named secrets that is source code ---"
@@ -908,6 +922,28 @@ check "Copy-Item -Destination backup.txt -Path .env -> block" 2 \
 check "Copy-Item .env to a name the patterns miss -> block" 2 \
   "$(cmd_in PowerShell "$PROJ" 'Copy-Item .env backup.txt')"
 check "Get-Content is still a reader -> block" 2 "$(cmd_in PowerShell "$PROJ" 'Get-Content -Path .env')"
+
+echo
+echo "--- A shell PowerShell or cmd is handed text, and Set-Location ---"
+# Only bash's -c and eval were read as commands. Handed to pwsh -Command, cmd /c or
+# Invoke-Expression, the path sat inside one quoted word and named no file at all,
+# and in both of those shells `type` prints a file. The merge gate already read all
+# three, and followed Set-Location, which this hook did not.
+check "pwsh -c 'Get-Content .env' -> block" 2 "$(cmd_in PowerShell "$PROJ" "pwsh -c 'Get-Content .env'")"
+check "powershell -Command \"cat .env\" -> block" 2 "$(cmd_in PowerShell "$PROJ" 'powershell -Command "cat .env"')"
+check "pwsh -NoProfile -c from Bash -> block" 2 "$(cmd_in Bash "$PROJ" "pwsh -NoProfile -c 'cat .env'")"
+check "cmd /c \"type .env\" -> block" 2 "$(cmd_in PowerShell "$PROJ" 'cmd /c "type .env"')"
+check "iex \"Get-Content .env\" -> block" 2 "$(cmd_in PowerShell "$PROJ" 'iex "Get-Content .env"')"
+check "pwsh -c on an ordinary file -> allow" 0 "$(cmd_in PowerShell "$PROJ" "pwsh -c 'Get-Content src/app.ts'")"
+check "pwsh -c 'Test-Path .env' only names it -> allow" 0 "$(cmd_in PowerShell "$PROJ" "pwsh -c 'Test-Path .env'")"
+check "Set-Location secrets; Get-Content api.json -> block" 2 \
+  "$(cmd_in PowerShell "$MONO" 'Set-Location secrets; Get-Content api.json')"
+check "Push-Location -Path secrets; Get-Content api.json -> block" 2 \
+  "$(cmd_in PowerShell "$MONO" 'Push-Location -Path secrets; Get-Content api.json')"
+check "Set-Location src; Get-Content index.ts -> allow" 0 \
+  "$(cmd_in PowerShell "$MONO" 'Set-Location src; Get-Content index.ts')"
+check "cd secrets; Write-Host \"\$(Get-Content api.json)\" -> block" 2 \
+  "$(cmd_in PowerShell "$MONO" 'cd secrets; Write-Host "$(Get-Content api.json)"')"
 
 echo
 echo "--- Token values written into tracked files ---"

@@ -53,6 +53,10 @@
 _secret_reads_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./shell-words.sh
 . "$_secret_reads_dir/shell-words.sh"
+# shell_run_text, which says what text `pwsh -Command`, `cmd /c` and
+# Invoke-Expression run, the same answer the destructive and write guards read.
+# shellcheck source=./shell-tools.sh
+. "$_secret_reads_dir/shell-tools.sh"
 unset _secret_reads_dir
 
 # --- which commands read -------------------------------------------------------
@@ -1839,7 +1843,14 @@ _secret_unwrap() {
 # what depends on it — a search root, a relative glob — is then not checked.
 _secret_cd() {
   local t="${_SR_W[$1]:-}"
-  case "$t" in -P | -L | -e | -@) t="${_SR_W[$(($1 + 1))]:-}" ;; esac
+  case "$t" in
+    -P | -L | -e | -@) t="${_SR_W[$(($1 + 1))]:-}" ;;
+    # PowerShell's Set-Location -Path DIR, in any case.
+    -[PpLl]*)
+      shell_cmd_name "$t"
+      case "$SHELL_CMD_NAME" in -path | -literalpath | -lp) t="${_SR_W[$(($1 + 1))]:-}" ;; esac
+      ;;
+  esac
   [ -n "$t" ] || t="${HOME:-}"
   if [ -z "$t" ] || [ "$t" = - ] || ! _secret_resolve "$t"; then
     _SR_BASE=""
@@ -1873,7 +1884,7 @@ _secret_for() {
 # _secret_simple DEPTH — one simple command, its words in _SR_W and _SR_Q, and
 # its heredoc bodies in _SR_HD.
 _secret_simple() {
-  local depth="$1" n=${#_SR_W[@]} j=0 k ci w q cmd t h
+  local depth="$1" n=${#_SR_W[@]} j=0 k ci w q cmd lcmd t h
   local -a w2=() q2=() hs=()
   _SR_FIND_SRC="" _SR_FIND_SRCQ=""
 
@@ -1960,6 +1971,16 @@ _secret_simple() {
     fi
   done
 
+  # PowerShell's names for cd, pushd and popd, in any case. A bare Push-Location
+  # only pushes where it is.
+  shell_cmd_name "$cmd"
+  lcmd="$SHELL_CMD_NAME"
+  case "$lcmd" in
+    set-location | sl | chdir) _secret_cd "$k"; return 1 ;;
+    push-location) [ "$k" -ge "$n" ] || _secret_cd "$k"; return 1 ;;
+    pop-location) _SR_BASE=""; return 1 ;;
+  esac
+
   case "$cmd" in
     cd | pushd) _secret_cd "$k"; return 1 ;;
     popd) _SR_BASE=""; return 1 ;;
@@ -1981,6 +2002,28 @@ _secret_simple() {
   # A command a project has declared only loads what it is given is not refused,
   # whichever parser would otherwise read its arguments.
   _secret_in_list "$cmd" "${SECRET_NONREADING_COMMANDS[@]}" && return 1
+
+  # PowerShell's -Command and Invoke-Expression, and cmd's /c: the text they are
+  # handed is read as a command, as bash -c's is (shell_run_text,
+  # lib/shell-tools.sh). Read only as arguments, `pwsh -c 'Get-Content .env'`
+  # named no file at all, since the path sat inside one quoted word. In both of
+  # those shells `type` prints a file.
+  case "$lcmd" in
+    pwsh | powershell | cmd | iex | invoke-expression)
+      if shell_run_text "${_SR_W[@]:$ci}"; then
+        if [ "$SHELL_RUN_STDIN" -eq 1 ]; then
+          for h in "${_SR_HD[@]+"${_SR_HD[@]}"}" "${hs[@]+"${hs[@]}"}"; do
+            _secret_analyze_windows "$h" "$((depth + 1))"
+            [ -z "$SECRET_HIT_PATH" ] || return 0
+          done
+        else
+          _secret_analyze_windows "$SHELL_RUN_TEXT" "$((depth + 1))"
+          [ -z "$SECRET_HIT_PATH" ] || return 0
+        fi
+        return 1
+      fi
+      ;;
+  esac
 
   case "$cmd" in
     git) _secret_git "$k"; return ;;
@@ -2055,6 +2098,26 @@ _secret_simple() {
   _secret_args_default "$cmd" "$k"
 }
 
+# _secret_analyze_windows TEXT DEPTH — _secret_analyze, for text a PowerShell or
+# cmd is handed, where `type` prints a file rather than saying what a name is.
+_secret_analyze_windows() {
+  local c
+  local -a saved=(${SECRET_NONREADING_COMMANDS[@]+"${SECRET_NONREADING_COMMANDS[@]}"}) kept=()
+  for c in ${saved[@]+"${saved[@]}"}; do [ "$c" = type ] || kept+=("$c"); done
+  SECRET_NONREADING_COMMANDS=(${kept[@]+"${kept[@]}"})
+  _secret_analyze "$1" "${_SR_BASE:-}" "$2" || true
+  SECRET_NONREADING_COMMANDS=(${saved[@]+"${saved[@]}"})
+}
+
+# _secret_subst DEPTH BODY — read a substitution that sat inside double quotes, as
+# the commands it is, from where the command around it runs. What the pipeline
+# around it carries is put back after, since reading it walks commands of its own.
+_secret_subst() {
+  local pf="$_SR_PIPE_FIND" pfq="$_SR_PIPE_FINDQ" fs="$_SR_FIND_SRC" fsq="$_SR_FIND_SRCQ"
+  _secret_analyze "$2" "${_SR_BASE:-}" "$(($1 + 1))" || true
+  _SR_PIPE_FIND="$pf" _SR_PIPE_FINDQ="$pfq" _SR_FIND_SRC="$fs" _SR_FIND_SRCQ="$fsq"
+}
+
 # _secret_analyze TEXT BASE DEPTH — walk TEXT's simple commands, following the
 # working directory through `cd` so a search root resolves where the shell would
 # resolve it. A `(` after `<`, `>` or `$` opens a substitution, whose words are
@@ -2063,9 +2126,9 @@ _secret_simple() {
 # pwd); grep -r KEY .` still searches here. Each command's heredoc bodies are
 # handed to _secret_simple in _SR_HD, for a shell that reads its script from them.
 _secret_analyze() {
-  local text="$1" depth="$3" body i n t op lw glued last hd=0
+  local text="$1" depth="$3" i n t op lw glued last hd=0 sb=0
   local _SR_BASE="$2"
-  local -a _SR_W=() _SR_Q=() _SR_HD=() toks=() ops=() quoted=() bodies=() seg=() segq=()
+  local -a _SR_W=() _SR_Q=() _SR_HD=() toks=() ops=() quoted=() bodies=() body_at=() seg=() segq=()
   local -a kinds=() saved_base=() saved_seg=() saved_segq=() sub_start=() sub_glued=()
   local -a hd_at=() hd_body=() seghd=() saved_hd=()
   # In a variable: a regex written inline after =~ is quoted differently across
@@ -2078,15 +2141,10 @@ _secret_analyze() {
   ops=("${TOKEN_OP[@]+"${TOKEN_OP[@]}"}")
   quoted=("${TOKEN_QUOTED[@]+"${TOKEN_QUOTED[@]}"}")
   bodies=("${TOKEN_SUBST[@]+"${TOKEN_SUBST[@]}"}")
+  body_at=("${TOKEN_SUBST_AT[@]+"${TOKEN_SUBST_AT[@]}"}")
   # Taken before the substitutions below are read, which tokenize again.
   hd_at=("${TOKEN_HEREDOC_AT[@]+"${TOKEN_HEREDOC_AT[@]}"}")
   hd_body=("${TOKEN_HEREDOC_BODY[@]+"${TOKEN_HEREDOC_BODY[@]}"}")
-
-  # `echo "$(cat .env)"`: a substitution inside double quotes is part of a word.
-  for body in "${bodies[@]+"${bodies[@]}"}"; do
-    _secret_analyze "$body" "$_SR_BASE" "$((depth + 1))"
-    [ -z "$SECRET_HIT_PATH" ] || return 0
-  done
 
   i=0
   n=${#toks[@]}
@@ -2094,6 +2152,15 @@ _secret_analyze() {
     if [ "$i" -lt "$n" ]; then t="${toks[$i]}"; op="${ops[$i]}"; else t=";"; op=1; fi
 
     if [ "$op" -eq 1 ]; then
+      # `echo "$(cat .env)"`: a substitution inside double quotes is part of a
+      # word, and runs before the command it is in, from where that command runs.
+      # Read when its command is, rather than all of them first from where the text
+      # starts: `cd secrets && x="$(cat api.json)"` reads secrets/api.json.
+      while [ "$sb" -lt "${#bodies[@]}" ] && [ "${body_at[$sb]}" -lt "$i" ]; do
+        _secret_subst "$depth" "${bodies[$sb]}"
+        sb=$((sb + 1))
+        [ -z "$SECRET_HIT_PATH" ] || return 0
+      done
       # A heredoc opened before this operator belongs to the command it ends.
       while [ "$hd" -lt "${#hd_at[@]}" ] && [ "${hd_at[$hd]}" -le "$i" ]; do
         seghd+=("${hd_body[$hd]}")

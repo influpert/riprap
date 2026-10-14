@@ -12,19 +12,27 @@
 # What counts as a write:
 #   - Write, Edit, NotebookEdit: the file_path / notebook_path.
 #   - A shell command, run through Bash, PowerShell or a Monitor: output
-#     redirections (`>`, `>>`, `>|`, `N>`, `&>`) and read-write ones (`N<>`, which
-#     creates its file as `>` does), glued to the word before them or not, and the
-#     operands of tee, touch, mkdir, and the destination of cp / mv / install / ln.
-#     A bare `mktemp` writes to the system temporary directory, so it is a write
-#     outside too. An input redirection (`<`, `0<`) only reads, and neither it nor
-#     its source is an operand: `cp a OUT <in` copies to OUT.
+#     redirections (`>`, `>>`, `>|`, `N>`, `&>`, and `>&FILE`, which is `&>FILE`)
+#     and read-write ones (`N<>`, which creates its file as `>` does), glued to the
+#     word before them or not; the operands of tee, touch, mkdir and truncate, the
+#     destination of cp / mv / install / ln, and the files `sed -i` and `perl -i`
+#     edit in place. A `mktemp` with no template of its own writes to $TMPDIR, the
+#     one in front of it (`TMPDIR=tmp mktemp -d`) or exported earlier in the
+#     command, else the system's, so a bare one is a write outside too. An input
+#     redirection (`<`, `0<`) only reads, and neither it nor its source is an
+#     operand: `cp a OUT <in` copies to OUT.
+#   - In PowerShell, its own cmdlets for the same: Set-Content, Add-Content,
+#     Out-File, Tee-Object and New-Item (ni, md), by -Path or position, and the
+#     destination of Copy-Item and Move-Item (cpi, copy, mi, move).
 #
 # The simple commands, and the directory each one runs in, come from the walk in
 # lib/shell-walk.sh, the same walk the destructive guard reads, so a command one
 # guard finds — in an `if` or loop body, a brace group, a "$(...)" inside double
-# quotes, after `cd -P` or `builtin cd` — the other finds too. So does the command
-# behind a prefix: both read it through walk_command_start, which sees past sudo,
-# env -C, timeout, nice, time, xargs and the rest. The hook used to carry its own
+# quotes, after `cd -P` or `builtin cd`, in the text handed to `bash -c`, `eval`,
+# `pwsh -Command`, Invoke-Expression or `cmd /c`, or in a heredoc fed to a shell as
+# its script (walk_run_text) — the other finds too. So does the command behind a
+# prefix: both read it through walk_command_start, which sees past sudo, env -C,
+# timeout, nice, ionice, stdbuf, time, xargs and the rest. The hook used to carry its own
 # copy of the walk, and when the tokenizer began splitting `<` out as a word, that
 # copy read the input source as the last operand and passed `cp a /outside/x<in` as
 # a copy to `in`. Its own, shorter list of prefixes read `timeout 60 cp a /outside`
@@ -47,19 +55,21 @@
 #     bin/hooks/lib/worktree-write-patterns.local.sh, which riprap never writes.
 #
 # Limits, by design, because this runs on every shell command: in a write target, a
-# variable other than $HOME and $TMPDIR is not expanded, and neither is `~user`, so
-# `> "$OUT"` is not checked; a command that writes through its own flags (`git
-# worktree add`, `curl -o`, a compiler's output directory) is not parsed. `cd <dir>`
-# and `pushd <dir>` are followed through a command line (a `cd` destination also
-# expands $PWD), `popd` returns to where the matching `pushd` started, and a
-# parenthesised subshell or backtick pair restores the directory it started in; a
-# `cd` or `pushd` the walk cannot expand, and any other form of `pushd` or `popd`,
-# leaves relative targets after it unchecked. A quoted or escaped `>` (`grep '>' f`)
-# is an argument, not a redirection, and is not checked. A word xargs reads from its
-# stdin is unknown, so `xargs cp a b`, whose destination is the last of those words,
-# has no destination to check; with -I or -t it has one. And unlike the destructive
-# guard, this does not walk the text handed to `bash -c` or `eval`, or a heredoc fed
-# to a shell as its script.
+# variable other than $HOME, $TMPDIR and $PWD is not expanded, and neither is
+# `~user`, so `> "$OUT"` is not checked; a variable after a literal start is placed
+# by that start, so `> /tmp/test-$$.log` is a write in /tmp. A loop variable is
+# checked for each word the loop gives it. A command that writes through its own
+# flags (`git worktree add`, `curl -o`, a compiler's output directory) is not
+# parsed, beyond the in-place editors above. `cd <dir>` and `pushd <dir>` are
+# followed through a command line (a `cd` destination also expands $PWD), `popd`
+# returns to where the matching `pushd` started, and a parenthesised subshell or
+# backtick pair restores the directory it started in; a `cd` or `pushd` the walk
+# cannot expand, and any other form of `pushd` or `popd`, leaves relative targets
+# after it unchecked. A quoted or escaped `>` (`grep '>' f`) is an argument, not a
+# redirection, and is not checked. A word xargs reads from its stdin is unknown, so
+# `xargs cp a b`, whose destination is the last of those words, has no destination
+# to check; with -I or -t it has one. Text piped into a shell (`cat <<EOF | bash`)
+# is not read.
 #
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
 # refused, since there is nothing to resolve it against.
@@ -69,10 +79,10 @@
 # as PowerShell reads it (lib/shell-tools.sh): a backtick that ends a line continues
 # it, any other backtick escapes the character after it and is refused for
 # nothing, a backslash is a path separator, so `> ..\out.txt` writes beside the
-# worktree, and a comment is dropped. Its own commands are not read: Set-Location
-# and Push-Location are not followed as cd is, Out-File, Set-Content, New-Item and
-# Copy-Item are not taken for writes, and a drive-letter path (C:\Users\x) is read
-# as a relative one, inside the worktree.
+# worktree, and a comment is dropped. Set-Location, Push-Location and Pop-Location
+# are followed as cd, pushd and popd are, and the cmdlets above are read as writes.
+# The rest of PowerShell's vocabulary is not read, and a drive-letter path
+# (C:\Users\x) is read as a relative one, inside the worktree.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -182,13 +192,24 @@ absolute_target() {  # $1 = raw target, $2 = base directory (may be empty)
     '$HOME'/* | '${HOME}'/*) raw="${HOME:-}/${raw#*/}" ;;
     '$TMPDIR' | '${TMPDIR}') raw="${TMPDIR:-/tmp}" ;;
     '$TMPDIR'/* | '${TMPDIR}'/*) raw="${TMPDIR:-/tmp}/${raw#*/}" ;;
+    '$PWD' | '${PWD}') case "$base" in /*) raw="$base" ;; esac ;;
+    '$PWD'/* | '${PWD}'/*) case "$base" in /*) raw="$base/${raw#*/}" ;; esac ;;
   esac
-  # Unexpandable, so not checked, by design: a variable, a substitution, and a
-  # `~user`, which only the password database can expand. Joined onto the base as a
-  # relative path, `~user` crashed the hook with no cwd and hung it after a cd the
-  # walk could not follow, as walk_expand in lib/shell-walk.sh already knew.
+  # Unexpandable, so not checked, by design: a word that starts with a variable or
+  # a substitution, and a `~user`, which only the password database can expand.
+  # Joined onto the base as a relative path, `~user` crashed the hook with no cwd
+  # and hung it after a cd the walk could not follow, as walk_expand in
+  # lib/shell-walk.sh already knew. A variable after a literal start is placed by
+  # that start (walk_literal_dir): /tmp/test-$$.log is in /tmp whatever $$ is.
   case "$raw" in
-    '' | *'$'* | *'`'* | "~"*) return 0 ;;
+    '' | "~"*) return 0 ;;
+    *'$'* | *'`'*)
+      walk_literal_dir "$raw" || return 0
+      case "$WALK_LIT_DIR" in
+        /*) printf '%s/%s' "${WALK_LIT_DIR%/}" "$WALK_LIT_LEAF" ;;
+        *) [ -n "$base" ] && printf '%s/%s/%s' "$base" "$WALK_LIT_DIR" "$WALK_LIT_LEAF" ;;
+      esac
+      ;;
     /*) printf '%s' "$raw" ;;
     *) [ -n "$base" ] && printf '%s/%s' "$base" "$raw" ;;
   esac
@@ -199,7 +220,20 @@ BLOCK_RESOLVED=""
 BLOCK_UNRESOLVABLE=0
 
 # check_target RAW BASE — record the first target that lands outside the worktree.
+# A target that starts with a loop variable is checked for each word the loop gave
+# it (walk_for_values, lib/shell-walk.sh).
 check_target() {
+  local v
+  [ -z "$BLOCK_TARGET" ] || return 0
+  if walk_for_values "$1"; then
+    local -a vals=("${WALK_VALUES[@]}")
+    for v in "${vals[@]}"; do _check_one_target "$v" "$2"; done
+    return 0
+  fi
+  _check_one_target "$1" "$2"
+}
+
+_check_one_target() {
   local raw="$1" base="$2" abs phys prefix
   [ -z "$BLOCK_TARGET" ] || return 0
   [ -n "$raw" ] || return 0
@@ -264,12 +298,13 @@ fi
 # carried no cwd, WALK_UNKNOWN after a cd the walk could not follow. The operands
 # resolve against WALK_CMD_DIR instead, which an `env -C` in front may have moved.
 on_command() {
-  local base k cmd w via_xargs repl s dir="$WALK_DIR"
+  local base k cmd w via_xargs repl s a dir="$WALK_DIR"
   local -a words=(${WALK_WORDS[@]+"${WALK_WORDS[@]}"})
   local -a redirs=(${WALK_REDIRECTS[@]+"${WALK_REDIRECTS[@]}"})
   local -a substs=(${WALK_SUBSTS[@]+"${WALK_SUBSTS[@]}"})
+  local -a heredocs=(${WALK_HEREDOCS[@]+"${WALK_HEREDOCS[@]}"})
   local n=${#words[@]}
-  local -a operands=()
+  local -a operands=() assigns=()
   # A substitution inside double quotes runs before the command, in a subshell of
   # where it runs: `x="$(touch /outside)"` writes, quotes or not, and the destructive
   # guard already reads it. Walked first, and from copies taken above, because the
@@ -286,9 +321,51 @@ on_command() {
   base="$WALK_CMD_DIR"
   via_xargs=$WALK_CMD_XARGS
   repl="$WALK_CMD_REPL"
-  [ "$k" -lt "$n" ] || return 0
-  cmd="${words[$k]##*/}"
+  assigns=(${WALK_CMD_ASSIGNS[@]+"${WALK_CMD_ASSIGNS[@]}"})
+  if [ "$k" -ge "$n" ]; then
+    # Assignments alone. One to a TMPDIR the session already exports changes where
+    # a later mktemp writes.
+    if [ -n "${TMPDIR+set}" ]; then
+      for a in ${assigns[@]+"${assigns[@]}"}; do case "$a" in TMPDIR=*) note_tmpdir "${a#TMPDIR=}" "$base" ;; esac; done
+    fi
+    return 0
+  fi
+  # A shell or an evaluator handed text (`bash -c`, eval, `pwsh -Command`,
+  # Invoke-Expression, `cmd /c`), or a shell fed a heredoc as its script: the text
+  # is walked as a command of its own, where the shell starts, as the destructive
+  # guard walks it.
+  # shellcheck disable=SC2034  # read by walk_run_text, in lib/shell-walk.sh
+  WALK_RUN_STDIN=(${heredocs[@]+"${heredocs[@]}"})
+  if walk_run_text "$base" on_command "${words[@]:$k}"; then return 0; fi
+  shell_cmd_name "${words[$k]##*/}"
+  cmd="$SHELL_CMD_NAME"
   k=$((k + 1))
+
+  case "$cmd" in
+    sed | gsed) check_sed_in_place "$base" "$k"; return 0 ;;
+    perl) check_perl_in_place "$base" "$k"; return 0 ;;
+    truncate) check_truncate "$base" "$k"; return 0 ;;
+    mktemp) check_mktemp "$base" "$k"; return 0 ;;
+    export | declare | typeset)
+      # `export TMPDIR=...` is where every mktemp after it writes.
+      for ((; k < n; k++)); do
+        case "${words[$k]}" in TMPDIR=*) note_tmpdir "${words[$k]#TMPDIR=}" "$base" ;; esac
+      done
+      return 0
+      ;;
+    set-content | sc | add-content | ac | out-file | tee-object)
+      check_ps_write "$base" "$k" "path literalpath lp pspath filepath value encoding filter include exclude credential stream width inputobject delimiter variable"
+      return 0
+      ;;
+    new-item | ni | md)
+      check_ps_new_item "$base" "$k"
+      return 0
+      ;;
+    copy-item | cpi | copy | move-item | mi | move)
+      check_ps_copy "$base" "$k"
+      return 0
+      ;;
+  esac
 
   local dash_dash=0 target_dir=""
   while [ "$k" -lt "$n" ]; do
@@ -298,13 +375,7 @@ on_command() {
         --) dash_dash=1; k=$((k + 1)); continue ;;
         -t | --target-directory) target_dir="${words[$((k + 1))]:-}"; k=$((k + 2)); continue ;;
         --target-directory=*) target_dir="${w#*=}"; k=$((k + 1)); continue ;;
-        --tmpdir=*) target_dir="${w#*=}"; k=$((k + 1)); continue ;;
       esac
-      # mktemp's -p takes the directory; everywhere else -p is a plain flag
-      # (mkdir -p, cp -p), so it is matched only here.
-      if [ "$cmd" = mktemp ] && { [ "$w" = "-p" ] || [ "$w" = "--tmpdir" ]; }; then
-        target_dir="${words[$((k + 1))]:-}"; k=$((k + 2)); continue
-      fi
       case "$w" in -*) k=$((k + 1)); continue ;; esac
     fi
     operands+=("$w")
@@ -327,19 +398,218 @@ on_command() {
         check_target "${operands[$((${#operands[@]} - 1))]}" "$base"
       fi
       ;;
-    mktemp)
-      # A template with a slash names its own directory; anything else lands in
-      # $TMPDIR, or the directory -p named.
-      if [ -n "$target_dir" ]; then
-        check_target "$target_dir/x" "$base"
-      elif [ "${#operands[@]}" -gt 0 ] && [[ "${operands[0]}" == */* ]]; then
-        check_target "${operands[0]}" "$base"
-      else
-        check_target "${TMPDIR:-/tmp}/x" "$base"
-      fi
-      ;;
   esac
   return 0
+}
+
+# The TMPDIR the command has exported or assigned so far, for a mktemp after it;
+# unset until it does. A value that expands ($PWD/tmp, ~/tmp) is expanded where it
+# is set, as the shell expands it, so a cd between the two does not move it; a
+# plain relative one stays relative, and mktemp resolves it where it runs.
+unset CMD_TMPDIR
+note_tmpdir() {  # VALUE BASE
+  CMD_TMPDIR="$1"
+  case "$1" in
+    "~"* | '$'*)
+      CMD_TMPDIR=$(absolute_target "$1" "$2")
+      [ -n "$CMD_TMPDIR" ] || CMD_TMPDIR="$1"
+      ;;
+  esac
+}
+
+# check_mktemp BASE INDEX — where a mktemp writes. With a template and nothing
+# else, where the template says, which without a slash is the directory it runs
+# in; with -p DIR or --tmpdir=DIR, in DIR; with --tmpdir alone, -t, or no template
+# at all, in $TMPDIR: the one assigned in front of it, else the one the command
+# exported, else the session's, else /tmp. -t prefers $TMPDIR to -p, as GNU's does.
+# Reads on_command's words, n and assigns.
+check_mktemp() {
+  local base="$1" j="$2" w tmpl="" pdir="" use_tmpdir=0 tflag=0 tmpdir="" a
+  if [ -n "${CMD_TMPDIR+set}" ]; then tmpdir="$CMD_TMPDIR"; elif [ -n "${TMPDIR+set}" ]; then tmpdir="$TMPDIR"; fi
+  for a in ${assigns[@]+"${assigns[@]}"}; do case "$a" in TMPDIR=*) tmpdir="${a#TMPDIR=}" ;; esac; done
+  while [ "$j" -lt "$n" ]; do
+    w="${words[$j]}"
+    j=$((j + 1))
+    case "$w" in
+      -p) pdir="${words[$j]:-}"; j=$((j + 1)) ;;
+      -p?*) pdir="${w#-p}" ;;
+      --tmpdir=*) pdir="${w#*=}" ;;
+      --tmpdir) use_tmpdir=1 ;;
+      -t) tflag=1 ;;
+      --suffix) j=$((j + 1)) ;;
+      --) [ "$j" -ge "$n" ] || tmpl="${words[$j]}"; break ;;
+      -*) ;;
+      *) [ -n "$tmpl" ] || tmpl="$w" ;;
+    esac
+  done
+  if [ "$tflag" -eq 1 ]; then
+    if [ -n "$tmpdir" ]; then check_target "$tmpdir/x" "$base"
+    else check_target "${pdir:-/tmp}/x" "$base"; fi
+  elif [ -n "$pdir" ]; then
+    check_target "$pdir/x" "$base"
+  elif [ "$use_tmpdir" -eq 0 ] && [ -n "$tmpl" ]; then
+    check_target "$tmpl" "$base"
+  else
+    check_target "${tmpdir:-/tmp}/x" "$base"
+  fi
+}
+
+# check_sed_in_place BASE INDEX — the files `sed -i` edits. Without -i sed writes
+# nothing; with it, every operand after the script, which is the first operand
+# unless -e or -f gave one. BSD sed's -i takes a suffix as the next word, and
+# `sed -i '' ...` gives it an empty one. Reads on_command's words and n.
+check_sed_in_place() {
+  local base="$1" j="$2" a c rest inplace=0 script=0 dd=0
+  local -a files=()
+  while [ "$j" -lt "$n" ]; do
+    a="${words[$j]}"
+    j=$((j + 1))
+    if [ "$dd" -eq 0 ]; then
+      case "$a" in
+        --) dd=1; continue ;;
+        -i | -I)
+          inplace=1
+          if [ "$j" -lt "$n" ] && [ -z "${words[$j]}" ]; then j=$((j + 1)); fi
+          continue
+          ;;
+        --in-place | --in-place=*) inplace=1; continue ;;
+        --expression | --file) script=1; j=$((j + 1)); continue ;;
+        --expression=* | --file=*) script=1; continue ;;
+        --line-length) j=$((j + 1)); continue ;;
+        --*) continue ;;
+        -?*)
+          rest="${a#-}"
+          while [ -n "$rest" ]; do
+            c="${rest:0:1}"
+            rest="${rest:1}"
+            case "$c" in
+              i | I) inplace=1; rest="" ;;   # the rest of the cluster is the suffix
+              e | f) script=1; [ -n "$rest" ] || j=$((j + 1)); rest="" ;;
+              l) [ -n "$rest" ] || j=$((j + 1)); rest="" ;;
+            esac
+          done
+          continue
+          ;;
+      esac
+    fi
+    files+=("$a")
+  done
+  [ "$inplace" -eq 1 ] || return 0
+  [ "$script" -eq 1 ] || [ "${#files[@]}" -eq 0 ] || files=("${files[@]:1}")
+  for a in ${files[@]+"${files[@]}"}; do check_target "$a" "$base"; done
+}
+
+# check_perl_in_place BASE INDEX — the files `perl -i` (-pi, -i.bak) edits: every
+# operand once the program is given by -e or -E, and every one after the program
+# file otherwise. Reads on_command's words and n.
+check_perl_in_place() {
+  local base="$1" j="$2" a c rest inplace=0 script=0 dd=0
+  local -a files=()
+  while [ "$j" -lt "$n" ]; do
+    a="${words[$j]}"
+    j=$((j + 1))
+    if [ "$dd" -eq 0 ]; then
+      case "$a" in
+        --) dd=1; continue ;;
+        -?*)
+          rest="${a#-}"
+          while [ -n "$rest" ]; do
+            c="${rest:0:1}"
+            rest="${rest:1}"
+            case "$c" in
+              i) inplace=1; rest="" ;;   # the rest of the cluster is the backup suffix
+              e | E) script=1; [ -n "$rest" ] || j=$((j + 1)); rest="" ;;
+              # These take the rest of their cluster as a value.
+              I | M | m | x | d | D | C | l | 0 | F | V) rest="" ;;
+            esac
+          done
+          continue
+          ;;
+      esac
+    fi
+    files+=("$a")
+  done
+  [ "$inplace" -eq 1 ] || return 0
+  [ "$script" -eq 1 ] || [ "${#files[@]}" -eq 0 ] || files=("${files[@]:1}")
+  for a in ${files[@]+"${files[@]}"}; do check_target "$a" "$base"; done
+}
+
+# check_truncate BASE INDEX — every operand of truncate is a file it writes; -s
+# and -r take a value. Reads on_command's words and n.
+check_truncate() {
+  local base="$1" j="$2" a dd=0
+  while [ "$j" -lt "$n" ]; do
+    a="${words[$j]}"
+    j=$((j + 1))
+    if [ "$dd" -eq 0 ]; then
+      case "$a" in
+        --) dd=1; continue ;;
+        -s | -r | --size | --reference) j=$((j + 1)); continue ;;
+        -*) continue ;;
+      esac
+    fi
+    check_target "$a" "$base"
+  done
+}
+
+# PowerShell's writers. Each reads the cmdlet's words with walk_ps_params
+# (lib/shell-walk.sh), which binds parameters as PowerShell does. Read on_command's
+# words.
+_ps_targets() {  # PARAM... — the values given to these parameters, as paths, in PS_TARGETS
+  local k p
+  PS_TARGETS=()
+  for k in ${WALK_PS_NAMES[@]+"${!WALK_PS_NAMES[@]}"}; do
+    for p in "$@"; do
+      if [ "${WALK_PS_NAMES[$k]}" = "$p" ]; then
+        walk_ps_list "${WALK_PS_VALUES[$k]}"
+        PS_TARGETS+=(${WALK_VALUES[@]+"${WALK_VALUES[@]}"})
+      fi
+    done
+  done
+}
+
+# Set-Content, Add-Content, Out-File, Tee-Object: the path, by name or as the first
+# positional argument. $3 = the parameters that take a value.
+check_ps_write() {
+  local base="$1" j="$2" t
+  walk_ps_params "$3" "${words[@]:$j}"
+  _ps_targets path literalpath lp pspath filepath
+  if [ "${#PS_TARGETS[@]}" -eq 0 ] && [ "${#WALK_PS_POS[@]}" -gt 0 ]; then
+    walk_ps_list "${WALK_PS_POS[0]}"
+    PS_TARGETS=(${WALK_VALUES[@]+"${WALK_VALUES[@]}"})
+  fi
+  for t in ${PS_TARGETS[@]+"${PS_TARGETS[@]}"}; do check_target "$t" "$base"; done
+}
+
+# New-Item: the path, by name or position, and the -Name under it.
+check_ps_new_item() {
+  local base="$1" j="$2" t name="" k
+  walk_ps_params "path name itemtype type value credential" "${words[@]:$j}"
+  for k in ${WALK_PS_NAMES[@]+"${!WALK_PS_NAMES[@]}"}; do
+    [ "${WALK_PS_NAMES[$k]}" != name ] || name="${WALK_PS_VALUES[$k]}"
+  done
+  _ps_targets path
+  if [ "${#PS_TARGETS[@]}" -eq 0 ] && [ "${#WALK_PS_POS[@]}" -gt 0 ]; then
+    walk_ps_list "${WALK_PS_POS[0]}"
+    PS_TARGETS=(${WALK_VALUES[@]+"${WALK_VALUES[@]}"})
+  fi
+  [ "${#PS_TARGETS[@]}" -gt 0 ] || PS_TARGETS=(.)
+  for t in "${PS_TARGETS[@]}"; do check_target "$t${name:+/$name}" "$base"; done
+}
+
+# Copy-Item, Move-Item: the destination, by name, or the positional argument after
+# the source, which is the first when the source was named.
+check_ps_copy() {
+  local base="$1" j="$2" t at=1
+  walk_ps_params "destination path literalpath lp pspath filter include exclude credential fromsession tosession" "${words[@]:$j}"
+  _ps_targets path literalpath lp pspath
+  [ "${#PS_TARGETS[@]}" -eq 0 ] || at=0
+  _ps_targets destination
+  if [ "${#PS_TARGETS[@]}" -eq 0 ] && [ "${#WALK_PS_POS[@]}" -gt "$at" ]; then
+    walk_ps_list "${WALK_PS_POS[$at]}"
+    PS_TARGETS=(${WALK_VALUES[@]+"${WALK_VALUES[@]}"})
+  fi
+  for t in ${PS_TARGETS[@]+"${PS_TARGETS[@]}"}; do check_target "$t" "$base"; done
 }
 
 if [ "$SHELL_TOOL" -eq 1 ]; then

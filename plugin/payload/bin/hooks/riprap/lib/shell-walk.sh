@@ -2,7 +2,8 @@
 # Walk the simple commands in a Bash tool call's text, and track the directory each
 # one runs in. Sourced by the hooks that need to know not only what a command runs
 # but where it runs it. Sourced, never executed; lib/shell-words.sh must be sourced
-# first, because the words come from tokenize_redirects.
+# first, because the words come from tokenize_redirects, and lib/shell-tools.sh
+# before walk_run_text is called.
 #
 # Why this is a library rather than a loop in each hook: "where does a relative path
 # land after `cd x && ...`" is one question, and a hook that answers it differently
@@ -59,7 +60,9 @@
 #   before it does, because the nested walk overwrites them.
 #
 # What moves the directory:
-#   cd DIR, cd (to $HOME), pushd DIR, and popd back to the matching pushd. A `cd` to a
+#   cd DIR, cd (to $HOME), pushd DIR, and popd back to the matching pushd, and
+#   PowerShell's names for the same: Set-Location (sl, chdir), Push-Location and
+#   Pop-Location, in any case and with -Path or -LiteralPath. A `cd` to a
 #   destination this cannot expand — a variable, a command substitution, `cd -` —
 #   makes the directory WALK_UNKNOWN; so do `pushd` with no directory or `+N`, and a
 #   `popd` with no `pushd` before it.
@@ -71,6 +74,12 @@
 #   would run it in a subshell and forget it. Following it there can only make a
 #   relative path look further away than it is, which a guard would rather do than
 #   the reverse; and nobody pipes a cd on purpose.
+#
+# What a loop variable holds: `for NAME in WORD...` gives NAME each WORD in turn, and
+# walk_for_values says what a word that starts with $NAME is then. A loop over a
+# literal list of paths is how a deletion is written as often as not, and the secret
+# hook followed one while the destructive guard checked nothing. An assignment to
+# NAME, or an unset, forgets it.
 #
 # Limits: a function body run later, and a script a command reads, are not walked.
 
@@ -109,13 +118,21 @@ walk_normalize() {
   printf '/%s' "$joined"
 }
 
-# walk_expand RAW BASE — print RAW as a normalized absolute path, expanding the few
-# things that can be expanded without running anything: `~`, $HOME, $TMPDIR and $PWD
-# (BASE is the shell's $PWD at that point). Returns 1, printing nothing, when it
-# cannot: any other variable or a substitution, or a relative path with no known
-# BASE (empty or WALK_UNKNOWN).
+# walk_expand RAW BASE [loose] — print RAW as a normalized absolute path, expanding
+# the few things that can be expanded without running anything: `~`, $HOME, $TMPDIR
+# and $PWD (BASE is the shell's $PWD at that point). Returns 1, printing nothing,
+# when it cannot: any other variable or a substitution, or a relative path with no
+# known BASE (empty or WALK_UNKNOWN).
+#
+# With `loose`, a word whose variable or substitution comes after a literal part is
+# placed by that part: /tmp/test-$$.log is in /tmp, ../other/$name beside this
+# directory, build-$v here, whatever each expands to. It prints the literal
+# directory, normalized, and the rest of the word as written. Log names built from
+# a timestamp, $$ or $RANDOM are how scratch files in /tmp are usually named, and
+# reading the whole word as unknown let every one of them through. A word that
+# starts with its variable ("$OUT", "$DIR/x") is still unknown: it could be anywhere.
 walk_expand() {
-  local raw="$1" base="$2" pwd_ok=0
+  local raw="$1" base="$2" loose="${3:-}" pwd_ok=0 out
   case "$base" in /*) pwd_ok=1 ;; esac
   # The quoted tildes and dollars are patterns matched against the literal word,
   # which is what a tokenizer that never expands anything hands over.
@@ -131,13 +148,41 @@ walk_expand() {
     '$PWD'/* | '${PWD}'/*) [ "$pwd_ok" -eq 1 ] || return 1; raw="$base/${raw#*/}" ;;
   esac
   case "$raw" in
-    '' | *'$'* | *'`'* | "~"*) return 1 ;;
+    '' | "~"*) return 1 ;;
+    *'$'* | *'`'*)
+      [ -n "$loose" ] && walk_literal_dir "$raw" || return 1
+      case "$WALK_LIT_DIR" in
+        /*) out=$(walk_normalize "$WALK_LIT_DIR") ;;
+        *) [ "$pwd_ok" -eq 1 ] || return 1; out=$(walk_normalize "$base/$WALK_LIT_DIR") ;;
+      esac
+      printf '%s/%s' "${out%/}" "$WALK_LIT_LEAF"
+      ;;
     /*) walk_normalize "$raw" ;;
     *)
       [ "$pwd_ok" -eq 1 ] || return 1
       walk_normalize "$base/$raw"
       ;;
   esac
+}
+
+# walk_literal_dir WORD — for a word with a variable or substitution in it, the
+# directory its literal start names: WALK_LIT_DIR, as written (relative or not, `.`
+# when the literal part has no slash), and WALK_LIT_LEAF, the rest of the word.
+# Returns 1 when the word starts with its variable, and so names no place at all.
+# shellcheck disable=SC2034  # the WALK_LIT_ globals are what the caller reads
+walk_literal_dir() {
+  local w="$1" lit p='[$`]'
+  lit="${w%%$p*}"
+  [ -n "$lit" ] || return 1
+  case "$lit" in
+    */*)
+      WALK_LIT_DIR="${lit%/*}"
+      [ -n "$WALK_LIT_DIR" ] || WALK_LIT_DIR=/
+      WALK_LIT_LEAF="${w#"${lit%/*}"/}"
+      ;;
+    *) WALK_LIT_DIR=. WALK_LIT_LEAF="$w" ;;
+  esac
+  return 0
 }
 
 # Words that open or continue a compound command. They come first in what the
@@ -158,7 +203,7 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
   # Kept in variables: a regex written inline after =~ is quoted differently across
   # bash versions, and a `\>` that reaches regcomp is a word boundary, not a `>`.
   # redir_re is output only, because it is also what makes `&>` one redirection.
-  local redir_re='^[0-9]*>[>|]?$' rw_re='^[0-9]*<>$' input_re='^[0-9]*<$'
+  local redir_re='^[0-9]*>[>|]?$' rw_re='^[0-9]*<>$' input_re='^[0-9]*<$' dup_re='^([0-9]+-?|-)$'
 
   tokenize_redirects "$text"
   toks=(${TOKENIZED[@]+"${TOKENIZED[@]}"})
@@ -211,6 +256,7 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
         }
         "$callback"
         _walk_follow_dir
+        _walk_note_vars
       fi
       seg=()
       redirs=()
@@ -250,9 +296,15 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
         k=$((k + 2))
       elif [ "$((k + 1))" -lt "$n" ] && [ "${toks[$((k + 1))]}" = "&" ]; then
         # `>&2`, `2>&1`, `>&-`: a descriptor duplication, not a file and not a
-        # separator. Skip the `&` and the descriptor after it.
+        # separator. Skip the `&` and the descriptor after it. But `>&FILE`, with no
+        # descriptor in front and a word after that is neither a descriptor nor `-`,
+        # is bash's older spelling of `&>FILE`: it writes FILE, and passed over as a
+        # duplication it was the way round a refused `&> /tmp/log`.
         k=$((k + 2))
-        if [ "$k" -lt "$n" ] && [ "${ops[$k]}" -eq 0 ]; then k=$((k + 1)); fi
+        if [ "$k" -lt "$n" ] && [ "${ops[$k]}" -eq 0 ]; then
+          if [ "$t" = ">" ] && ! [[ "${toks[$k]}" =~ $dup_re ]]; then redirs+=("${toks[$k]}"); fi
+          k=$((k + 1))
+        fi
       else
         # Followed by another operator (`>(cmd)`): nothing to record here.
         k=$((k + 1))
@@ -269,10 +321,11 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
   done
 }
 
-# Apply the cd / pushd / popd in `seg`, if it is one. Reads and writes walk_commands'
-# locals through bash's dynamic scope.
+# Apply the cd / pushd / popd in `seg`, if it is one, or PowerShell's Set-Location,
+# Push-Location or Pop-Location. Reads and writes walk_commands' locals through
+# bash's dynamic scope.
 _walk_follow_dir() {
-  local j=0 m=${#seg[@]} argv0 dest=""
+  local j=0 m=${#seg[@]} argv0 name dest=""
   # Assignments, and the two builtins that run a builtin by name.
   while [ "$j" -lt "$m" ]; do
     case "${seg[$j]}" in
@@ -282,13 +335,31 @@ _walk_follow_dir() {
     esac
   done
   [ "$j" -lt "$m" ] || return 0
-  argv0="${seg[$j]}"
-  case "$argv0" in cd | pushd | popd) ;; *) return 0 ;; esac
+  # PowerShell names a command in any case: Set-Location, set-location, SL.
+  shell_cmd_name "${seg[$j]}"
+  name="$SHELL_CMD_NAME"
+  case "$name" in
+    cd | chdir | set-location | sl) argv0="cd" ;;
+    pushd | push-location) argv0="pushd" ;;
+    popd | pop-location) argv0="popd" ;;
+    *) return 0 ;;
+  esac
   j=$((j + 1))
   while [ "$j" -lt "$m" ]; do
     case "${seg[$j]}" in
       -L | -P | -e | -@) j=$((j + 1)) ;;
       --) j=$((j + 1)); break ;;
+      -[A-Za-z]?*)
+        # PowerShell's parameters: the destination after -Path or -LiteralPath,
+        # and -PassThru and -StackName, which do not move anything.
+        shell_cmd_name "${seg[$j]}"
+        case "$SHELL_CMD_NAME" in
+          -path | -literalpath | -lp) j=$((j + 1)); break ;;
+          -passthru) j=$((j + 1)) ;;
+          -stackname) j=$((j + 2)) ;;
+          *) break ;;
+        esac
+        ;;
       *) break ;;
     esac
   done
@@ -299,9 +370,10 @@ _walk_follow_dir() {
     pushd)
       pushed+=("$dir")
       # Bare `pushd` swaps the top two entries and `pushd +N` rotates the stack;
-      # neither is followed.
-      case "$dest" in
-        '' | [-+]*) _walk_cd - ;;
+      # neither is followed. A bare Push-Location only pushes where it is.
+      case "$dest:$name" in
+        :push-location) ;;
+        '':* | [-+]*) _walk_cd - ;;
         *) _walk_cd "$dest" ;;
       esac
       ;;
@@ -314,6 +386,69 @@ _walk_follow_dir() {
       fi
       ;;
   esac
+}
+
+# The loop variables seen so far, with the words each is given, joined by $'\001'.
+# Global, because a loop's variable keeps its last value after `done`, and the
+# commands that read it are walked one at a time.
+_WALK_VAR_NAMES=()
+_WALK_VAR_WORDS=()
+
+# _walk_note_vars — remember `for NAME in WORD...`, and forget NAME again when a
+# later command assigns or unsets it. Reads walk_commands' `seg`.
+_walk_note_vars() {
+  local j m=${#seg[@]} name joined=""
+  [ "$m" -gt 0 ] || return 0
+  case "${seg[0]}" in
+    for | select)
+      name="${seg[1]:-}"
+      _walk_forget_var "$name"
+      [ "${seg[2]:-}" = in ] || return 0
+      for ((j = 3; j < m; j++)); do joined+="${seg[$j]}"$'\001'; done
+      _WALK_VAR_NAMES+=("$name")
+      _WALK_VAR_WORDS+=("$joined")
+      ;;
+    unset) for ((j = 1; j < m; j++)); do _walk_forget_var "${seg[$j]}"; done ;;
+    *)
+      for ((j = 0; j < m; j++)); do
+        case "${seg[$j]}" in [A-Za-z_]*=*) _walk_forget_var "${seg[$j]%%=*}" ;; *) break ;; esac
+      done
+      ;;
+  esac
+}
+
+_walk_forget_var() {  # NAME
+  local j
+  for j in ${_WALK_VAR_NAMES[@]+"${!_WALK_VAR_NAMES[@]}"}; do
+    [ "${_WALK_VAR_NAMES[$j]}" != "$1" ] || _WALK_VAR_NAMES[$j]=""
+  done
+}
+
+# walk_for_values WORD — when WORD starts with a loop variable ($NAME or ${NAME},
+# then anything), set WALK_VALUES to what WORD is for each word the loop gave NAME
+# and return 0; return 1 for any other word.
+# shellcheck disable=SC2034  # WALK_VALUES is what the caller reads
+walk_for_values() {
+  local w="$1" name rest j words v
+  local re_braced='^\$\{([A-Za-z_][A-Za-z0-9_]*)\}(.*)$' re_plain='^\$([A-Za-z_][A-Za-z0-9_]*)(.*)$'
+  WALK_VALUES=()
+  if [[ "$w" =~ $re_braced ]] || [[ "$w" =~ $re_plain ]]; then
+    name="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
+  else
+    return 1
+  fi
+  for ((j = ${#_WALK_VAR_NAMES[@]} - 1; j >= 0; j--)); do
+    [ "${_WALK_VAR_NAMES[$j]}" = "$name" ] || continue
+    words="${_WALK_VAR_WORDS[$j]}"
+    while [ -n "$words" ]; do
+      v="${words%%$'\001'*}"
+      words="${words#*$'\001'}"
+      WALK_VALUES+=("$v$rest")
+    done
+    [ "${#WALK_VALUES[@]}" -gt 0 ] || return 1
+    return 0
+  done
+  return 1
 }
 
 # Move `dir` the way `cd DEST` would. Relative to an unknown or missing directory the
@@ -336,11 +471,14 @@ _walk_cd() {
 }
 
 # walk_command_start DIR WORD... — find the command a simple command runs, behind
-# the prefixes agents put in front of one: VAR=value, sudo and doas, env, command,
-# builtin, exec, nohup, noglob, time, nice, timeout and xargs, compared by basename
-# so /usr/bin/env is env. Each prefix's own options are stepped over with their
-# values, so `nice -n 10 rm` and `timeout -s KILL 30 rm` both arrive at rm. DIR is
-# where the words run: WALK_DIR, for the words in WALK_WORDS. Sets:
+# the prefixes agents put in front of one: VAR=value, PowerShell's `$out =`, sudo,
+# doas and gsudo, env, command, builtin, exec, nohup, noglob, time, nice, ionice,
+# chrt, taskset, stdbuf, setsid, unbuffer, chronic, flock, caffeinate, timeout,
+# watch, wsl, winpty and xargs, compared by basename and as shell_cmd_name spells a
+# name, so /usr/bin/env is env and wsl.exe is wsl. Each prefix's own options are
+# stepped over with their values, so `nice -n 10 rm`, `ionice -c3 rm`, `flock
+# /tmp/l rm` and `timeout -s KILL 30 rm` all arrive at rm. DIR is where the words
+# run: WALK_DIR, for the words in WALK_WORDS. Sets:
 #
 #   WALK_CMD_AT       the index of the command among the WORDs, or their count when
 #                     the prefixes leave none (`env`, `command -v rm`).
@@ -358,6 +496,8 @@ _walk_cd() {
 # does not is a way past the second that nobody chose. The write guard carried a
 # shorter list of its own, so `timeout 60 cp a /outside` reached it as a command
 # called timeout while the destructive guard refused `timeout 60 rm -rf /outside`.
+# And this list was shorter than the merge gate's, so `ionice -c3 nice -n19 rm -rf`,
+# the ordinary way to delete a large tree gently, reached both guards as ionice.
 walk_command_start() {  # $1 = directory, then the words
   local dir="$1" a k=0 n repl="" xargs=0
   shift
@@ -368,10 +508,15 @@ walk_command_start() {  # $1 = directory, then the words
     case "$a" in
       [A-Za-z_]*=*) assigns+=("$a"); k=$((k + 1)); continue ;;
     esac
+    # PowerShell's `$out = cmd` runs cmd (shell_ps_assignment, lib/shell-words.sh):
+    # `$null = mkdir x` is how it silences one.
+    if shell_ps_assignment "$a" "${w[$((k + 1))]:-}"; then k=$((k + SHELL_PS_ASSIGN)); continue; fi
     k=$((k + 1))
-    case "${a##*/}" in
+    shell_cmd_name "${a##*/}"
+    case "$SHELL_CMD_NAME" in
       sudo | doas) _walk_skip_options "-u -g -p -C -r -t -U -T --user --group --prompt
         --close-from --role --type --other-user --command-timeout" "-D --chdir" ;;
+      gsudo) _walk_skip_options "-u -i --user --integrity" ;;
       env) _walk_skip_options "-u --unset" "-C --chdir" ;;
       command)
         # `command -v rm` asks where rm is, and runs nothing.
@@ -382,7 +527,22 @@ walk_command_start() {  # $1 = directory, then the words
       exec) _walk_skip_options "-a" ;;
       time) _walk_skip_options "-f -o --format --output" ;;
       nice) _walk_skip_options "-n --adjustment" ;;
-      timeout) _walk_skip_options "-s -k --signal --kill-after"; k=$((k + 1)) ;;   # then the duration
+      ionice) _walk_skip_options "-c -n -p -P -u --class --classdata --pid --pgid --uid" ;;
+      stdbuf) _walk_skip_options "-i -o -e --input --output --error" ;;
+      setsid | unbuffer | chronic | winpty) _walk_skip_options "" ;;
+      caffeinate) _walk_skip_options "-t -w" ;;
+      watch) _walk_skip_options "-n --interval" ;;
+      wsl) _walk_skip_options "-d -u --distribution --user --cd --shell-type" ;;
+      # Each of these takes one operand before the command: chrt the priority,
+      # taskset the mask or CPU list, flock the file it locks.
+      chrt) _walk_skip_options "-T -P -D --sched-runtime --sched-period --sched-deadline"; k=$((k + 1)) ;;
+      taskset) _walk_skip_options ""; k=$((k + 1)) ;;
+      flock)
+        _walk_skip_options "-w -E --timeout --wait --conflict-exit-code"; k=$((k + 1))
+        # `flock FILE -c TEXT` hands the shell text, which is not read.
+        case "${w[$k]:-}" in -c | --command) k=$n; break ;; esac
+        ;;
+      timeout | gtimeout) _walk_skip_options "-s -k --signal --kill-after"; k=$((k + 1)) ;;   # then the duration
       xargs) xargs=1; _walk_skip_xargs_options ;;
       *) k=$((k - 1)); break ;;
     esac
@@ -460,6 +620,104 @@ _walk_skip_xargs_options() {
       --) k=$((k + 1)); return 0 ;;
       -*) k=$((k + 1)) ;;
       *) return 0 ;;
+    esac
+  done
+  return 0
+}
+
+# walk_ps_params PARAMS WORD... — read the words after a PowerShell cmdlet as
+# PowerShell binds them. PARAMS lists, lower-case and without the dash, the
+# parameters of that cmdlet that take a value; a parameter is matched in any case
+# and by any prefix of its name (-Dest is -Destination), and takes its value after
+# a colon (-Path:x) or as the next word. A parameter not in PARAMS is a switch and
+# takes nothing (-Recurse, -Force). A list, `a, b` or `a,b`, is one argument.
+# Sets WALK_PS_NAMES and WALK_PS_VALUES, the named parameters found and their
+# values, in order, and WALK_PS_POS, the positional arguments.
+#
+# Read so that the destructive guard and the write guard take Remove-Item and
+# Copy-Item for what they are. Matched only by the alias, the rm or cp an agent is
+# refused for was a cmdlet away from a deletion or a write nothing looked at.
+# shellcheck disable=SC2034  # the WALK_PS_ globals are what the caller reads
+walk_ps_params() {
+  local params="$1" a v p cand name j=0 n
+  shift
+  local -a w=()
+  for a in ${@+"$@"}; do
+    if [ "${#w[@]}" -gt 0 ]; then
+      case "${w[$((${#w[@]} - 1))]}" in *,) w[${#w[@]}-1]+="$a"; continue ;; esac
+      case "$a" in ,*) w[${#w[@]}-1]+="$a"; continue ;; esac
+    fi
+    # cmd's switches, /q and /s:/e:on, which `cmd /c del /q x` hands the same
+    # names: no path is a single letter under /.
+    case "$a" in /[A-Za-z] | /[A-Za-z]:* | /-[A-Za-z]) continue ;; esac
+    w+=("$a")
+  done
+  WALK_PS_NAMES=() WALK_PS_VALUES=() WALK_PS_POS=()
+  n=${#w[@]}
+  while [ "$j" -lt "$n" ]; do
+    a="${w[$j]}"
+    j=$((j + 1))
+    case "$a" in
+      -[A-Za-z]*)
+        shell_cmd_name "${a%%:*}"
+        p="${SHELL_CMD_NAME#-}"
+        name=""
+        # Unquoted on purpose: splitting the list into its names is the point.
+        # shellcheck disable=SC2086
+        for cand in $params; do
+          case "$cand" in "$p"*) name="$cand"; break ;; esac
+        done
+        [ -n "$name" ] || continue
+        case "$a" in
+          *:*) v="${a#*:}" ;;
+          *) v="${w[$j]:-}"; j=$((j + 1)) ;;
+        esac
+        WALK_PS_NAMES+=("$name")
+        WALK_PS_VALUES+=("$v")
+        ;;
+      *) WALK_PS_POS+=("$a") ;;
+    esac
+  done
+  return 0
+}
+
+# walk_ps_list WORD — the paths in a PowerShell list argument, `a,b`, in WALK_VALUES.
+# shellcheck disable=SC2034  # WALK_VALUES is what the caller reads
+walk_ps_list() {
+  local rest="$1" p
+  WALK_VALUES=()
+  while :; do
+    p="${rest%%,*}"
+    [ -z "$p" ] || WALK_VALUES+=("$p")
+    [ "$p" != "$rest" ] || break
+    rest="${rest#*,}"
+  done
+}
+
+# walk_run_text DIR CALLBACK WORD... — when WORD... (from the command's name on) is a
+# shell or an evaluator handed text to run (shell_run_text, lib/shell-tools.sh:
+# `bash -c`, eval, `pwsh -Command`, Invoke-Expression, `cmd /c`), walk that text
+# from DIR with CALLBACK as a command of its own, and return 0; return 1 for any
+# other command. A shell that reads its script from stdin is given the command's
+# heredocs, which the caller puts in WALK_RUN_STDIN first, and its here-strings.
+#
+# Here and not in each guard for the reason walk_command_start is: the destructive
+# guard read `bash -c` and the write guard did not, so `bash -c 'echo hi >
+# ../other/x'` was the way round one guard that the other had already closed.
+walk_run_text() {
+  local dir="$1" cb="$2" h j
+  shift 2
+  local -a bodies=(${WALK_RUN_STDIN[@]+"${WALK_RUN_STDIN[@]}"}) w=(${@+"$@"})
+  shell_run_text ${w[@]+"${w[@]}"} || return 1
+  if [ "$SHELL_RUN_STDIN" -eq 0 ]; then
+    walk_commands "$SHELL_RUN_TEXT" "$dir" "$cb"
+    return 0
+  fi
+  for h in ${bodies[@]+"${bodies[@]}"}; do walk_commands "$h" "$dir" "$cb"; done
+  for ((j = 1; j < ${#w[@]}; j++)); do
+    case "${w[$j]}" in
+      '<<<') [ "$((j + 1))" -ge "${#w[@]}" ] || walk_commands "${w[$((j + 1))]}" "$dir" "$cb"; j=$((j + 1)) ;;
+      '<<<'*) walk_commands "${w[$j]#<<<}" "$dir" "$cb" ;;
     esac
   done
   return 0

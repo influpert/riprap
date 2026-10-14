@@ -189,15 +189,15 @@ beat one 215-line file when either would answer the question.
 
 **Committing and merging**
 
-- Branching, worktrees, writing or deleting outside one, when to commit, opening a pull request? → [git.md](git.md) (~275)
+- Branching, worktrees, writing or deleting outside one, when to commit, opening a pull request? → [git.md](git.md) (~290)
 - About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~165)
 - A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~135)
-- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~200)
+- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~225)
 - CI is red, or needs re-running? → [ci-hygiene.md](ci-hygiene.md) (~60)
 
 **Security**
 
-- Handling a credential, a token, or a key? → [secret-hygiene.md](secret-hygiene.md) (~200)
+- Handling a credential, a token, or a key? → [secret-hygiene.md](secret-hygiene.md) (~205)
 - Wondering what the allow/deny lists actually stop? → [permissions.md](permissions.md) (~50)
 
 **Extending the guardrails**

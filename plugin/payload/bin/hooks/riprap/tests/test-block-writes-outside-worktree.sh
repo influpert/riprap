@@ -380,6 +380,121 @@ check "a backslash path outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'git lo
 check "a backslash path inside -> allow" 0 "$(cmd_in PowerShell "$REPO" 'git log > .\tmp\log.txt')"
 
 echo
+echo "--- mktemp writes to \$TMPDIR: the one it is given, or the session's ---"
+# A bare mktemp writes outside, which git.md says, and a quoted "\$(mktemp -d)" is
+# the same mktemp: walking the quoted substitution made that refusal visible where
+# the unquoted spelling always had it. Pinned so it cannot change unnoticed. The way
+# forward the refusal gives, a TMPDIR inside the worktree, has to pass.
+check "d=\"\$(mktemp -d)\" -> block" 2 "$(bash_in "$REPO" "d=\\\"\$(mktemp -d)\\\"")"
+check "f=\"\$(mktemp)\" -> block" 2 "$(bash_in "$REPO" "f=\\\"\$(mktemp)\\\"")"
+check "TMPDIR=tmp in front of mktemp -d -> allow" 0 "$(bash_in "$REPO" "TMPDIR=tmp mktemp -d")"
+check "...quoted, as \$PWD/tmp, inside a substitution -> allow" 0 \
+  "$(bash_in "$REPO" "dir=\\\"\$(TMPDIR=\\\"\$PWD/tmp\\\" mktemp -d)\\\"")"
+check "TMPDIR exported earlier in the command -> allow" 0 \
+  "$(bash_in "$REPO" "export TMPDIR=\\\"\$PWD/tmp\\\"; d=\$(mktemp -d)")"
+check "...as \$PWD/tmp where it was exported, though a cd comes between -> allow" 0 \
+  "$(bash_in "$REPO" "export TMPDIR=\\\"\$PWD/tmp\\\"; cd src && mktemp -d")"
+check "TMPDIR outside in front of mktemp -> block" 2 "$(bash_in "$REPO" "TMPDIR=$OTHER mktemp -d")"
+check "mktemp -t, which writes in \$TMPDIR -> block" 2 "$(bash_in "$REPO" "mktemp -t build.XXXXXX")"
+check "...with TMPDIR inside -> allow" 0 "$(bash_in "$REPO" "TMPDIR=tmp mktemp -t build.XXXXXX")"
+check "a template with no slash is made where mktemp runs -> allow" 0 "$(bash_in "$REPO" "mktemp build.XXXXXX")"
+check "...after a cd out -> block" 2 "$(bash_in "$REPO" "cd $OTHER && mktemp build.XXXXXX")"
+
+echo
+echo "--- Behind more prefixes, and after PowerShell's assignment ---"
+check "ionice -c3 cp outside -> block" 2 "$(bash_in "$REPO" "ionice -c3 cp a.txt $OTHER/g")"
+check "stdbuf -oL tee outside -> block" 2 "$(bash_in "$REPO" "stdbuf -oL tee $OTHER/g < a.txt")"
+check "stdbuf -oL tee inside -> allow" 0 "$(bash_in "$REPO" "stdbuf -oL tee tmp/g < a.txt")"
+check "PowerShell \$null = mkdir outside -> block" 2 "$(cmd_in PowerShell "$REPO" '$null = mkdir ..\elsewhere\newdir')"
+check "PowerShell \$r = cp outside -> block" 2 "$(cmd_in PowerShell "$REPO" '$r = cp a.txt ..\elsewhere\g')"
+check "PowerShell \$null = mkdir inside -> allow" 0 "$(cmd_in PowerShell "$REPO" '$null = mkdir tmp\newdir')"
+
+echo
+echo "--- >&FILE is &>FILE ---"
+# bash reads `>&word`, with no descriptor before it and a word that is neither a
+# descriptor nor `-`, as `&>word`. Taken for a duplication, it was the way round a
+# refused `&> /tmp/log`.
+check ">& outside -> block" 2 "$(bash_in "$REPO" "make >& $OTHER/build.log")"
+check ">& glued outside -> block" 2 "$(bash_in "$REPO" "make >&$OTHER/build.log")"
+check ">& inside -> allow" 0 "$(bash_in "$REPO" "make >& tmp/build.log")"
+check ">&2 and 2>&1 are still duplications -> allow" 0 "$(bash_in "$REPO" "make 2>&1 >&2")"
+check ">&- closes stdout -> allow" 0 "$(bash_in "$REPO" "echo x >&-")"
+
+echo
+echo "--- A shell handed text runs it, as the destructive guard already read ---"
+check "bash -c with a write outside -> block" 2 "$(bash_in "$REPO" "bash -c 'echo hi > $OTHER/g'")"
+check "eval with a write outside -> block" 2 "$(bash_in "$REPO" "eval 'echo hi > $OTHER/g'")"
+check "a heredoc fed to bash as its script -> block" 2 \
+  "$(bash_in "$REPO" "bash <<'EOF'\\necho hi > $OTHER/g\\nEOF")"
+check "sh -c in a quoted substitution -> block" 2 "$(bash_in "$REPO" "x=\\\"\$(sh -c 'touch $OTHER/g')\\\"")"
+check "sh -c with a cd and a redirect to /tmp-style scratch -> block" 2 \
+  "$(bash_in "$REPO" "sh -c \\\"cd src && make > $TMPDIR/log\\\"")"
+check "Monitor, bash -c with a write outside -> block" 2 "$(cmd_in Monitor "$REPO" "sleep 60; bash -c 'echo hi > $OTHER/g'")"
+check "pwsh -c with a write outside -> block" 2 "$(cmd_in PowerShell "$REPO" "pwsh -c 'echo hi > ../elsewhere/g'")"
+check "iex with a write outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'iex "echo hi > ..\elsewhere\g"')"
+check "cmd /c copy /y outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'cmd /c copy /y a.txt ..\elsewhere\b')"
+check "bash -c with a write inside -> allow" 0 "$(bash_in "$REPO" "bash -c 'echo hi > tmp/g'")"
+check "a heredoc fed to a script file is its data -> allow" 0 \
+  "$(bash_in "$REPO" "bash scripts/x.sh <<'EOF'\\necho hi > $OTHER/g\\nEOF")"
+check "a heredoc fed to bash -c is the -c command's data -> allow" 0 \
+  "$(bash_in "$REPO" "bash -c 'cat > tmp/notes' <<'EOF'\\necho hi > $OTHER/g\\nEOF")"
+
+echo
+echo "--- A variable after a literal start is placed by that start ---"
+# Log names built from a timestamp, \$\$ or \$RANDOM are how scratch files in /tmp are
+# usually named, and any word with a \$ in it passed unchecked.
+check "> /tmp-style scratch named with \$\$ -> block" 2 "$(bash_in "$REPO" "make test > $TMPDIR/test-\$\$.log 2>&1")"
+check "> a quoted name with a substitution in it -> block" 2 \
+  "$(bash_in "$REPO" "npm test > \\\"$TMPDIR/run-\$(date +%s).log\\\" 2>&1")"
+check "tee to a name with \$RANDOM in it -> block" 2 "$(bash_in "$REPO" "npm test 2>&1 | tee $TMPDIR/out-\$RANDOM.txt")"
+check "the same names under tmp/ -> allow" 0 "$(bash_in "$REPO" "make test > tmp/test-\$\$.log 2>&1")"
+check "a word that starts with its variable is still unknown -> allow" 0 "$(bash_in "$REPO" "echo hi > \\\"\$DIR/x.log\\\"")"
+check "a loop over a path outside, touch \"\$f\" -> block" 2 \
+  "$(bash_in "$REPO" "for f in $OTHER/a; do touch \\\"\$f\\\"; done")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "for f in tmp/a tmp/b; do touch \\\"\$f\\\"; done")"
+
+echo
+echo "--- Editors that write in place ---"
+# An edit to the main checkout while the work lives in a worktree is this hook's
+# own first case, and Edit was checked while the shell edit an agent turns to was not.
+check "sed -i outside -> block" 2 "$(bash_in "$REPO" "sed -i 's/a/b/' $OTHER/f")"
+check "sed -i -e outside -> block" 2 "$(bash_in "$REPO" "sed -i -e 's/a/b/' $OTHER/f")"
+check "sed -i.bak outside -> block" 2 "$(bash_in "$REPO" "sed -i.bak 's/a/b/' $OTHER/f")"
+check "perl -pi -e outside -> block" 2 "$(bash_in "$REPO" "perl -pi -e 's/a/b/' $OTHER/f")"
+check "perl -i.bak -pe outside -> block" 2 "$(bash_in "$REPO" "perl -i.bak -pe 's/a/b/' $OTHER/f")"
+check "truncate -s 0 outside -> block" 2 "$(bash_in "$REPO" "truncate -s 0 $OTHER/f")"
+check "sed -i inside -> allow" 0 "$(bash_in "$REPO" "sed -i 's/a/b/' src/f")"
+check "BSD sed -i '' with a script that starts with / -> allow" 0 "$(bash_in "$REPO" "sed -i '' '/^#/d' src/f")"
+check "sed without -i only reads -> allow" 0 "$(bash_in "$REPO" "sed 's/a/b/' $OTHER/f")"
+check "perl without -i only reads -> allow" 0 "$(bash_in "$REPO" "perl -ne 'print' $OTHER/f")"
+check "truncate -r takes a reference file, which it reads -> allow" 0 "$(bash_in "$REPO" "truncate -r $OTHER/ref tmp/f")"
+
+echo
+echo "--- PowerShell's Set-Location, and its cmdlets that write ---"
+check "Set-Location .., then a relative redirect outside -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" 'Set-Location ..; echo hi > elsewhere\g')"
+check "Push-Location outside, a redirect, Pop-Location -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" 'Push-Location ..\elsewhere; echo hi > g; Pop-Location')"
+check "Push-Location out and Pop-Location back, then a redirect -> allow" 0 \
+  "$(cmd_in PowerShell "$REPO" 'Push-Location ..\elsewhere; Pop-Location; echo hi > tmp\g')"
+check "Set-Content -Path outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'Set-Content -Path ..\elsewhere\g -Value hi')"
+check "Out-File outside -> block" 2 "$(cmd_in PowerShell "$REPO" '"hi" | Out-File ..\elsewhere\g')"
+check "Add-Content -LiteralPath: outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'Add-Content -LiteralPath:..\elsewhere\g hi')"
+check "Copy-Item to outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'Copy-Item a.txt ..\elsewhere\g')"
+check "Copy-Item -Path a -Destination outside -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" 'Copy-Item -Path a.txt -Destination ..\elsewhere\g')"
+check "Move-Item, the source named, the destination outside -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" 'Move-Item -Path a.txt ..\elsewhere\g')"
+check "New-Item outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'New-Item -ItemType File ..\elsewhere\g')"
+check "ni outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'ni ..\elsewhere\g')"
+check "New-Item -Path outside -Name -> block" 2 "$(cmd_in PowerShell "$REPO" 'New-Item -Path ..\elsewhere -Name g -ItemType File')"
+check "Set-Content inside -> allow" 0 "$(cmd_in PowerShell "$REPO" 'Set-Content -Path tmp\g -Value hi')"
+check "Set-Content inside, its value a path outside -> allow (the value is text)" 0 \
+  "$(cmd_in PowerShell "$REPO" 'Set-Content tmp\g ..\elsewhere\g')"
+check "Copy-Item from outside into the worktree -> allow" 0 "$(cmd_in PowerShell "$REPO" 'Copy-Item ..\elsewhere\a.txt tmp\g')"
+check "New-Item inside -> allow" 0 "$(cmd_in PowerShell "$REPO" 'New-Item -ItemType Directory tmp\d')"
+
+echo
 echo "--- Fail closed ---"
 check "relative write with no cwd -> block" 2 \
   '{"tool_name":"Bash","tool_input":{"command":"echo hi > out.txt"}}'

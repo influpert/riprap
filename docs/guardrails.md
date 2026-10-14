@@ -85,11 +85,14 @@ grammar as a Bash one, once what that grammar would misread is read as PowerShel
 backtick that ends a line continues it, any other backtick outside single quotes and comments
 escapes the character after it, a backslash is a path separator, so `Get-Content .\.env` and
 `rm -r ..\sibling` are refused, and a comment is dropped. PowerShell's own vocabulary is read
-only where a hook says so: secret hygiene knows its name-only cmdlets (`Test-Path`, `New-Item`,
-`Remove-Item`) and reads `Copy-Item` as `cp`, and only the merge gate follows `Set-Location` and
-`Push-Location`. The destructive-command blocker and the worktree boundary do not take
-`Remove-Item` for an `rm`, and read a drive-letter path (`C:\Users\…`) as a relative one, so it
-passes them.
+only where a hook says so. Every hook follows `Set-Location`, `Push-Location` and
+`Pop-Location` as `cd`, `pushd` and `popd`, sees past an assignment (`$null = …`), and reads the
+text handed to `pwsh -Command`, `Invoke-Expression` and `cmd /c` as it reads `bash -c`'s.
+Secret hygiene knows the name-only cmdlets (`Test-Path`, `New-Item`, `Remove-Item`) and reads
+`Copy-Item` as `cp`; the destructive-command blocker takes `Remove-Item` for an `rm`; the worktree
+boundary takes `Set-Content`, `Out-File`, `New-Item` and the destination of `Copy-Item` for
+writes; and the merge gate reads `Invoke-RestMethod` as it reads `curl`. All of them read a
+drive-letter path (`C:\Users\…`) as a relative one, so it passes the two path hooks.
 
 Those are the paths for a rule *you* write. riprap's own live one level down, under
 `bin/hooks/riprap/`, which is replaced wholesale on every install — so nothing you write

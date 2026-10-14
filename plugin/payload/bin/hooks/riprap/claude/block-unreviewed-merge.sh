@@ -40,7 +40,9 @@
 # here as the merge it is. The MCP tools arrive through their own matcher in
 # hooks.json, and name the pull request in their input. PowerShell and Monitor
 # run shell commands as Bash does and carry them in the same field, so they are
-# read the same way.
+# read the same way, with what PowerShell adds: gh and curl by the names Windows
+# runs them by (gh.exe, curl.exe, a full path), Invoke-RestMethod as a REST call,
+# and a merge assigned to a variable (`$out = gh pr merge 5`), which still runs.
 #
 # Two things are refused whatever the pull request touches. `--admin` merges past
 # the required checks, which merge-gates.md forbids on every pull request. Auto-
@@ -320,20 +322,25 @@ if [ "$SHELL_TOOL" -eq 1 ]; then
   # A Monitor watching a WebSocket has no command, and runs nothing.
   COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
   [ -n "$COMMAND" ] || exit 0
+
+  # Only a merge is our business. A command that does not even contain the word
+  # passes before anything is parsed; every other command is parsed below and
+  # passes if no merge runs in it. Both cases, for enablePullRequestAutoMerge.
+  # Asked of the text as written, before PowerShell's is translated: translating
+  # a long here-string costs time, and cannot put the word into a command that
+  # lacked it. Without its backticks, so that PowerShell's escape of a letter,
+  # mer`ge, which is still merge, is not a way past this line.
+  case "${COMMAND//\`/}" in
+    *merge* | *Merge*) ;;
+    *) exit 0 ;;
+  esac
+
   # PowerShell's line continuations, escapes, backslashes and comments are read
   # as PowerShell reads them (lib/shell-tools.sh): read as bash, `gh pr merge 5
   # `<newline>--admin` was a merge with no --admin. A merge beside a backtick
   # escape is refused below, once the walk has said whether there is one.
   shell_tool_text "$TOOL_NAME" "$COMMAND"
   COMMAND="$SHELL_TEXT"
-
-  # Only a merge is our business. A command that does not even contain the word
-  # passes before anything is parsed; every other command is parsed below and
-  # passes if no merge runs in it. Both cases, for enablePullRequestAutoMerge.
-  case "$COMMAND" in
-    *merge* | *Merge*) ;;
-    *) exit 0 ;;
-  esac
 fi
 
 # --- reading a command ------------------------------------------------------------
@@ -343,9 +350,9 @@ fi
 # request's merge or auto_merge endpoint (curl's -sX PUT is a PUT); or a call of
 # either merging mutation. A call, with its `(`, so that a grep for the mutation's
 # name, or a jq filter selecting it, is not one.
-MERGE_TEXT_RE='gh[[:space:]]+pr[[:space:]]+merge'
+MERGE_TEXT_RE='[Gg][Hh](\.[Ee][Xx][Ee])?[[:space:]]+pr[[:space:]]+merge'
 API_PATH_TEXT_RE='repos/[^[:space:]]+/pulls/[^[:space:]]+/(merge|(ccr/)?auto_merge)'
-PUT_TEXT_RE="(-[A-Za-z]*X|--method|--request)[[:space:]=]*[\"']?[Pp][Uu][Tt]"
+PUT_TEXT_RE="(-[A-Za-z]*X|-?-[Mm][Ee][Tt][Hh][Oo][Dd]:?|--request)[[:space:]=]*[\"']?[Pp][Uu][Tt]"
 MUTATION_CALL_RE='(mergePullRequest|enablePullRequestAutoMerge)[[:space:]]*\('
 merge_text() {  # $1 = text something will run
   [[ "$1" =~ $MERGE_TEXT_RE ]] && return 0
@@ -380,30 +387,9 @@ api_endpoint() {  # $1 = a word; sets EP_*, or returns 1 when it is no merge end
 }
 
 # cmd_name WORD — sets CMD_NAME to WORD as the lists below spell a command name:
-# lower-cased, because PowerShell and Windows read ForEach-Object, foreach-object
-# and PWSH alike, and without the .exe a Windows program may be called by. In bash
-# rather than through tr: this runs for most words of a PowerShell line, and a
-# fork for each made a long one take seconds. A word longer than every name in
-# the lists, .exe included, could match none of them, and is left as it is.
-UPPER=ABCDEFGHIJKLMNOPQRSTUVWXYZ
-LOWER=abcdefghijklmnopqrstuvwxyz
-cmd_name() {
-  CMD_NAME="$1"
-  local out="" c head i=0
-  if [ "${#CMD_NAME}" -le 21 ]; then
-    case "$CMD_NAME" in
-      *[ABCDEFGHIJKLMNOPQRSTUVWXYZ]*)
-        while [ "$i" -lt "${#CMD_NAME}" ]; do
-          c="${CMD_NAME:$i:1}"
-          case "$UPPER" in *"$c"*) head="${UPPER%%"$c"*}"; c="${LOWER:${#head}:1}" ;; esac
-          out+="$c"; i=$((i + 1))
-        done
-        CMD_NAME="$out"
-        ;;
-    esac
-  fi
-  CMD_NAME="${CMD_NAME%.exe}"
-}
+# lower-cased, and without the .exe a Windows program may be called by
+# (shell_cmd_name, in lib/shell-words.sh, which the other hooks read names with too).
+cmd_name() { shell_cmd_name "$1"; CMD_NAME="$SHELL_CMD_NAME"; }
 
 # A shell or evaluator given text to run: its merge is inside a string this gate
 # does not parse, so when that text holds a merge it is refused. PowerShell's own
@@ -536,11 +522,26 @@ MARK_RE="${MARK}([0-9]+)${MARK}"
 # _SS_END. Comments and heredoc bodies are stepped over as the tokenizer does, so
 # that an apostrophe in either cannot open a quote that the shell never opens.
 _shscan() {
+  # Byte by byte, as the tokenizer reads: in a multibyte locale each `${s:$i:1}`
+  # rescans the string from its start.
+  local LC_ALL=C
   local s="$1" i="$2" lift="$3"
-  local len=${#s} ch c state=none in_word=0 depth=1 j start d strip line rest
-  local out="" BS=$'\\' NL=$'\n' TAB=$'\t'
+  local len=${#s} ch c state=none in_word=0 depth=1 j start d strip line rest run
+  local out="" BS=$'\\' NL=$'\n' TAB=$'\t' p_double='[\\"$`]'
   local -a heredocs=()
   while [ "$i" -lt "$len" ]; do
+    # A quoted run is copied up to the next character that means something in it,
+    # in one step: a character at a time, a long quoted message was quadratic.
+    case "$state" in
+      single | double)
+        rest="${s:$i}"
+        if [ "$state" = single ]; then run="${rest%%"'"*}"; else run="${rest%%$p_double*}"; fi
+        if [ -n "$run" ]; then
+          [ "$lift" -eq 0 ] || out+="$run"
+          i=$((i + ${#run})); continue
+        fi
+        ;;
+    esac
     ch="${s:$i:1}"
     case "$state" in
       single)
@@ -585,7 +586,8 @@ _shscan() {
           state=double; in_word=1
         elif [ "$ch" = "#" ] && [ "$in_word" -eq 0 ]; then
           start=$i
-          while [ "$i" -lt "$len" ] && [ "${s:$((i + 1)):1}" != "$NL" ]; do i=$((i + 1)); done
+          rest="${s:$i}"; rest="${rest%%"$NL"*}"
+          i=$((i + ${#rest} - 1))
           [ "$lift" -eq 0 ] || out+="${s:$start:$((i - start + 1))}"
           i=$((i + 1)); continue
         elif [ "$ch" = "<" ] && [ "${s:$((i + 1)):1}" = "<" ] && [ "${s:$((i + 2)):1}" != "<" ]; then
@@ -668,7 +670,7 @@ pop_level() {
 BRANCH_MOVES=0
 CO_SEL=""; CO_DIR=""; CO_REPO=""; CO_WHAT=""
 
-CUR_TEXT=""      # the text walk() is reading: what a heredoc on stdin carries
+CMD_STDIN=""     # the heredocs and here-strings on the command being read
 PIPE_IN=""       # the words piped into the command being read, if any
 
 resolve_dir() {  # $1 = target, $2 = base; prints the directory or "?"
@@ -882,7 +884,7 @@ parse_api() {
     # The query is in the call's own words, or on stdin from a heredoc or a pipe.
     # Only then is the rest of the command read, so that a grep for the mutation
     # piped after a read of the schema is not taken for a call of it.
-    [ "$stdin" -eq 0 ] || text+=" $CUR_TEXT $PIPE_IN"
+    [ "$stdin" -eq 0 ] || text+=" $CMD_STDIN $PIPE_IN"
     graphql_check "$text"
     return 1
   fi
@@ -945,7 +947,7 @@ parse_curl() {
   done
 
   if [ "$gql" -eq 1 ]; then
-    [ "$stdin" -eq 0 ] || text+=" $CUR_TEXT $PIPE_IN"
+    [ "$stdin" -eq 0 ] || text+=" $CMD_STDIN $PIPE_IN"
     graphql_check "$text"
   fi
 
@@ -958,6 +960,38 @@ parse_curl() {
   if [ -z "$method" ]; then
     if [ "$upload" -eq 1 ]; then method=PUT; elif [ "$data" -eq 1 ]; then method=POST; else method=GET; fi
   fi
+  api_decide "$method" ""
+}
+
+# parse_irm WORD... — the arguments after Invoke-RestMethod or Invoke-WebRequest
+# (irm, iwr), read the same way. PowerShell takes a parameter in any case and by
+# any prefix that names only it, so -Method, -method and -Meth are one parameter,
+# and -Method:PUT gives it its value. -CustomMethod (PowerShell 7) sets the method
+# too. With neither, the method is GET, -Body or not.
+parse_irm() {
+  local a v method="" ep=""
+  while [ "$#" -gt 0 ]; do
+    a="$1"; shift
+    cmd_name "$a"; v="$CMD_NAME"
+    case "$v" in
+      -?*:*) a="${a#*:}"; v="${v%%:*}" ;;
+      # A switch (-UseBasicParsing) takes no value, so a parameter after it is
+      # not one.
+      -?*) case "${1:-}" in -*) a="" ;; *) a="${1:-}"; [ "$#" -eq 0 ] || shift ;; esac ;;
+      *) if [ -z "$ep" ] && api_endpoint "$a"; then ep="$a"; fi; continue ;;
+    esac
+    # The value of a parameter: the method, or for -Uri the endpoint. Any other
+    # parameter's value is passed over, as gh api's and curl's are.
+    if shell_abbreviates "$v" -method 3 || shell_abbreviates "$v" -custommethod 3; then method="$a"; continue; fi
+    if [ -z "$ep" ] && api_endpoint "$a"; then ep="$a"; fi
+  done
+  [ -n "$ep" ] || return 1
+  api_endpoint "$ep"
+  if has_expansion "$method"; then
+    unverifiable "its HTTP method is a variable, so this gate cannot tell whether $ep is being merged or only read."
+  fi
+  method=$(upper "$method")
+  [ -n "$method" ] || method=GET
   api_decide "$method" ""
 }
 
@@ -1013,11 +1047,14 @@ note_git_checkout() {
   BRANCH_MOVES=$((BRANCH_MOVES + 1)); CO_WHAT="git $sub"; CO_SEL=""
 }
 
-# check_evaluator INDEX — w[INDEX] runs text: its arguments, what is piped into it,
-# or a heredoc on stdin when that is where its script comes from. Only that text is
-# read, not the rest of the command, so `source .venv/bin/activate && rg
+# check_evaluator INDEX [VIA_ARGS] — w[INDEX] runs text: its arguments, and its
+# stdin when that is where its script comes from — what is piped into it, or the
+# heredocs and here-strings on its own command (CMD_STDIN). Only that text is read,
+# not the rest of the command, so `source .venv/bin/activate && rg
 # mergePullRequest` is a search after an activation and not a merge handed to
-# source.
+# source, and `sudo -u app bash <<'EOF'` beside a commit message that names a merge
+# is a script that merges nothing. Reading the whole command whenever it held a
+# heredoc refused both, the second with advice that could not be followed.
 #
 # Whether a POSIX shell's script is on stdin is shell_script_at's answer, shared
 # with the secret and destructive hooks: no -c, and no script file unless -s. The
@@ -1025,24 +1062,34 @@ note_git_checkout() {
 # `bash -euo pipefail <<'EOF'` for a script file, and the merge in the heredoc
 # went unread. Any other evaluator keeps that test: shell_script_at describes a
 # POSIX shell's options, not ssh's or PowerShell's.
+#
+# VIA_ARGS is 1 behind xargs or parallel, which turn what they read into the
+# command's arguments and give it no stdin of their own. Their input is then text
+# a shell runs only where it lands as a -c script (`xargs -0 sh -c`); without -c it
+# names script files, so `grep -l 'gh pr merge' -r scripts | xargs bash -n` checks
+# the syntax of the files it found and runs no merge.
 check_evaluator() {
-  local e="$1" name="${w[$1]##*/}" text="" a stdin=1
+  local e="$1" via_args="${2:-0}" name="${w[$1]##*/}" text="" a stdin=1 takes_text=1
   for a in "${w[@]:$((e + 1))}"; do text+=" $a"; done
-  text+=" $PIPE_IN"
   cmd_name "$name"
+  # /dev/stdin, as the script file or the file sourced, is stdin by another name.
   case "$CMD_NAME" in
     bash | sh | zsh | dash | ksh)
       shell_script_at "${w[@]:$((e + 1))}"
       shell_runs_stdin "$((${#w[@]} - e - 1))" || stdin=0
+      [ "${w[$((e + 1 + SHELL_SCRIPT_AT))]:-}" != /dev/stdin ] || stdin=1
+      takes_text="$SHELL_DASH_C"
       ;;
     *)
       for a in "${w[@]:$((e + 1))}"; do
-        case "$a" in -*) ;; *) stdin=0 ;; esac
+        case "$a" in -* | /dev/stdin) ;; *) stdin=0 ;; esac
       done
       ;;
   esac
-  if [ "$stdin" -eq 1 ]; then
-    case "$CUR_TEXT" in *"<<"*) text+=" $CUR_TEXT" ;; esac
+  if [ "$via_args" -eq 1 ]; then
+    [ "$takes_text" -eq 0 ] || text+=" $PIPE_IN $CMD_STDIN"
+  elif [ "$stdin" -eq 1 ]; then
+    text+=" $PIPE_IN $CMD_STDIN"
   fi
   if merge_text "$text"; then
     unverifiable "it hands text that runs a merge to $name, which runs it where this gate cannot see."
@@ -1057,11 +1104,18 @@ simple_command() {
   [ "$#" -gt 0 ] || return 0
   local -a w=("$@")
   local n=$# k=0 gh_repo="" have_gh_repo=0 top=$((${#DIRS[@]} - 1)) idx word num
-  local pipe_in="$PIPE_IN"
+  # In PowerShell a `}` closes the block the command is in, as `;` would end it:
+  # `if ($ok) { gh pr merge 42 }` merges 42, and read as an argument the brace was
+  # a second pull request. In bash it is an argument unless a `;` comes first.
+  if [ "$TOOL_NAME" = PowerShell ]; then
+    while [ "$n" -gt 0 ] && [ "${w[$((n - 1))]}" = "}" ]; do unset "w[$((n - 1))]"; n=$((n - 1)); done
+    [ "$n" -gt 0 ] || return 0
+  fi
+  local pipe_in="$PIPE_IN" cmd_stdin="$CMD_STDIN"
 
   # The substitutions in its words run first, as the shell runs them: each in a
-  # subshell of where this command runs. Reading one resets what was piped in, so
-  # that is put back for the command itself.
+  # subshell of where this command runs. Reading one resets what was piped in, and
+  # the command's own stdin, so both are put back for the command itself.
   for idx in "${!w[@]}"; do
     word="${w[$idx]}"
     while [[ "$word" =~ $MARK_RE ]]; do
@@ -1073,8 +1127,17 @@ simple_command() {
     done
   done
   PIPE_IN="$pipe_in"
+  CMD_STDIN="$cmd_stdin"
 
   while [ "$k" -lt "$n" ] && is_keyword "${w[$k]}"; do k=$((k + 1)); done
+  # PowerShell runs the command an assignment is given and keeps what it prints:
+  # `$out = gh pr merge 5`, `$null = ...` to discard it, `[string]$out = ...`. Read
+  # as the command, `$out` hid the merge behind it. $env:GH_REPO is the exception,
+  # read below as the variable it sets.
+  while [ "$k" -lt "$n" ] && [ "${w[$k]}" != '$env:GH_REPO' ] \
+      && shell_ps_assignment "${w[$k]}" "${w[$((k + 1))]:-}"; do
+    k=$((k + SHELL_PS_ASSIGN))
+  done
   while [ "$k" -lt "$n" ] && is_assignment "${w[$k]}"; do
     case "${w[$k]}" in GH_REPO=*) gh_repo="${w[$k]#GH_REPO=}"; have_gh_repo=1 ;; esac
     k=$((k + 1))
@@ -1186,9 +1249,12 @@ simple_command() {
   if is_evaluator "$argv0"; then
     check_evaluator "$k"
   elif [ -n "$through" ]; then
+    local via_args=0
     j=$((k + 1))
     while [ "$j" -lt "$n" ]; do
-      if shell_given_text "${w[$j]##*/}" "${w[@]:$((j + 1))}"; then check_evaluator "$j"; break; fi
+      cmd_name "${w[$((j - 1))]##*/}"
+      case "$CMD_NAME" in xargs | parallel) via_args=1 ;; esac
+      if shell_given_text "${w[$j]##*/}" "${w[@]:$((j + 1))}"; then check_evaluator "$j" "$via_args"; break; fi
       j=$((j + 1))
     done
   fi
@@ -1203,7 +1269,10 @@ simple_command() {
   [ -z "$through" ] || end=$n
   j=$k
   while [ "$j" -lt "$end" ]; do
-    case "${w[$j]##*/}" in
+    # By the name Windows runs it by too: gh.exe, curl.exe, and gh by its full
+    # path, which is how it is run where it is not on PATH.
+    cmd_name "${w[$j]##*/}"
+    case "$CMD_NAME" in
       gh)
         gh_route "$j"
         case "$GH_SUB" in
@@ -1235,6 +1304,10 @@ simple_command() {
         ;;
       curl)
         if parse_curl "${w[@]:$((j + 1))}"; then m=$j; break; fi
+        ;;
+      # PowerShell's own REST client, and the one an agent with no gh reaches for.
+      invoke-restmethod | irm | invoke-webrequest | iwr)
+        if parse_irm "${w[@]:$((j + 1))}"; then m=$j; break; fi
         ;;
     esac
     j=$((j + 1))
@@ -1288,26 +1361,40 @@ simple_command() {
 REDIR_RE='^[0-9]*(>|>>|>\||<|<>|<&|<<<)$'
 DUP_RE='^([0-9]+-?|-)$'
 walk() {
-  local saved="$CUR_TEXT" base=${#DIRS[@]} lifted="$1"
-  CUR_TEXT="$1"
+  local base=${#DIRS[@]} lifted="$1"
   case "$1" in *'$('* | *'`'*) _shscan "$1" 0 1; lifted="$_SS_OUT" ;; esac
   tokenize_reads "$lifted"
-  local -a toks=() ops=() quo=() cmd=()
+  local -a toks=() ops=() quo=() cmd=() hd_at=() hd_body=() stdin=()
   if [ "${#TOKENIZED[@]}" -gt 0 ]; then
     toks=("${TOKENIZED[@]}"); ops=("${TOKEN_OP[@]}"); quo=("${TOKEN_QUOTED[@]}")
   fi
-  local nt=${#toks[@]} i=0 tok prev="" backtick=0 piped=""
-  while [ "$i" -lt "$nt" ]; do
-    tok="${toks[$i]}"
-    if [ "${ops[$i]}" -eq 1 ]; then
+  # Taken now: reading a substitution below tokenizes again.
+  hd_at=(${TOKEN_HEREDOC_AT[@]+"${TOKEN_HEREDOC_AT[@]}"})
+  hd_body=(${TOKEN_HEREDOC_BODY[@]+"${TOKEN_HEREDOC_BODY[@]}"})
+  local nt=${#toks[@]} i=0 hd=0 tok prev="" backtick=0 piped=""
+  while [ "$i" -le "$nt" ]; do
+    if [ "$i" -lt "$nt" ]; then tok="${toks[$i]}"; else tok=""; fi
+    if [ "$i" -eq "$nt" ] || [ "${ops[$i]}" -eq 1 ]; then
       if [ "$tok" = "&" ] && [ $((i + 1)) -lt "$nt" ] && [ "${ops[$((i + 1))]}" -eq 0 ] \
           && [ "${quo[$((i + 1))]}" -eq 0 ] && [[ "${toks[$((i + 1))]}" =~ ^\>\>?$ ]]; then
         i=$((i + 1)); continue
       fi
+      # This command's stdin, where it has one of its own: the heredocs opened
+      # before this operator, and its here-strings, gathered below. A shell with
+      # no script of its own runs it; anything else in the command is not its
+      # stdin, so a commit message that names a merge beside `sudo bash <<'EOF'`
+      # is not handed to that bash.
+      while [ "$hd" -lt "${#hd_at[@]}" ] && [ "${hd_at[$hd]}" -le "$i" ]; do
+        stdin+=("${hd_body[$hd]}")
+        hd=$((hd + 1))
+      done
+      CMD_STDIN="${stdin[*]+"${stdin[*]}"}"
       PIPE_IN=""; [ "$prev" != "|" ] || PIPE_IN="$piped"
       simple_command "$prev" "$tok" ${cmd[@]+"${cmd[@]}"}
-      if [ "$tok" = "|" ]; then piped+=" ${cmd[*]+"${cmd[*]}"}"; else piped=""; fi
+      # What a pipe carries: the words of the commands before it, and their stdin.
+      if [ "$tok" = "|" ]; then piped+=" ${cmd[*]+"${cmd[*]}"} ${stdin[*]+"${stdin[*]}"}"; else piped=""; fi
       cmd=()
+      stdin=()
       prev="$tok"
       case "$tok" in
         "(") push_level ;;
@@ -1322,6 +1409,8 @@ walk() {
           && [ "${ops[$((i + 2))]}" -eq 0 ] && [[ "${toks[$((i + 2))]}" =~ $DUP_RE ]]; then
         i=$((i + 3))
       elif [ $((i + 1)) -lt "$nt" ] && [ "${ops[$((i + 1))]}" -eq 0 ]; then
+        # A here-string's word is this command's stdin.
+        case "$tok" in *'<<<') stdin+=("${toks[$((i + 1))]}") ;; esac
         i=$((i + 2))
       else
         i=$((i + 1))
@@ -1332,12 +1421,10 @@ walk() {
     fi
     i=$((i + 1))
   done
-  PIPE_IN=""; [ "$prev" != "|" ] || PIPE_IN="$piped"
-  simple_command "$prev" "" ${cmd[@]+"${cmd[@]}"}
   PIPE_IN=""
+  CMD_STDIN=""
   # Whatever this text opened and did not close is dropped with it.
   while [ "${#DIRS[@]}" -gt "$base" ]; do pop_level; done
-  CUR_TEXT="$saved"
 }
 
 # Everything above only defines; this is where a shell command is read. An MCP

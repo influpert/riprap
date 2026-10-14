@@ -722,6 +722,123 @@ EXPECT="$A/../b||6" check "... harmless -> allow" 0 \
   "$(cmd_at "$A" PowerShell 'Set-Location ..\b; gh pr merge 5')"
 
 echo
+echo "--- PowerShell runs the command an assignment is given ---"
+# `$out = gh pr merge 5` merges 5 and keeps what gh prints; `$null = ...` throws it
+# away. Read as a command called $out, which does not run its words, every one of
+# these merged a gated pull request with no lookup at all, --admin included.
+EXPECT="$A||5" check "\$out = gh pr merge 5 -> that pull request" 2 "$(cmd_at "$A" PowerShell '$out = gh pr merge 5 --squash')"
+EXPECT="$A||6" check "... harmless -> allow" 0 "$(cmd_at "$A" PowerShell '$out = gh pr merge 5 --squash')"
+EXPECT="$A||5" check "\$null = gh pr merge 5 -> that pull request" 2 "$(cmd_at "$A" PowerShell '$null = gh pr merge 5 --squash')"
+EXPECT="$A||5" check "[string]\$out = gh pr merge 5 -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell '[string]$out = gh pr merge 5 --squash')"
+EXPECT="$A||5" check "\$out += gh pr merge 5 -> that pull request" 2 "$(cmd_at "$A" PowerShell '$out += gh pr merge 5 --squash')"
+EXPECT="$A||5" check "\$script:res = gh pr merge 5 -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell '$script:res = gh pr merge 5 --squash')"
+EXPECT="nothing" check "\$out = gh pr merge 5 --admin -> block" 2 "$(cmd_at "$A" PowerShell '$out = gh pr merge 5 --admin')"
+EXPECT="$A|o/r|5" check "\$r = gh api -X PUT on a merge endpoint -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell '$r = gh api -X PUT repos/o/r/pulls/5/merge')"
+EXPECT="nothing" check "a string that names a merge, assigned -> allow" 0 "$(cmd_at "$A" PowerShell '$out = "gh pr merge 5"')"
+
+echo
+echo "--- gh and curl by the names Windows runs them by ---"
+# The gate read evaluators and wrappers through cmd_name, which drops the .exe and
+# the case, but looked for gh and curl themselves by their exact basename. curl.exe
+# is how PowerShell 5.1, whose curl is Invoke-WebRequest, reaches curl at all, and
+# gh by its full path is how it is run where it is not on PATH.
+EXPECT="$A||5" check "gh.exe pr merge 5 -> that pull request" 2 "$(cmd_at "$A" PowerShell 'gh.exe pr merge 5 --squash')"
+EXPECT="$A||6" check "... harmless -> allow" 0 "$(cmd_at "$A" PowerShell 'gh.exe pr merge 5 --squash')"
+EXPECT="$A||5" check "gh.exe through Bash -> that pull request" 2 "$(bash_at "$A" 'gh.exe pr merge 5 --squash')"
+EXPECT="$A||5" check "gh by its full Windows path, through the call operator -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell '& "C:\Program Files\GitHub CLI\gh.exe" pr merge 5 --squash')"
+EXPECT="$A||5" check "GH in capitals -> that pull request" 2 "$(cmd_at "$A" PowerShell 'GH pr merge 5')"
+EXPECT="$A|o/r|5" check "gh.exe api -X PUT -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell 'gh.exe api -X PUT repos/o/r/pulls/5/merge')"
+EXPECT="$A|o/r|5" check "curl.exe -X PUT -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell 'curl.exe -X PUT -H "Authorization: Bearer x" https://api.github.com/repos/o/r/pulls/5/merge')"
+EXPECT="nothing" check "gh.exe handed to bash -c -> block" 2 "$(bash_at "$A" "bash -c 'gh.exe pr merge 5'")"
+EXPECT="nothing" check "gh.exe pr view -> allow" 0 "$(cmd_at "$A" PowerShell 'gh.exe pr view 5 --json mergeable')"
+
+echo
+echo "--- PowerShell's own REST client is a merge's REST call too ---"
+# Invoke-RestMethod is the ordinary tool for a REST call in PowerShell, and the one
+# an agent with no gh, or refused by it, reaches for.
+EXPECT="$A|o/r|5" check "Invoke-RestMethod -Method Put on a merge endpoint -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell 'Invoke-RestMethod -Method Put -Uri https://api.github.com/repos/o/r/pulls/5/merge')"
+EXPECT="$A|o/r|6" check "... harmless -> allow" 0 \
+  "$(cmd_at "$A" PowerShell 'Invoke-RestMethod -Method Put -Uri https://api.github.com/repos/o/r/pulls/5/merge')"
+EXPECT="$A|o/r|5" check "irm -Method:PUT -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell 'irm -Method:PUT https://api.github.com/repos/o/r/pulls/5/merge')"
+EXPECT="$A|o/r|5" check "a switch before -Method takes no value -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell 'Invoke-WebRequest -UseBasicParsing -Method PUT https://api.github.com/repos/o/r/pulls/5/merge')"
+EXPECT="nothing" check "a GET of the merge endpoint, which only reads -> allow" 0 \
+  "$(cmd_at "$A" PowerShell 'Invoke-RestMethod https://api.github.com/repos/o/r/pulls/5/merge')"
+EXPECT="nothing" check "Invoke-RestMethod handed to iex -> block" 2 \
+  "$(cmd_at "$A" PowerShell "iex 'irm -Method Put https://api.github.com/repos/o/r/pulls/5/merge'")"
+
+echo
+echo "--- A PowerShell block's closing brace is not a pull request ---"
+# `{` was skipped as a keyword and `}` reached the merge's arguments, so PowerShell's
+# ordinary one-line if was refused as naming two pull requests: 42 and }.
+EXPECT="$A||42" check "if (...) { gh pr merge 42 } -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell 'gh pr checks 42 --watch; if ($LASTEXITCODE -eq 0) { gh pr merge 42 --squash }')"
+EXPECT="$A||43" check "... harmless -> allow" 0 \
+  "$(cmd_at "$A" PowerShell 'gh pr checks 42 --watch; if ($LASTEXITCODE -eq 0) { gh pr merge 42 --squash }')"
+EXPECT="$A||42" check_lacks "... and not refused as naming two pull requests" "more than one pull request" \
+  "$(cmd_at "$A" PowerShell 'gh pr checks 42 --watch; if ($LASTEXITCODE -eq 0) { gh pr merge 42 --squash }')"
+
+echo
+echo "--- A heredoc is the stdin of the command it is on, and only that one ---"
+# A shell with no script of its own runs its stdin. The gate read the whole command
+# as that stdin whenever a heredoc was anywhere in it, so a script fed to a shell
+# behind sudo, timeout or docker exec, beside a commit message or pull request body
+# that named a merge, was refused with advice to run a merge nobody was running. And
+# behind xargs a shell's stdin is not the pipe at all: xargs makes what it reads the
+# shell's arguments, so `xargs bash -n` checks the syntax of the files it is given.
+EXPECT="nothing" check "sudo -u app bash fed a script, an echo naming a merge after it -> allow" 0 \
+  "$(bash_at "$A" "sudo -u app bash <<'EOF'${NL}cd /srv/app && ./migrate${NL}EOF${NL}echo 'next: gh pr merge 12'")"
+EXPECT="nothing" check "timeout bash fed a script, a PR body naming a merge in its own heredoc -> allow" 0 \
+  "$(bash_at "$A" "timeout 900 bash <<'EOF'${NL}bin/test${NL}EOF${NL}gh pr create --title 'Gate merges' --body-file - <<'EOF'${NL}A gh pr merge behind timeout is now refused.${NL}EOF")"
+EXPECT="nothing" check "docker compose exec bash fed a script, a commit message naming a merge -> allow" 0 \
+  "$(bash_at "$A" "docker compose exec -T app bash <<'EOF'${NL}./run-tests.sh${NL}EOF${NL}git commit -m \"Document the gh pr merge flow\"")"
+EXPECT="nothing" check "bash fed a script, a commit message naming a merge -> allow" 0 \
+  "$(bash_at "$A" "bash <<'EOF'${NL}make test${NL}EOF${NL}git commit -m \"Say when gh pr merge is refused\"")"
+EXPECT="nothing" check "xargs bash -n over files a grep for a merge found -> allow" 0 \
+  "$(bash_at "$A" 'grep -rl "gh pr merge" scripts/ | xargs bash -n')"
+EXPECT="nothing" check "git log --grep for a merge into xargs -0 bash -n -> allow" 0 \
+  "$(bash_at "$A" "git log --grep 'gh pr merge' --format=%s | xargs -0 bash -n")"
+EXPECT="nothing" check "a PR body naming a merge, then find | xargs bash -n -> allow" 0 \
+  "$(bash_at "$A" "gh pr create --title \"Lint\" --body \"\$(cat <<'EOF'${NL}Once green, gh pr merge 7 --squash.${NL}EOF${NL})\" && find scripts -name '*.sh' -print0 | xargs -0 -n1 bash -n")"
+EXPECT="nothing" check "sudo -u app bash fed a script that merges -> block" 2 \
+  "$(bash_at "$A" "sudo -u app bash <<'EOF'${NL}gh pr merge 12${NL}EOF")"
+EXPECT="nothing" check "a merge piped into bash -s -> block" 2 "$(bash_at "$A" 'echo "gh pr merge 5" | bash -s')"
+EXPECT="nothing" check "a merge piped into xargs -0 sh -c, which runs it -> block" 2 \
+  "$(bash_at "$A" "printf 'gh pr merge 5' | xargs -0 sh -c")"
+EXPECT="nothing" check "a heredoc into cat, piped into sh -> block" 2 \
+  "$(bash_at "$A" "cat <<'EOF' | sh${NL}gh pr merge 5${NL}EOF")"
+EXPECT="nothing" check "a merge piped into bash /dev/stdin -> block" 2 "$(bash_at "$A" "echo 'gh pr merge 5' | bash /dev/stdin")"
+EXPECT="nothing" check "a merge piped into source /dev/stdin -> block" 2 "$(bash_at "$A" "echo 'gh pr merge 5' | source /dev/stdin")"
+EXPECT="nothing" check "a log naming a merge piped to bash -c, as its data -> allow" 0 \
+  "$(bash_at "$A" "git log --grep 'gh pr merge' --oneline | bash -c 'wc -l'")"
+
+echo
+echo "--- A long PowerShell here-string is read in time ---"
+# Read a character at a time, and quadratically in a UTF-8 locale, a here-string
+# commit message cost every one of the four shell hooks about a second at 4 KB, and
+# a 30 KB one outran Claude Code's 60-second hook timeout. A guard that times out
+# guards nothing. The bound is generous; the defect it pins took minutes.
+LONG=$(for i in $(seq 1 600); do printf 'Read a long message about the merge gate quickly, line %s.\n' "$i"; done)
+# A UTF-8 locale where there is one, since that is where it was slowest.
+_utf8=$(locale -a 2>/dev/null | grep -i -m1 -E '^(c|en_us)\.utf-?8$' || true)
+_start=$SECONDS
+EXPECT="nothing" LC_ALL="${_utf8:-C}" check "a 30 KB here-string commit message -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "git commit -m @'${NL}${LONG}${NL}'@")"
+if [ $((SECONDS - _start)) -le 10 ]; then
+  PASS=$((PASS + 1)); printf 'PASS: ... within 10 seconds (%ss)\n' "$((SECONDS - _start))"
+else
+  FAIL=$((FAIL + 1)); printf 'FAIL: ... took %ss, over 10\n' "$((SECONDS - _start))"
+fi
+
+echo
 echo "--- The MCP merge tool, as other servers spell it ---"
 # The reference GitHub MCP server names the same tool merge_pull_request and the
 # field pull_number. Read as pullNumber alone, every merge through it was refused.

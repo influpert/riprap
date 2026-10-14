@@ -77,8 +77,16 @@ shell_tool() {
 # Text from any other tool is handed back as it came.
 # shellcheck disable=SC2034  # SHELL_TEXT and SHELL_STRAY_BACKTICK are what the hook reads
 shell_tool_text() {  # $1 = tool name, $2 = command text
-  local s="$2" out="" state=code prev=' ' c n i=0 j len
+  # Byte by byte, for the reason tokenize_shell gives: in a multibyte locale each
+  # `${s:$i:1}` rescans the string, and a long here-string took seconds.
+  local LC_ALL=C
+  local s="$2" out="" state=code prev=' ' c n i=0 j len rest run
   local bt='`' bs='\' sq="'" dq='"' cr=$'\r' nl=$'\n' tab=$'\t'
+  # The characters each state copies unchanged are taken a run at a time, up to
+  # the next one it has to look at. Even byte by byte, `${s:$i:1}` copies the
+  # whole string, so a character at a time is quadratic in its length.
+  local p_code="[${bt}${sq}${dq}\\\\@#<]" p_sq="[${sq}\\\\]" p_dq="[${dq}${bt}\\\\]"
+  local p_hsq="[${sq}\\\\${nl}]" p_hdq="[${dq}${bt}\\\\${nl}]"
   SHELL_TEXT="$2"
   SHELL_STRAY_BACKTICK=0
   [ "$1" = PowerShell ] || return 0
@@ -86,6 +94,25 @@ shell_tool_text() {  # $1 = tool name, $2 = command text
   case "$s" in *"$bt"* | *"$bs"* | *'#'* | *'@'*) ;; *) return 0 ;; esac
   len=${#s}
   while [ "$i" -lt "$len" ]; do
+    rest="${s:$i}"
+    case "$state" in
+      code) run="${rest%%$p_code*}" ;;
+      sq) run="${rest%%$p_sq*}" ;;
+      dq) run="${rest%%$p_dq*}" ;;
+      hsq) run="${rest%%$p_hsq*}" ;;
+      hdq) run="${rest%%$p_hdq*}" ;;
+      comment) run="${rest%%"$nl"*}" ;;
+      *) run="${rest%%#*}" ;;
+    esac
+    if [ -n "$run" ]; then
+      # A comment's text is dropped and leaves prev as it was, as it always did.
+      case "$state" in
+        comment | block) ;;
+        *) out+="$run"; prev="${run#"${run%?}"}" ;;
+      esac
+      i=$((i + ${#run}))
+      continue
+    fi
     c="${s:$i:1}"
     n="${s:$((i + 1)):1}"
     case "$state" in
@@ -182,4 +209,108 @@ _shell_tool_escape() {
     '\') out+=/ ;;
     *) out+="\\$1" ;;
   esac
+}
+
+# shell_run_text WORD... — whether the command WORD... (its name first) is a shell or
+# an evaluator handed text to run, rather than a script file: bash, sh, zsh, dash
+# and ksh with -c, eval, PowerShell's -Command (pwsh, powershell, by any prefix of
+# the parameter's name and in any case: -c, -Command) and Invoke-Expression (iex),
+# and cmd's /c or /k (//c from Git Bash, so that it is not rewritten as a path).
+# lib/shell-words.sh must be sourced first. Sets:
+#
+#   SHELL_RUN_TEXT   the text it runs, read the way the shell it is handed to reads
+#                    it: PowerShell's through shell_tool_text, so `..\other` is the
+#                    directory beside this one; cmd's with each backslash a slash.
+#   SHELL_RUN_STDIN  1 when it reads its script from stdin instead: a POSIX shell
+#                    with no -c and no script file, or with -s, and PowerShell's
+#                    -Command -. Whatever the caller knows is on that stdin (a
+#                    heredoc on the command, a here-string among its words) is the
+#                    script then.
+#
+# Returns 1, with neither set, for anything else: a script file, `pwsh -File`,
+# `-EncodedCommand`, whose text is encoded, or a command that is no shell at all.
+#
+# Shared by the hooks that walk what a command runs, because a shell one of them
+# reads into and another does not is a way past the second that nobody chose: the
+# merge gate read `pwsh -Command` and `cmd /c` while the destructive guard, the
+# worktree boundary and secret hygiene read only bash's -c and eval, and PowerShell
+# is the shell a PowerShell session wraps a refused command in.
+# shellcheck disable=SC2034  # the SHELL_RUN_ globals are what the caller reads
+shell_run_text() {
+  local name a j=1 n=$# keep_bt="$SHELL_STRAY_BACKTICK" text=""
+  SHELL_RUN_TEXT="" SHELL_RUN_STDIN=0
+  [ "$n" -gt 0 ] || return 1
+  shell_cmd_name "${1##*/}"; name="$SHELL_CMD_NAME"
+  local -a w=("$@")
+  case "$name" in
+    bash | sh | zsh | dash | ksh)
+      shell_script_at "${w[@]:1}"
+      j=$((1 + SHELL_SCRIPT_AT))
+      if [ "$SHELL_DASH_C" -eq 1 ]; then
+        [ "$j" -lt "$n" ] || return 1
+        SHELL_RUN_TEXT="${w[$j]}"
+        return 0
+      fi
+      # A here-string is still a word here, and shell_script_at takes it for the
+      # first operand: it is stdin, not a script file.
+      if [ "$j" -ge "$n" ] || [ "$SHELL_DASH_S" -eq 1 ]; then SHELL_RUN_STDIN=1; return 0; fi
+      case "${w[$j]}" in '<<<'*) SHELL_RUN_STDIN=1; return 0 ;; esac
+      return 1
+      ;;
+    eval)
+      [ "$n" -gt 1 ] || return 1
+      SHELL_RUN_TEXT="${w[*]:1}"
+      return 0
+      ;;
+    pwsh | powershell)
+      while [ "$j" -lt "$n" ]; do
+        a="${w[$j]}"
+        j=$((j + 1))
+        case "$a" in -?* | /?*) ;; *) continue ;; esac
+        shell_cmd_name "-${a#?}"
+        case "$SHELL_CMD_NAME" in
+          # -File runs a script file, and -EncodedCommand is text this does not decode.
+          -f | -fi | -fil | -file | -e | -ec | -en*) return 1 ;;
+        esac
+        if shell_abbreviates "$SHELL_CMD_NAME" -command 2; then
+          text="${w[*]:$j}"
+          [ -n "$text" ] || return 1
+          if [ "$text" = - ]; then SHELL_RUN_STDIN=1; return 0; fi
+          shell_tool_text PowerShell "$text"
+          SHELL_RUN_TEXT="$SHELL_TEXT"
+          SHELL_STRAY_BACKTICK="$keep_bt"
+          return 0
+        fi
+      done
+      return 1
+      ;;
+    invoke-expression | iex)
+      [ "$n" -gt 1 ] || return 1
+      shell_cmd_name "${w[1]}"
+      ! shell_abbreviates "$SHELL_CMD_NAME" -command 2 || j=2
+      [ "$j" -lt "$n" ] || return 1
+      shell_tool_text PowerShell "${w[*]:$j}"
+      SHELL_RUN_TEXT="$SHELL_TEXT"
+      SHELL_STRAY_BACKTICK="$keep_bt"
+      return 0
+      ;;
+    cmd)
+      while [ "$j" -lt "$n" ]; do
+        shell_cmd_name "${w[$j]}"
+        j=$((j + 1))
+        case "$SHELL_CMD_NAME" in
+          /c | //c | /k | //k)
+            text="${w[*]:$j}"
+            [ -n "$text" ] || return 1
+            SHELL_RUN_TEXT="${text//\\//}"
+            return 0
+            ;;
+          /*) ;;
+          *) return 1 ;;
+        esac
+      done
+      return 1
+      ;;
+  esac
+  return 1
 }

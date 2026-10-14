@@ -590,6 +590,121 @@ check "the same backslash through Bash is bash's escape -> allow" 0 \
   "$(cmd_in Bash "$WORK" 'rm -r ..\riprap-other')"
 
 echo
+echo "--- Behind more prefixes, and after PowerShell's assignment ---"
+# walk_command_start knew a dozen prefixes and the merge gate dozens, so `ionice -c3
+# nice -n19 rm -rf`, the ordinary way to delete a large tree gently, reached this
+# guard as a command called ionice. And PowerShell runs the command an assignment is
+# given: `$null = rm ...` is how it discards the output, and `$null` was read as the
+# command.
+check "ionice -c3 nice -n19 rm outside -> block" 2 "$(bash_in "$WORK" "ionice -c3 nice -n19 rm -rf $OTHER/big")"
+check "...inside -> allow" 0 "$(bash_in "$WORK" "ionice -c3 nice -n19 rm -rf ./big")"
+check "stdbuf -oL rm outside -> block" 2 "$(bash_in "$WORK" "stdbuf -oL rm -rfv $OTHER/x")"
+check "setsid rm outside -> block" 2 "$(bash_in "$WORK" "setsid rm -rf $OTHER/x")"
+check "flock FILE rm outside -> block" 2 "$(bash_in "$WORK" "flock /tmp/riprap.lock rm -rf $OTHER/x")"
+check "flock FILE rm inside -> allow (the lock file is not the target)" 0 \
+  "$(bash_in "$WORK" "flock $OTHER/lock rm -rf ./x")"
+check "caffeinate -i rm outside -> block" 2 "$(bash_in "$WORK" "caffeinate -i rm -rf $OTHER/x")"
+check "chrt -b 0 rm outside -> block" 2 "$(bash_in "$WORK" "chrt -b 0 rm -rf $OTHER/x")"
+check "taskset -c 0,1 rm outside -> block" 2 "$(bash_in "$WORK" "taskset -c 0,1 rm -rf $OTHER/x")"
+check "wsl rm outside, from PowerShell -> block" 2 "$(cmd_in PowerShell "$WORK" "wsl rm -rf $OTHER/x")"
+check "PowerShell \$null = rm outside -> block" 2 "$(cmd_in PowerShell "$WORK" '$null = rm -r -fo ..\riprap-other\f')"
+check "PowerShell \$r = rm outside -> block" 2 "$(cmd_in PowerShell "$WORK" '$r = rm -r ..\riprap-other\f')"
+check "PowerShell [string]\$r = rm outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" '[string]$r = rm -r ..\riprap-other\f')"
+check "PowerShell \$null = rm inside -> allow" 0 "$(cmd_in PowerShell "$WORK" '$null = rm -r .\build')"
+
+echo
+echo "--- A shell PowerShell or cmd is handed text runs it too ---"
+# Only bash's -c and eval were read, and PowerShell is the shell a PowerShell session
+# wraps a refused command in. The merge gate already read all of these.
+check "pwsh -NoProfile -Command rm outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "pwsh -NoProfile -Command 'rm -r $OTHER/f'")"
+check "pwsh -c rm outside, from Bash -> block" 2 "$(bash_in "$WORK" "pwsh -c 'rm -rf $OTHER/f'")"
+check "powershell -Command rm outside -> block" 2 "$(bash_in "$WORK" "powershell -Command 'rm -r $OTHER/f'")"
+check "Invoke-Expression rm outside -> block" 2 "$(cmd_in PowerShell "$WORK" "Invoke-Expression \"rm -r $OTHER/f\"")"
+check "iex with a backslash path outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'iex "rm -r ..\riprap-other\f"')"
+check "cmd /c rd /s /q outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'cmd /c rd /s /q ..\riprap-other')"
+check "pwsh -Command rm inside -> allow" 0 "$(cmd_in PowerShell "$WORK" "pwsh -NoProfile -Command 'rm -r ./build'")"
+check "cmd /c rd /s /q inside -> allow (its switches are not paths)" 0 \
+  "$(cmd_in PowerShell "$WORK" 'cmd /c rd /s /q build')"
+check "pwsh -File runs a script, which is not read -> allow" 0 \
+  "$(cmd_in PowerShell "$WORK" 'pwsh -File scripts/clean.ps1')"
+
+echo
+echo "--- PowerShell's Set-Location and Remove-Item ---"
+# The merge gate followed Set-Location while this guard did not, so a relative path
+# after one resolved against the wrong directory and passed as inside. The bash
+# aliases rm and cd were read; the cmdlets they stand for, the next thing tried
+# once an alias is refused, were not.
+check "Set-Location .., then rm outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'Set-Location ..; rm -r riprap-other\f')"
+check "sl .., then rm outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'sl ..; rm -r riprap-other\f')"
+check "Set-Location -Path .., then rm outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" 'Set-Location -Path ..; rm -r riprap-other\f')"
+check "Push-Location .., rm, Pop-Location -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" 'Push-Location ..; rm -r riprap-other\f; Pop-Location')"
+check "Set-Location into a subdirectory, rm there -> allow" 0 "$(cmd_in PowerShell "$WORK" 'Set-Location sub; rm -r x')"
+check "Push-Location out and Pop-Location back, then rm -> allow" 0 \
+  "$(cmd_in PowerShell "$WORK" 'Push-Location ..; Pop-Location; rm -r x')"
+check "Remove-Item -Recurse -Force outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" 'Remove-Item -Recurse -Force ..\riprap-other\f')"
+check "Remove-Item -Path outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'Remove-Item -Path ..\riprap-other\f -Recurse')"
+check "Remove-Item -LiteralPath: outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'Remove-Item -LiteralPath:..\riprap-other\f')"
+check "a list with one path outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'Remove-Item .\build, ..\riprap-other\f')"
+check "del outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'del ..\riprap-other\f')"
+check "ri -r outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'ri -r ..\riprap-other\f')"
+check "erase outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'erase ..\riprap-other\f')"
+check "rmdir in PowerShell, which is Remove-Item -> block" 2 "$(cmd_in PowerShell "$WORK" 'rmdir ..\riprap-other')"
+check "Remove-Item inside -> allow" 0 "$(cmd_in PowerShell "$WORK" 'Remove-Item -Recurse -Force .\build')"
+check "rmdir in bash removes only an empty directory -> allow" 0 "$(bash_in "$WORK" "rmdir $OTHER/empty")"
+
+echo
+echo "--- A loop variable holds the loop's words ---"
+# The secret hook followed a loop over a literal list and this guard did not, so
+# the same rm checked nothing once it was written as a loop.
+check "a loop over a path outside, rm \"\$d\" -> block" 2 \
+  "$(bash_in "$WORK" "for d in $OTHER/f; do rm -rf \"\$d\"; done")"
+check "...one of two paths outside -> block" 2 "$(bash_in "$WORK" "for d in ./a $OTHER/f; do rm -rf \"\$d\"; done")"
+check "...\${d}/cache under it -> block" 2 "$(bash_in "$WORK" "for d in $OTHER; do rm -rf \"\${d}/cache\"; done")"
+check "...every path inside -> allow" 0 "$(bash_in "$WORK" 'for d in ./a ./b; do rm -rf "$d"; done')"
+check "...the variable assigned again is no longer the loop's -> allow" 0 \
+  "$(bash_in "$WORK" "for d in $OTHER; do :; done; d=./build; rm -rf \"\$d\"")"
+
+echo
+echo "--- A variable after a literal start is placed by that start ---"
+# Any word with a \$ in it was unknown, so /tmp/build-\$USER, where the variable only
+# names the leaf, passed as though it could be anywhere.
+check "rm /tmp/build-\$USER -> block" 2 "$(bash_in "$WORK" 'rm -rf /tmp/build-$USER')"
+check "rm \"../riprap-other/\$name\" -> block" 2 "$(bash_in "$WORK" 'rm -rf "../riprap-other/$name"')"
+check "rm ./dist/\$name -> allow" 0 "$(bash_in "$WORK" 'rm -rf ./dist/$name')"
+check "rm build-\$name, beside the rest here -> allow" 0 "$(bash_in "$WORK" 'rm -rf "build-$name"')"
+check "a word that starts with its variable is still unknown -> allow" 0 "$(bash_in "$WORK" 'rm -rf "$DIR/x"')"
+
+echo
+echo "--- git's other ways to throw a checkout's changes away ---"
+# Once reset --hard in another checkout is refused, checkout and restore of its
+# files are the obvious next spellings, and they lose the same uncommitted work.
+check "cd into another checkout, git checkout -- . -> block" 2 "$(bash_in "$WORK" "cd $OTHER && git checkout -- .")"
+check "git -C other checkout . -> block" 2 "$(bash_in "$WORK" "git -C $OTHER checkout .")"
+check "git -C other checkout -f main -> block" 2 "$(bash_in "$WORK" "git -C $OTHER checkout -f main")"
+check "git -C other restore . -> block" 2 "$(bash_in "$WORK" "git -C $OTHER restore .")"
+check "git -C other restore --staged --worktree . -> block" 2 \
+  "$(bash_in "$WORK" "git -C $OTHER restore --staged --worktree .")"
+check "git -C other switch --discard-changes main -> block" 2 \
+  "$(bash_in "$WORK" "git -C $OTHER switch --discard-changes main")"
+check "git -C other stash drop -> block" 2 "$(bash_in "$WORK" "git -C $OTHER stash drop")"
+check "git -C other stash clear -> block" 2 "$(bash_in "$WORK" "git -C $OTHER stash clear")"
+check "git checkout -- . here -> allow" 0 "$(bash_in "$WORK" "git checkout -- .")"
+check "git restore . here -> allow" 0 "$(bash_in "$WORK" "git restore .")"
+check "git -C other checkout main, which keeps its changes or refuses -> allow" 0 \
+  "$(bash_in "$WORK" "git -C $OTHER checkout main")"
+check "git -C other checkout -b topic -> allow" 0 "$(bash_in "$WORK" "git -C $OTHER checkout -b topic")"
+check "git -C other restore --staged ., which leaves the files -> allow" 0 \
+  "$(bash_in "$WORK" "git -C $OTHER restore --staged .")"
+check "git -C other stash list -> allow" 0 "$(bash_in "$WORK" "git -C $OTHER stash list")"
+check_contains "the refusal names these as well" "checkout or restore of files" \
+  "$(bash_in "$WORK" "git -C $OTHER restore .")"
+
+echo
 echo "--- The block message has to explain itself ---"
 check_contains "names the offending path" "$OTHER" \
   "{\"tool_name\":\"Bash\",\"cwd\":\"$WORK\",\"tool_input\":{\"command\":\"rm -rf $OTHER/.git\"}}"

@@ -76,12 +76,15 @@ prose alone does not survive a busy afternoon.
      `git log -- .env` does not, until `-p` asks for the patch.
    - **The same command, however it is dressed.** A wrapper is looked through, options and
      all — `timeout 30`, `sudo -u deploy`, `nice -n 10`, `xargs`, `stdbuf -oL`. A
-     substitution (`"$(cat .env)"`), a `bash -c '…'` script and its `$1`, and a heredoc
+     substitution (`"$(cat .env)"`, read from where its command runs, after any `cd`), a
+     `bash -c '…'` script and its `$1`, the text handed to `pwsh -Command`,
+     `Invoke-Expression` or `cmd /c` (where `type` prints a file), and a heredoc
      or here-string fed to a shell with no script of its own (`bash <<'EOF'`) are read as
      commands. Globs and brace expansion are expanded as the shell would (`cat .env*`,
      `cat .env{,.local}`). A `cd` is followed, by path or by `$CLAUDE_PROJECT_DIR`, `$PWD`,
      `~` or `$(git rev-parse --show-toplevel)`, so `cd secrets && cat api.json` reads
-     `secrets/api.json`. A literal path put in a variable, or walked by a `for` loop, is
+     `secrets/api.json`; so are PowerShell's `Set-Location` and `Push-Location`. A literal
+     path put in a variable, or walked by a `for` loop, is
      followed into the commands after it. Comments, quoted prose and a heredoc fed to any
      other command are not read as commands — the backticks in a commit message are text.
    - **A copy to a name the patterns do not recognise**, such as `cp .env /tmp/env-copy`:
@@ -181,8 +184,7 @@ It catches an honest slip and the obvious retry after a block. It does not follo
   `ag` or `ack`;
 - a program handed an env file that prints it in a way of its own
   (`uv run --env-file .env python -c 'print(…)'`), or one that loads `.env` without being
-  told to, as `docker compose config` does;
-- in PowerShell, a `Set-Location` or `Push-Location`, which is not followed as `cd` is.
+  told to, as `docker compose config` does.
 
 Those are the cases the rule above is for.
 

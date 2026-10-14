@@ -72,8 +72,10 @@ it can.
 It reads the command as written. A merge assembled at run time, run from a script file, or sent
 as a GraphQL query kept in a file is not seen, and the gate does not pretend otherwise: it catches
 a slip, and the rule still holds where it cannot look. A PowerShell command is read with the same
-shell grammar as a Bash one, which finds a `gh` or `curl` call, `Set-Location`, `Push-Location`
-and `$env:GH_REPO`, and nothing else of PowerShell's own. First, what that grammar would misread
+shell grammar as a Bash one, which finds a `gh` or `curl` call — by the names Windows runs them
+by too, `gh.exe`, `curl.exe` and a full path — `Invoke-RestMethod`, a merge assigned to a
+variable (`$out = gh pr merge 5`), `Set-Location`, `Push-Location` and `$env:GH_REPO`, and
+nothing else of PowerShell's own. First, what that grammar would misread
 is read as PowerShell reads it: a backtick that ends a line is joined to the next, a backslash is
 a path separator, and a comment is dropped. Inside single quotes, an `@'…'@` here-string or a
 comment, a backtick is text, so a commit message or pull request body that quotes `gh pr merge`

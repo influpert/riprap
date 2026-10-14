@@ -106,10 +106,20 @@ tokenize_reads() { tokenize_shell "$1" reads; }
 # quotes, one stray `"` in the message closed them and left the rest of the
 # message to be read as commands.
 tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
+  # Byte by byte. In a multibyte locale `${s:$i:1}` counts characters from the
+  # start of the string on every call, so this loop was quadratic: a 4 KB commit
+  # message took a second in every hook, and a 30 KB one outran the hook timeout.
+  # Every character the scan looks for is ASCII, and no byte of a multibyte
+  # character is, so reading bytes finds the same tokens and copies them intact.
+  local LC_ALL=C
   local s="$1" mode="$2" cmd=0 redir=0
   local i=0 len=${#s}
-  local ch nxt cur="" cur_q=0 in_word=0 state="none" start _tw_end
+  local ch nxt cur="" cur_q=0 in_word=0 state="none" start _tw_end rest run
   local BSLASH=$'\\' NL=$'\n' TAB=$'\t'
+  # What a quoted run copies unchanged is taken a run at a time, up to the next
+  # character it has to look at: even byte by byte, `${s:$i:1}` copies the whole
+  # string, so a long quoted message read a character at a time was quadratic.
+  local p_double='[\\"$`]'
   local -a heredocs=()
   TOKENIZED=()
   TOKEN_OP=()
@@ -123,6 +133,13 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
   [ "$mode" = words ] || cmd=1
   case "$mode" in redirects | reads) redir=1 ;; esac
   while [ "$i" -lt "$len" ]; do
+    case "$state" in
+      single | double)
+        rest="${s:$i}"
+        if [ "$state" = single ]; then run="${rest%%"'"*}"; else run="${rest%%$p_double*}"; fi
+        if [ -n "$run" ]; then cur+="$run"; i=$((i + ${#run})); continue; fi
+        ;;
+    esac
     ch="${s:$i:1}"
     case "$state" in
       single)
@@ -181,7 +198,9 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
         elif [ "$cmd" -eq 1 ] && [ "$in_word" -eq 0 ] && [ "$ch" = "#" ]; then
           # A comment runs to the end of the line; the newline itself still
           # ends the command, so stop just before it.
-          while [ "$i" -lt "$len" ] && [ "${s:$((i + 1)):1}" != "$NL" ]; do i=$((i + 1)); done
+          rest="${s:$i}"
+          rest="${rest%%"$NL"*}"
+          i=$((i + ${#rest} - 1))
         elif [ "$cmd" -eq 1 ] && [ "$ch" = "<" ] && [ "${s:$((i + 1)):1}" = "<" ]; then
           if [ "${s:$((i + 2)):1}" = "<" ]; then
             # `<<<`, a here-string, whose word is an ordinary word. Taken whole:
@@ -450,4 +469,64 @@ shell_script_at() {
     done
   done
   SHELL_SCRIPT_AT=$i
+}
+
+# shell_ps_assignment WORD NEXT — whether WORD opens a PowerShell assignment, which
+# runs the command after it and keeps what that prints: `$out = gh pr merge 5`,
+# `$null = mkdir x` to discard the output, `[string]$out = ...`, `$out += ...`,
+# `$script:log = ...`. SHELL_PS_ASSIGN is then how many words the assignment takes
+# before its command: 2 for `$out` `=`, 1 for `$out=` with the operator glued on.
+# To a reader that took `$out` for the command, every such line ran nothing. In
+# bash, `$out = cmd` runs whatever $out holds with `=` as its argument, which no
+# one writes, so the hooks read it the PowerShell way whichever tool sent it.
+SHELL_PS_VAR_RE='^(\[[][A-Za-z0-9_.,]+\])*\$([A-Za-z_][A-Za-z0-9_]*:)?([A-Za-z_][A-Za-z0-9_]*|\{[^}]+\})'
+SHELL_PS_OP_RE='^([-+*/%]|\?\?)?=$'
+# shellcheck disable=SC2034  # SHELL_PS_ASSIGN is what the caller reads
+shell_ps_assignment() {
+  local w="$1" op
+  SHELL_PS_ASSIGN=0
+  [[ "$w" =~ $SHELL_PS_VAR_RE ]] || return 1
+  op="${w:${#BASH_REMATCH[0]}}"
+  if [ -z "$op" ]; then
+    [[ "${2:-}" =~ $SHELL_PS_OP_RE ]] || return 1
+    SHELL_PS_ASSIGN=2
+  else
+    [[ "$op" =~ $SHELL_PS_OP_RE ]] || return 1
+    SHELL_PS_ASSIGN=1
+  fi
+  return 0
+}
+
+# shell_abbreviates WORD NAME [MIN] — whether WORD, lower-cased already, is NAME or
+# a prefix of it at least MIN characters long: how PowerShell lets a parameter be
+# written, -Com for -Command and -Meth for -Method.
+shell_abbreviates() {
+  [ "${#1}" -ge "${3:-1}" ] || return 1
+  case "$2" in "$1"*) return 0 ;; *) return 1 ;; esac
+}
+
+# shell_cmd_name WORD — sets SHELL_CMD_NAME to WORD as a list of command names spells
+# one: lower-cased, because PowerShell and Windows read Remove-Item, remove-item and
+# PWSH alike, and without the .exe a Windows program may be called by, so gh.exe is
+# gh and curl.exe is curl. Compare the result with lower-case names only. In bash
+# rather than through tr: this runs for most words of a long PowerShell line, and a
+# fork for each made one take seconds. A word longer than any command name a hook
+# looks for is left as it is.
+# shellcheck disable=SC2034  # SHELL_CMD_NAME is what the caller reads
+shell_cmd_name() {
+  local w="$1" out="" c head i=0
+  local upper=ABCDEFGHIJKLMNOPQRSTUVWXYZ lower=abcdefghijklmnopqrstuvwxyz
+  if [ "${#w}" -le 24 ]; then
+    case "$w" in
+      *[ABCDEFGHIJKLMNOPQRSTUVWXYZ]*)
+        while [ "$i" -lt "${#w}" ]; do
+          c="${w:$i:1}"
+          case "$upper" in *"$c"*) head="${upper%%"$c"*}"; c="${lower:${#head}:1}" ;; esac
+          out+="$c"; i=$((i + 1))
+        done
+        w="$out"
+        ;;
+    esac
+  fi
+  SHELL_CMD_NAME="${w%.exe}"
 }

@@ -76,16 +76,19 @@ directory first and being refused.
 
 `block-writes-outside-worktree.sh` refuses the common cases: Write and Edit outside the
 worktree, and in a command run through Bash, PowerShell or a Monitor, redirections (`>`, `>>`,
-`>|`, `2>`, `&>`, `<>`, spaced or glued), `tee`, `touch`, `mkdir`, the destination of `cp`, `mv`,
-`install` and `ln`, and a bare `mktemp`, and it follows `cd`, `pushd` and `popd` to resolve
-relative paths. It cannot see everything — a command that
+`>|`, `2>`, `&>`, `>&`, `<>`, spaced or glued), `tee`, `touch`, `mkdir`, `truncate`, the
+destination of `cp`, `mv`, `install` and `ln`, the files `sed -i` and `perl -i` edit, and a
+`mktemp` that lands in a `$TMPDIR` outside — so `TMPDIR=tmp mktemp -d` passes and a bare
+`mktemp` does not. It follows `cd`, `pushd` and `popd` to resolve relative paths, and reads the
+text handed to `bash -c`, `eval` or `pwsh -Command`. It cannot see everything — a command that
 writes through its own flags and a path held in a variable both pass — so the rule is yours to
 keep, and the hook only catches the slips. A project that genuinely needs a directory outside the worktree adds its
 prefix to `WORKTREE_WRITE_ALLOWED_PREFIXES` in `bin/hooks/lib/worktree-write-patterns.local.sh`.
 
 **Deleting has the same boundary: the worktree you are working in** — or, outside any git
 checkout, the directory itself — with no exception for the host's state. `rm`, `unlink`,
-`find -delete`, `git clean -f` and `git reset --hard` destroy nothing outside it, and that
+`Remove-Item`, `find -delete`, and the git commands that throw uncommitted work away — `clean
+-f`, `reset --hard`, `checkout` or `restore` of files, `stash drop` — destroy nothing outside it, and that
 includes tool caches and `/tmp`: from a path alone, another checkout, another session's scratch
 and a cache every project on the machine shares look the same, and none of them is the task's
 to remove. This rule exists because an agent once ran `rm -f` on untracked files in a different
@@ -96,19 +99,22 @@ of its own, nor with a subshell, `sh -c`, a heredoc into a shell, `git -C` or `f
 deletion passes is the rephrasing. The rule is about what gets destroyed, not how the command is
 spelled, and a rephrasing that slips past the check is the same deletion with its one safeguard
 gone. Show the user the exact command and let them run it. `block-destructive-outside-cwd.sh`
-follows `cd`, `pushd`, `popd` and subshells, reads past `sudo`, `env`, `timeout`, `xargs` and a
-full path like `/bin/rm`, reads a heredoc fed to a shell and a `"$(…)"` inside double quotes,
-and checks `git -C` and `find`'s starting points; a path held in a variable passes it, so here
-too the hook only catches the slips. If it refuses a command that deletes nothing — a commit
+follows `cd`, `pushd`, `popd` and subshells, reads past `sudo`, `env`, `timeout`, `ionice`,
+`xargs` and a full path like `/bin/rm`, reads a heredoc fed to a shell, the text handed to `sh
+-c`, `pwsh -Command` or `cmd /c`, a `"$(…)"` inside double quotes and a `for` loop's literal
+list, and checks `git -C` and `find`'s starting points; a path that starts with a variable
+passes it, so here too the hook only catches the slips. If it refuses a command that deletes nothing — a commit
 message or pull request body that quotes one — the text is what it misread: pass it from a file
 under `tmp/` with `git commit -F` or `gh pr create --body-file`.
 
 Both hooks read a command run through PowerShell as they read a Bash one, once what the shell
 grammar they read with would misread is read as PowerShell reads it: a backtick that ends a line
 continues it, any other backtick escapes the character after it, a backslash is a path separator
-— `..\other` is the directory beside this one — and a comment is dropped. What they do not read
-is PowerShell's own vocabulary: `Set-Location` and `Push-Location` are not followed as `cd` is,
-`Remove-Item` is not an `rm`, and a drive-letter path (`C:\Users\…`) is not resolved, so it
+— `..\other` is the directory beside this one — and a comment is dropped. Of PowerShell's own
+vocabulary they follow `Set-Location`, `Push-Location` and `Pop-Location` as `cd`, `pushd` and
+`popd`, see past an assignment (`$null = …`), take `Remove-Item` for an `rm`, and take
+`Set-Content`, `Out-File`, `New-Item` and the destination of `Copy-Item` and `Move-Item` for
+writes. The rest they do not read, and a drive-letter path (`C:\Users\…`) is not resolved, so it
 passes both hooks as though it were relative. There the rule is yours alone to keep.
 
 ## Do not run `git diff` before committing

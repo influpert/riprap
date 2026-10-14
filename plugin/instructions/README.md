@@ -132,6 +132,10 @@ configured, the hook that calls it enforces nothing; `bin/riprap verify` says wh
 **Run everything from the repository root.** A relative path that resolves differently than
 you expect is the most common cause of an agent editing the wrong copy of a file.
 
+**Never write outside your worktree.** Scratch goes in its `tmp/` — once `git check-ignore
+tmp/probe` confirms git ignores it — not `/tmp` or a sibling checkout: nothing cleans up a file
+the diff cannot see. → [git.md](git.md)
+
 ---
 
 ## Which file covers what
@@ -173,7 +177,7 @@ beat one 215-line file when either would answer the question.
 
 **Committing and merging**
 
-- Branching, worktrees, when to commit, opening a pull request? → [git.md](git.md) (~220)
+- Branching, worktrees, writing outside one, when to commit, opening a pull request? → [git.md](git.md) (~250)
 - About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~155)
 - A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~125)
 - About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~155)

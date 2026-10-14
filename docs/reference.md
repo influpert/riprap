@@ -5,13 +5,13 @@ lede: >-
   Every document, skill, hook and stack seam riprap ships, catalogued. You can read all of
   it before installing anything.
 description: >-
-  The complete riprap catalogue: 21 guardrail documents, thirteen skills, twelve hook
+  The complete riprap catalogue: 21 guardrail documents, thirteen skills, thirteen hook
   registrations, one agent, four stack seams, and everything the installer writes into a
   repository.
 ---
 
 riprap is two halves. The plugin carries **21 guardrail documents**, **thirteen skills**,
-**twelve hook registrations** and **one agent**, and puts no file in your repository.
+**thirteen hook registrations** and **one agent**, and puts no file in your repository.
 `/riprap:install` adds the half that has to live in the repo: the guardrail scripts,
 their shared pattern libraries, the git hooks, and the four stack commands the hooks call.
 
@@ -58,7 +58,7 @@ them and they would rot on every edit of every document.
 
 **Committing and merging**
 
-- [git.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git.md) — worktrees, branching, when to commit, and merging rules, plus the failure modes that cost the most to undo.
+- [git.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git.md) — worktrees, never writing outside one, branching, when to commit, and merging rules, plus the failure modes that cost the most to undo.
 - [code-review.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/code-review.md) — run `/riprap:review` over the diff before the pull request opens, publish every finding in the body with a disposition and a reason, and stay with the pull request until it merges.
 - [git-hooks.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/git-hooks.md) — two hook families live under `bin/hooks/`. Telling them apart is the whole document.
 - [merge-gates.md](https://github.com/influpert/riprap/blob/main/plugin/instructions/merge-gates.md) — some changes never merge autonomously, however clean the review and however green the CI.
@@ -148,7 +148,7 @@ nothing to install separately.
 
 ## What is enforced
 
-Twelve hooks are registered, six of which can stop a tool call. The table naming each one,
+Thirteen hooks are registered, seven of which can stop a tool call. The table naming each one,
 what triggers it and whether it blocks is on
 [guardrail architecture](guardrails.md#what-is-enforced-out-of-the-box), rather than
 repeated here.
@@ -163,7 +163,7 @@ Only these files, and nothing else in your project is touched.
 | `bin/riprap` | `wire` and `verify` — what a fresh clone and CI run |
 | `bin/hooks/git/{pre-commit,pre-push}` | Your entry points, delegating to riprap's. Written once, never replaced |
 | `bin/hooks/lib/` | Your own pattern libraries. riprap never writes here |
-| `bin/hooks/riprap/claude/` | Twelve hook scripts: eleven wired, plus `lint-example.sh`, an inert template |
+| `bin/hooks/riprap/claude/` | Thirteen hook scripts: twelve wired, plus `lint-example.sh`, an inert template |
 | `bin/hooks/riprap/git/` | riprap's own `pre-commit` and `pre-push`, called by yours |
 | `bin/hooks/riprap/lib/` | Six libraries: five pattern libraries shared by both hook families, plus the handoff helpers the native hooks share with each other |
 | `bin/hooks/riprap/tests/` | The regression suites, runnable in your own repo |

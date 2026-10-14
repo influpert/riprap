@@ -88,6 +88,12 @@
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook lint-tech-footprint.sh" }
         ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook block-writes-outside-worktree.sh" }
+        ]
       }
     ],
     "PostToolUse": [

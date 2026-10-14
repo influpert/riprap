@@ -11,10 +11,19 @@
 #
 # What counts as a write:
 #   - Write, Edit, NotebookEdit: the file_path / notebook_path.
-#   - Bash: output redirections (`>`, `>>`, `>|`, `N>`, `&>`), glued to the word
-#     before them or not, and the operands of tee,
-#     touch, mkdir, and the destination of cp / mv / install / ln. A bare `mktemp`
-#     writes to the system temporary directory, so it is a write outside too.
+#   - Bash: output redirections (`>`, `>>`, `>|`, `N>`, `&>`) and read-write ones
+#     (`N<>`, which creates its file as `>` does), glued to the word before them or
+#     not, and the operands of tee, touch, mkdir, and the destination of cp / mv /
+#     install / ln. A bare `mktemp` writes to the system temporary directory, so it
+#     is a write outside too. An input redirection (`<`, `0<`) only reads, and
+#     neither it nor its source is an operand: `cp a OUT <in` copies to OUT.
+#
+# The simple commands, and the directory each one runs in, come from the walk in
+# lib/shell-walk.sh, the same walk the destructive guard reads, so a command one
+# guard finds — in an `if` or loop body, a brace group, after `cd -P` or `builtin
+# cd` — the other finds too. The hook used to carry its own copy of that walk, and
+# when the tokenizer began splitting `<` out as a word, that copy read the input
+# source as the last operand and passed `cp a /outside/x<in` as a copy to `in`.
 #
 # The boundary is the worktree that contains the project: `git rev-parse
 # --show-toplevel` of CLAUDE_PROJECT_DIR, which run-payload-hook has already pointed at
@@ -29,23 +38,28 @@
 #   - Whatever the project adds to WORKTREE_WRITE_ALLOWED_PREFIXES in
 #     bin/hooks/lib/worktree-write-patterns.local.sh, which riprap never writes.
 #
-# Limits, by design, because this runs on every Bash call: a variable other than
-# $HOME and $TMPDIR is not expanded, so `> "$OUT"` is not checked; a command that
-# writes through its own flags (`git worktree add`, `curl -o`, a compiler's output
-# directory) is not parsed. `cd <dir>` and `pushd <dir>` are followed through a
-# command line, `popd` returns to where the matching `pushd` started, and a
-# parenthesised subshell restores the directory it started in; a `cd` or `pushd` the
-# hook cannot expand, and any other form of `pushd` or `popd`, leaves relative targets
-# after it unchecked. A quoted or escaped `>` (`grep '>' f`) is an argument, not a
-# redirection, and is not checked.
+# Limits, by design, because this runs on every Bash call: in a write target, a
+# variable other than $HOME and $TMPDIR is not expanded, and neither is `~user`, so
+# `> "$OUT"` is not checked; a command that writes through its own flags (`git
+# worktree add`, `curl -o`, a compiler's output directory) is not parsed. `cd <dir>`
+# and `pushd <dir>` are followed through a command line (a `cd` destination also
+# expands $PWD), `popd` returns to where the matching `pushd` started, and a
+# parenthesised subshell or backtick pair restores the directory it started in; a
+# `cd` or `pushd` the walk cannot expand, and any other form of `pushd` or `popd`,
+# leaves relative targets after it unchecked. A quoted or escaped `>` (`grep '>' f`)
+# is an argument, not a redirection, and is not checked.
 #
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
 # refused, since there is nothing to resolve it against.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# tokenize_redirects, which the walk reads its words from.
 # shellcheck source=../lib/shell-words.sh
 . "$SCRIPT_DIR/../lib/shell-words.sh"
+# walk_commands and WALK_UNKNOWN.
+# shellcheck source=../lib/shell-walk.sh
+. "$SCRIPT_DIR/../lib/shell-walk.sh"
 
 # The host's state directory, for plans and memory. Two subdirectories rather than the
 # whole of it: the rest holds settings, and a hook that waved writes to the permission
@@ -137,16 +151,16 @@ absolute_target() {  # $1 = raw target, $2 = base directory (may be empty)
     '$TMPDIR' | '${TMPDIR}') raw="${TMPDIR:-/tmp}" ;;
     '$TMPDIR'/* | '${TMPDIR}'/*) raw="${TMPDIR:-/tmp}/${raw#*/}" ;;
   esac
+  # Unexpandable, so not checked, by design: a variable, a substitution, and a
+  # `~user`, which only the password database can expand. Joined onto the base as a
+  # relative path, `~user` crashed the hook with no cwd and hung it after a cd the
+  # walk could not follow, as walk_expand in lib/shell-walk.sh already knew.
   case "$raw" in
-    '' | *'$'* | *'`'*) return 0 ;;   # unexpandable: not checked, by design
+    '' | *'$'* | *'`'* | "~"*) return 0 ;;
     /*) printf '%s' "$raw" ;;
     *) [ -n "$base" ] && printf '%s/%s' "$base" "$raw" ;;
   esac
 }
-
-# The working directory after a `cd` the hook could not follow. Distinct from empty,
-# which means the payload carried no cwd at all and a relative target fails closed.
-UNKNOWN_DIR="<unknown>"
 
 BLOCK_TARGET=""
 BLOCK_RESOLVED=""
@@ -163,11 +177,13 @@ check_target() {
   case "$raw" in
     /* | "~"* | '$'*) ;;
     *)
-      # A `cd` to a directory the hook cannot expand (`cd "$REPO"`, `cd -`) leaves
+      # A `cd` to a directory the walk cannot expand (`cd "$REPO"`, `cd -`) leaves
       # relative targets unknown, which is the same case as an unexpandable target:
       # not checked, by design. Refusing them would block `cd "$(git rev-parse
       # --show-toplevel)" && make > tmp/log`, which is the router's own advice.
-      [ "$base" != "$UNKNOWN_DIR" ] || return 0
+      # Distinct from an empty base, which means the payload carried no cwd at all
+      # and a relative target fails closed.
+      [ "$base" != "$WALK_UNKNOWN" ] || return 0
       if [ -z "$base" ]; then
         BLOCK_TARGET="$raw"; BLOCK_UNRESOLVABLE=1; return 0
       fi
@@ -201,14 +217,19 @@ fi
 
 # --- Bash ---------------------------------------------------------------------
 
-# Check one simple command's words. $1 is the directory relative targets resolve
-# against; the words are in the global SEG.
-check_simple_command() {
-  local base="$1" k=0 n=${#SEG[@]} cmd w
+# The walk's callback (lib/shell-walk.sh): check one simple command — the files its
+# redirections write, then the operands of a command that writes. WALK_DIR is the
+# directory relative targets resolve against at that point: empty when the payload
+# carried no cwd, WALK_UNKNOWN after a cd the walk could not follow.
+on_command() {
+  local base="$WALK_DIR" k=0 cmd w
+  local -a words=(${WALK_WORDS[@]+"${WALK_WORDS[@]}"})
+  local n=${#words[@]}
   local -a operands=()
+  for w in ${WALK_REDIRECTS[@]+"${WALK_REDIRECTS[@]}"}; do check_target "$w" "$base"; done
   # Leading assignments and transparent wrappers are not the command.
   while [ "$k" -lt "$n" ]; do
-    w="${SEG[$k]}"
+    w="${words[$k]}"
     case "$w" in
       [A-Za-z_]*=*) k=$((k + 1)) ;;
       sudo | env | command | nohup | exec) k=$((k + 1)) ;;
@@ -216,23 +237,23 @@ check_simple_command() {
     esac
   done
   [ "$k" -lt "$n" ] || return 0
-  cmd="${SEG[$k]##*/}"
+  cmd="${words[$k]##*/}"
   k=$((k + 1))
 
   local dash_dash=0 target_dir=""
   while [ "$k" -lt "$n" ]; do
-    w="${SEG[$k]}"
+    w="${words[$k]}"
     if [ "$dash_dash" -eq 0 ]; then
       case "$w" in
         --) dash_dash=1; k=$((k + 1)); continue ;;
-        -t | --target-directory) target_dir="${SEG[$((k + 1))]:-}"; k=$((k + 2)); continue ;;
+        -t | --target-directory) target_dir="${words[$((k + 1))]:-}"; k=$((k + 2)); continue ;;
         --target-directory=*) target_dir="${w#*=}"; k=$((k + 1)); continue ;;
         --tmpdir=*) target_dir="${w#*=}"; k=$((k + 1)); continue ;;
       esac
       # mktemp's -p takes the directory; everywhere else -p is a plain flag
       # (mkdir -p, cp -p), so it is matched only here.
       if [ "$cmd" = mktemp ] && { [ "$w" = "-p" ] || [ "$w" = "--tmpdir" ]; }; then
-        target_dir="${SEG[$((k + 1))]:-}"; k=$((k + 2)); continue
+        target_dir="${words[$((k + 1))]:-}"; k=$((k + 2)); continue
       fi
       case "$w" in -*) k=$((k + 1)); continue ;; esac
     fi
@@ -263,109 +284,17 @@ check_simple_command() {
       fi
       ;;
   esac
+  return 0
 }
 
 if [ "$TOOL_NAME" = "Bash" ]; then
   COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
   [ -n "$COMMAND" ] || exit 0
 
-  # Redirections come back as words of their own, so `echo hi>/tmp/x` is read the
-  # way the shell reads it; see tokenize_redirects.
-  tokenize_redirects "$COMMAND"
-  TOKS=("${TOKENIZED[@]+"${TOKENIZED[@]}"}")
-  OPS=("${TOKEN_OP[@]+"${TOKEN_OP[@]}"}")
-  QUOTED=("${TOKEN_QUOTED[@]+"${TOKEN_QUOTED[@]}"}")
-  N=${#TOKS[@]}
-
-  # The directory relative targets resolve against, a stack for subshells, and one
-  # for pushd.
-  EFF="$CWD"
-  STACK=()
-  PUSHED=()
-  SEG=()
-
-  # follow_cd DEST — move EFF the way `cd DEST` would. Relative to an unknown or
-  # missing directory, the result is still that. Otherwise expand it, and a
-  # destination that cannot be expanded (`-`, a variable, a substitution) makes the
-  # directory unknown — or, with no cwd in the payload at all, leaves it empty so
-  # relative targets still fail closed.
-  follow_cd() {
-    case "$1" in
-      /* | "~"* | '$'*) EFF=$(absolute_target "$1" "") ;;
-      -) EFF="" ;;
-      *) [ -z "$EFF" ] || [ "$EFF" = "$UNKNOWN_DIR" ] || EFF=$(absolute_target "$1" "$EFF") ;;
-    esac
-    [ -n "$EFF" ] || [ -z "$CWD" ] || EFF="$UNKNOWN_DIR"
-  }
-
-  # Kept in a variable: a regex written inline after =~ is quoted differently across
-  # bash versions, and a `\>` that reaches regcomp is a word boundary, not a `>`.
-  REDIR_RE='^[0-9]*>[>|]?$'
-  i=0
-  while [ "$i" -le "$N" ]; do
-    if [ "$i" -lt "$N" ]; then t="${TOKS[$i]}"; op="${OPS[$i]}"; else t=";"; op=1; fi
-
-    if [ "$op" -eq 1 ]; then
-      # End of a simple command: follow a directory change, or check its writes.
-      if [ "${#SEG[@]}" -gt 0 ]; then
-        case "${SEG[0]}" in
-          cd) follow_cd "${SEG[1]:-${HOME:-}}" ;;
-          pushd)
-            PUSHED+=("$EFF")
-            # Bare `pushd` swaps the top two entries and `pushd +N` rotates the
-            # stack; neither is followed, so the directory becomes unknown.
-            case "${SEG[1]:-}" in
-              '' | [-+]*) follow_cd - ;;
-              *) follow_cd "${SEG[1]}" ;;
-            esac
-            ;;
-          popd)
-            if [ "${#SEG[@]}" -eq 1 ] && [ "${#PUSHED[@]}" -gt 0 ]; then
-              EFF="${PUSHED[$((${#PUSHED[@]} - 1))]}"
-              unset 'PUSHED[${#PUSHED[@]}-1]'
-            else
-              follow_cd -
-            fi
-            ;;
-          *) check_simple_command "$EFF" ;;
-        esac
-      fi
-      SEG=()
-      case "$t" in
-        "(") STACK+=("$EFF") ;;
-        ")")
-          if [ "${#STACK[@]}" -gt 0 ]; then
-            EFF="${STACK[$((${#STACK[@]} - 1))]}"
-            unset 'STACK[${#STACK[@]}-1]'
-          fi
-          ;;
-      esac
-      i=$((i + 1))
-      continue
-    fi
-
-    # A redirection, and only an unquoted one: `grep '>' f` writes nothing.
-    # Redirections and their targets are kept out of the command's words, so
-    # `echo hi >f` has no operand f.
-    if [ "${QUOTED[$i]}" -eq 0 ] && [[ "$t" =~ $REDIR_RE ]]; then
-      if [ "$((i + 1))" -lt "$N" ] && [ "${OPS[$((i + 1))]}" -eq 0 ]; then
-        check_target "${TOKS[$((i + 1))]}" "$EFF"
-        i=$((i + 2))
-      elif [ "$((i + 1))" -lt "$N" ] && [ "${TOKS[$((i + 1))]}" = "&" ]; then
-        # `>&2`, `2>&1`, `>&-`: a descriptor duplication, not a file and not a
-        # separator. Skip the `&` and the descriptor after it.
-        i=$((i + 2))
-        if [ "$i" -lt "$N" ] && [ "${OPS[$i]}" -eq 0 ]; then i=$((i + 1)); fi
-      else
-        # Followed by some other operator (`>(cmd)`): nothing to check here.
-        i=$((i + 1))
-      fi
-      continue
-    fi
-
-    SEG+=("$t")
-    i=$((i + 1))
-  done
+  # The walk splits redirections out the way the shell reads them, so `echo
+  # hi>/tmp/x` writes /tmp/x and `cp a OUT<in` copies to OUT; it keeps a quoted `>`
+  # an argument, and follows cd, pushd, popd and subshells from the payload's cwd.
+  walk_commands "$COMMAND" "$CWD" on_command
 fi
 
 [ -n "$BLOCK_TARGET" ] || exit 0

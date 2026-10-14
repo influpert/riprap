@@ -75,7 +75,7 @@ its own under `/tmp`:** follow the worktree's `tmp/` instead, rather than trying
 directory first and being refused.
 
 `block-writes-outside-worktree.sh` refuses the common cases: Write and Edit outside the
-worktree, Bash redirections (`>`, `>>`, `>|`, `2>`, `&>`, spaced or glued), `tee`, `touch`,
+worktree, Bash redirections (`>`, `>>`, `>|`, `2>`, `&>`, `<>`, spaced or glued), `tee`, `touch`,
 `mkdir`, the destination of `cp`, `mv`, `install` and `ln`, and a bare `mktemp`, and it follows
 `cd`, `pushd` and `popd` to resolve relative paths. It cannot see everything — a command that
 writes through its own flags and a path held in a variable both pass — so the rule is yours to

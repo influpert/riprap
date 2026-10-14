@@ -91,6 +91,15 @@ check "2>&1 and /dev/null are not files -> allow" 0 "$(bash_in "$REPO" "make >/d
 check ">&2 is not a file -> allow" 0 "$(bash_in "$REPO" "echo oops >&2")"
 check "redirect to an unexpandable variable -> allow (not checked, by design)" 0 \
   "$(bash_in "$REPO" "echo hi > \$OUT")"
+# `~user` needs the password database to expand, so it is unexpandable too. Read as
+# a relative path it crashed the hook with no cwd, and hung it after a cd the walk
+# could not follow, where an unknown directory has no root to climb to.
+check "redirect under ~user -> allow (unexpandable, like a variable)" 0 \
+  "$(bash_in "$REPO" "echo hi > ~user/x")"
+check "...with no cwd -> allow (not a relative path, so nothing fails closed)" 0 \
+  '{"tool_name":"Bash","tool_input":{"command":"touch ~user/x"}}'
+check "...after a cd the walk cannot follow -> allow, and returns" 0 \
+  "$(bash_in "$REPO" "builtin cd \\\"\$X\\\" && touch ~user/x")"
 check "quoted > is text, not a redirect -> allow" 0 \
   "$(bash_in "$REPO" "git commit -m 'a > $OTHER/b'")"
 check "redirect after a heredoc -> block" 2 \
@@ -127,6 +136,30 @@ check ">| inside -> allow" 0 "$(bash_in "$REPO" "echo hi >| out.txt")"
 check ">| glued outside -> block" 2 "$(bash_in "$REPO" "echo hi>|$OTHER/x")"
 check "2>| outside -> block" 2 "$(bash_in "$REPO" "make 2>| $OTHER/err")"
 check "...2>| inside -> allow" 0 "$(bash_in "$REPO" "make 2>| tmp/err")"
+
+echo
+echo "--- An input redirection is where stdin comes from; <> opens a file for writing ---"
+# The tokenizer hands `<` and its source back as words of their own. Read as
+# operands, they moved the last one along: `cp a OUT<in` was checked as a copy to
+# `in`, inside, while the shell copies to OUT.
+check "cp outside, then a glued input redirection -> block" 2 "$(bash_in "$REPO" "cp a $OTHER/x<in")"
+check "...spaced -> block" 2 "$(bash_in "$REPO" "cp a $OTHER/x < in")"
+check "...with a descriptor -> block" 2 "$(bash_in "$REPO" "cp a $OTHER/x 0<in")"
+check "cp inside, then a glued input redirection -> allow" 0 "$(bash_in "$REPO" "cp a ./ok<in")"
+check "read from inside, write inside -> allow" 0 "$(bash_in "$REPO" "sort <in >./out")"
+check "read from outside, write inside -> allow (reading is not a write)" 0 \
+  "$(bash_in "$REPO" "sort <$OTHER/in >./out")"
+check "tee inside, fed from outside -> allow (the source is only read)" 0 \
+  "$(bash_in "$REPO" "tee tmp/copy <$OTHER/in")"
+check "...the same tee writing outside -> block" 2 "$(bash_in "$REPO" "tee $OTHER/copy <in")"
+check "stdin duplicated from a descriptor is not a file -> allow" 0 "$(bash_in "$REPO" "sort <&3 >./out")"
+check "...and does not hide the write before it -> block" 2 "$(bash_in "$REPO" "cp a $OTHER/x <&3")"
+check "<> outside opens it read-write, creating it -> block" 2 "$(bash_in "$REPO" "exec 3<>$OTHER/x")"
+check "...spaced -> block" 2 "$(bash_in "$REPO" "exec 3<> $OTHER/x")"
+check "<> inside -> allow" 0 "$(bash_in "$REPO" "exec 3<>./fifo")"
+check "process substitutions are commands, the redirect after them a write -> block" 2 \
+  "$(bash_in "$REPO" "diff <(sort a) <(sort b) > $OTHER/d")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "diff <(sort a) <(sort b) > tmp/d")"
 
 echo
 echo "--- Bash commands that write ---"
@@ -167,6 +200,27 @@ check "pushd in two levels, popd twice -> allow" 0 \
   "$(bash_in "$REPO" "pushd src; pushd $OTHER; popd; touch x")"
 check "...but an absolute write after a pushd is still checked -> block" 2 \
   "$(bash_in "$REPO" "pushd src && touch $OTHER/x")"
+
+echo
+echo "--- Commands are found the way the destructive guard finds them (lib/shell-walk.sh) ---"
+# One walk for both guards: a command the write guard missed and the destructive
+# guard did not is a hole one of them had closed.
+check "a write in an if body -> block" 2 "$(bash_in "$REPO" "if true; then touch $OTHER/x; fi")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "if true; then touch ./x; fi")"
+check "a write in a loop body -> block" 2 "$(bash_in "$REPO" "for f in a b; do cp \$f $OTHER/; done")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "for f in a b; do cp \$f tmp/; done")"
+check "a write in a brace group -> block" 2 "$(bash_in "$REPO" "{ touch $OTHER/x; }")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "{ touch ./x; }")"
+check "cd -P out, then a relative write -> block" 2 "$(bash_in "$REPO" "cd -P $OTHER && touch x")"
+check "cd -P into a subdirectory, then a relative write -> allow" 0 "$(bash_in "$REPO" "cd -P src && touch x")"
+check "builtin cd out, then a relative write -> block" 2 "$(bash_in "$REPO" "builtin cd $OTHER && touch x")"
+check "builtin cd into a subdirectory -> allow" 0 "$(bash_in "$REPO" "builtin cd src && touch x")"
+check "cd \$PWD/.. out, then a relative write -> block" 2 "$(bash_in "$REPO" "cd \$PWD/.. && touch x")"
+check "cd \$PWD/src, then a relative write -> allow" 0 "$(bash_in "$REPO" "cd \$PWD/src && touch x")"
+check "a cd inside backticks does not leak out -> allow" 0 \
+  "$(bash_in "$REPO" "echo \`cd $OTHER\`; touch inside.txt")"
+check "...but a write inside them is still checked -> block" 2 \
+  "$(bash_in "$REPO" "echo \`touch $OTHER/x\`")"
 
 echo
 echo "--- A cd the hook cannot expand leaves relative targets unchecked, not refused ---"

@@ -151,6 +151,29 @@ for near_miss in "devils3advocate" "_devils_advocate_variable_" "devil goes to a
   check "near-miss '$near_miss' does NOT satisfy the advocate check -> block" 2 "$(payload "$T")"
 done
 
+# A critic that refers BACK to an earlier round's advocate is not an advocate. Revision
+# prompts cite the last round's findings as a matter of course, and at the revision floor the
+# phrase match is the whole check, so a citation would otherwise clear it with no advocate
+# dispatched at all.
+for back_ref in \
+  "Round one's devil's advocate objected to the backfill. Check the migration step only." \
+  "The devil's advocate's objection was about cost. Check the new cache for correctness." \
+  "The previous devil’s advocate raised rollout risk. Check deploy safety only." \
+  "Address what the devils advocate from the first round said about scope. Check edge cases." \
+  "The first round's Devil's Advocate wanted no change. Check the auth boundary only."; do
+  T=$(new_transcript "${FIVE_PLAIN[@]}" "$(dispatch "critic" "$back_ref")")
+  check "a reference back to an earlier advocate does NOT satisfy the advocate check -> block: '${back_ref%%.*}'" \
+    2 "$(payload "$T")"
+done
+
+# ...but a dispatch that is itself the advocate still counts when it also cites the last
+# round, and a possessive that is not a prior round ("this plan's") is not a reference back.
+T=$(new_transcript "${FIVE_PLAIN[@]}" "$(dispatch "advocate" \
+  "You are the devil's advocate. Round one's devil's advocate objected to the backfill; argue the revision should not happen at all.")")
+check "an advocate that also cites round one's advocate -> allow" 0 "$(payload "$T")"
+T=$(new_transcript "${FIVE_PLAIN[@]}" "$(dispatch "critic" "Be this plan's devil's advocate: argue it should not happen.")")
+check "\"this plan's devil's advocate\" is the role, not a reference back -> allow" 0 "$(payload "$T")"
+
 echo
 echo "--- Scoped extraction: tool results are not dispatches ---"
 
@@ -224,6 +247,19 @@ case "$ERR" in
     ok "revision block names the revision floor, what it needs, and what was found" ;;
   *) bad "revision block did not name the revision floor and its need: $ERR" ;;
 esac
+# The revision block is the one moment a reader is looking at the proxy, so it must say what
+# the proxy cannot tell apart, and what the rule still asks of a plan that is not a revision.
+case "$ERR" in
+  *"cannot tell a revision from an unrelated new plan"*"first-plan bar"*"at least 3"*) \
+    ok "revision block states the proxy's limitation and the first-plan bar it still asks of a new plan" ;;
+  *) bad "revision block did not state the proxy's limitation: $ERR" ;;
+esac
+# The general text names both floors, so neither block can be read as the only bar there is.
+case "$ERR" in
+  *"first plan"*"at least 3 sub-agents"*"revision"*"at least 1 sub-agent"*"devil's advocate among them"*) \
+    ok "the general block text names both floors" ;;
+  *) bad "the general block text did not name both floors: $ERR" ;;
+esac
 printf '%s\n' "$(dispatch "c3" "check the new migration")" >>"$T"
 check "revision with a critic but no devil's advocate -> block (the advocate is the revision floor)" 2 \
   "$(payload "$T" "revised again")"
@@ -236,6 +272,20 @@ printf '%s\n' "${ADVOCATE[@]}" >>"$T"
 check "the same revision topped up with the advocate -> allow (the blocked attempt did not reset)" 0 \
   "$(payload "$T" "revised again")"
 
+# The case the revision floor makes routine: the revision's one fresh dispatch cites the
+# last round's advocate rather than being one.
+T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")" "${ADVOCATE[@]}")
+check "first plan before a back-referencing revision -> allow" 0 "$(payload "$T")"
+printf '%s\n' "$(dispatch "migration critic" \
+  "Round one's devil's advocate objected to the backfill. Check the revised migration step for deploy safety only.")" >>"$T"
+check "revision whose only dispatch cites round one's advocate -> block (no advocate was dispatched)" 2 \
+  "$(payload "$T" "a revised plan")"
+case "$ERR" in
+  *"Revision floor:"*"Found 1 qualifying"*"not found"*) \
+    ok "the back-referencing revision is blocked for the missing advocate, not the count" ;;
+  *) bad "the back-referencing revision was not blocked for the missing advocate: $ERR" ;;
+esac
+
 T=$(new_transcript "${ADVOCATE[@]}")
 check "first plan with only the devil's advocate -> block (the revision floor is not a first plan's)" 2 \
   "$(payload "$T")"
@@ -247,7 +297,8 @@ case "$ERR" in
 esac
 
 # A marker that cannot be trusted is not evidence that an earlier plan passed, so it must
-# not unlock the lower floor: these read as a first plan, the strict direction.
+# not unlock the lower floor: these read as a first plan. That is the strict direction for
+# the FLOOR only — see the lost-marker test below for what it does to the window.
 T=$(new_transcript "${ADVOCATE[@]}")
 printf 'not-a-number\n%s\n' "$T" > "$STATE_DIR/$(basename "$T")"
 check "corrupted marker for this very transcript -> first-plan floor, advocate alone -> block" 2 \
@@ -257,6 +308,18 @@ T=$(new_transcript "${ADVOCATE[@]}")
 printf '0\n/elsewhere/%s\n' "$(basename "$T")" > "$STATE_DIR/$(basename "$T")"
 check "marker recorded for a different transcript path -> first-plan floor, advocate alone -> block" 2 \
   "$(payload "$T")"
+
+# A KNOWN LEAK, pinned so the documents that state it cannot drift from it. A lost marker —
+# a cleared temp directory, a session resumed after a cleanup — or an untrusted one leaves no
+# boundary, so the hook counts the whole transcript: the first-plan floor applies, but the
+# earlier round's dispatches count towards it again, and a revision clears with nothing
+# fresh. The hook's header and interaction-preferences.md's Enforcement section say so. Close
+# the leak and this test, and both of those, change together.
+T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")" "${ADVOCATE[@]}")
+check "first plan before the marker is lost -> allow" 0 "$(payload "$T")"
+rm -f "$STATE_DIR/$(basename "$T")"
+check "KNOWN LEAK: marker lost after a pass -> the earlier round is counted again, nothing fresh -> allow" 0 \
+  "$(payload "$T" "a revised plan")"
 
 echo
 echo "--- Fault tolerance: malformed trailing line ---"
@@ -314,6 +377,32 @@ case "$ERR" in
 esac
 printf '%s\n' "$(dispatch "c3" "p3")" >>"$T"
 check "revision floor overridden to 2: the advocate plus one critic -> allow" 0 "$(payload "$T" "a revised plan")"
+rm -f "$LOCAL_OVERRIDE"
+
+# An override of the first-plan floor alone was written when that floor applied to every
+# ExitPlanMode, so a riprap update must not quietly drop revisions to the new default under
+# it: the revision floor follows the first-plan floor until the revision floor is set too.
+printf 'STRESS_TEST_MIN_DISPATCHES=5\n' > "$LOCAL_OVERRIDE"
+T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")" "$(dispatch "c3" "p3")" \
+  "$(dispatch "c4" "p4")" "${ADVOCATE[@]}")
+check "first-plan floor overridden to 5 alone: four critics and the advocate -> allow" 0 "$(payload "$T")"
+printf '%s\n' "${ADVOCATE[@]}" >>"$T"
+check "first-plan floor overridden to 5 alone: a revision with the advocate alone -> block (follows 5)" 2 \
+  "$(payload "$T" "a revised plan")"
+case "$ERR" in
+  *"Revision floor:"*"at least 5 qualifying"*) ok "the revision floor that followed the override is the one named" ;;
+  *) bad "the block did not name a revision floor of 5: $ERR" ;;
+esac
+rm -f "$LOCAL_OVERRIDE"
+
+# ...and setting both keeps them apart: the revision floor is honoured as written.
+printf 'STRESS_TEST_MIN_DISPATCHES=5\nSTRESS_TEST_REVISION_MIN_DISPATCHES=1\n' > "$LOCAL_OVERRIDE"
+T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")" "$(dispatch "c3" "p3")" \
+  "$(dispatch "c4" "p4")" "${ADVOCATE[@]}")
+check "both floors overridden (5 and 1): four critics and the advocate -> allow" 0 "$(payload "$T")"
+printf '%s\n' "${ADVOCATE[@]}" >>"$T"
+check "both floors overridden (5 and 1): a revision with the advocate alone -> allow" 0 \
+  "$(payload "$T" "a revised plan")"
 rm -f "$LOCAL_OVERRIDE"
 
 echo

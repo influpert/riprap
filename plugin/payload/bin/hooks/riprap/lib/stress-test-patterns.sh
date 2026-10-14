@@ -20,11 +20,11 @@ STRESS_TEST_MIN_DISPATCHES=3
 
 # The revision floor: this many qualifying dispatches, since the last PASSING check, before
 # any later ExitPlanMode in the same session is allowed — the devil's advocate alone, per
-# interaction-preferences.md's "A changed plan is a new plan". A critic for each angle the
-# revision touched is recommended, not enforced. The hook reads "a pass is already recorded
-# for this transcript" as "this is a revision", because it cannot see whether a later plan
-# revises the earlier one or is unrelated to it; the hook script's header states what that
-# proxy lets through.
+# interaction-preferences.md's "A changed plan is stress-tested again". A critic for each
+# angle the revision touched is recommended, not enforced. The hook reads "a pass is already
+# recorded for this transcript" as "this is a revision", because it cannot see whether a
+# later plan revises the earlier one or is unrelated to it; the hook script's header states
+# what that proxy lets through.
 # shellcheck disable=SC2034  # consumed by require-plan-stress-test.sh
 STRESS_TEST_REVISION_MIN_DISPATCHES=1
 
@@ -33,10 +33,32 @@ STRESS_TEST_REVISION_MIN_DISPATCHES=1
 # gone the next time. To raise or lower STRESS_TEST_MIN_DISPATCHES or
 # STRESS_TEST_REVISION_MIN_DISPATCHES for this project, set it in
 # bin/hooks/lib/stress-test-patterns.local.sh instead; riprap sources it if present and
-# never overwrites it. The two are independent: raising one leaves the other as it is.
+# never overwrites it.
+#
+# Set only STRESS_TEST_MIN_DISPATCHES there, to anything but its default, and the revision
+# floor FOLLOWS it; set STRESS_TEST_REVISION_MIN_DISPATCHES as well to give revisions their
+# own. Why: until the revision floor existed, that one value was the floor for every
+# ExitPlanMode, so a project that raised it to five asked for five on every revision too.
+# Dropping its revisions to the new default of one on update would lower a bar the project
+# raised on purpose, without asking it and without anything telling it so. A project that
+# wants the lower revision bar under a raised first-plan floor says so by setting both.
 _riprap_local="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib/stress-test-patterns.local.sh"
 if [ -r "$_riprap_local" ]; then
+  _riprap_first_default="$STRESS_TEST_MIN_DISPATCHES"
+  _riprap_revision_default="$STRESS_TEST_REVISION_MIN_DISPATCHES"
+  # Empty, not unset, while the local file runs: empty is how "the local file set it" is
+  # told from "it did not", and unset would abort a local file that reads it under the
+  # hook's `set -u` — bash's own exit 1, which Claude Code treats as an allow.
+  STRESS_TEST_REVISION_MIN_DISPATCHES=""
   # shellcheck source=/dev/null
   . "$_riprap_local"
+  if [ -z "${STRESS_TEST_REVISION_MIN_DISPATCHES:-}" ]; then
+    if [ "${STRESS_TEST_MIN_DISPATCHES:-}" != "$_riprap_first_default" ]; then
+      STRESS_TEST_REVISION_MIN_DISPATCHES="${STRESS_TEST_MIN_DISPATCHES:-}"
+    else
+      STRESS_TEST_REVISION_MIN_DISPATCHES="$_riprap_revision_default"
+    fi
+  fi
+  unset _riprap_first_default _riprap_revision_default
 fi
 unset _riprap_local

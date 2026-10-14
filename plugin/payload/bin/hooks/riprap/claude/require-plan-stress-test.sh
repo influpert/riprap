@@ -2,9 +2,9 @@
 # PreToolUse hook: require a minimum stress-test dispatch floor before ExitPlanMode.
 #
 # Enforces the mechanical half of interaction-preferences.md's "Always stress-test a plan
-# before presenting it" and "A changed plan is a new plan": a first plan needs at least
-# three sub-agents — distinct-angle critics plus a mandatory devil's advocate — dispatched
-# before it is shown; a revision needs at least one, the devil's advocate. The rule
+# before presenting it" and "A changed plan is stress-tested again": a first plan needs at
+# least three sub-agents — distinct-angle critics plus a mandatory devil's advocate —
+# dispatched before it is shown; a revision needs at least one, the devil's advocate. The rule
 # recommends five for a first plan and a critic for each angle a revision touched; this
 # enforces only the two floors. It counts dispatches;
 # it cannot verify critique quality, angle distinctness, honest classification, or that
@@ -25,13 +25,23 @@
 # and it cannot tell a revision from an unrelated plan that happens to come later in the
 # same session. So it treats every ExitPlanMode after a recorded pass for this transcript
 # as a revision, and applies the revision floor:
-#   - An unrelated second plan in the same session clears on the devil's advocate alone,
+#   - A second, unrelated plan in the same session clears on the devil's advocate alone,
 #     although the rule still asks the first-plan bar of it. That is the lenient direction,
 #     and it is left to the plan's author, as the extra critics above the floor already are.
+#     It is not a long-session rarity: riprap's own skills land in it by design. /riprap:spec
+#     presents two plans in one run (its concerns, then the whole-feature go/no-go), and a
+#     /riprap:architect plan made in the session that approved a /riprap:brainstorm design
+#     follows a pass. Each of those is a new plan, and this hook reads it as a revision.
 #   - A trivial edit to a presented plan, which the rule does not ask to be stress-tested
 #     again, still needs one fresh advocate before ExitPlanMode. That costs one dispatch.
-#   - A new session, a cleared temp directory, or a marker that does not parse or names
-#     another transcript reads as a first plan — the strict direction, never the lenient one.
+#   - A new session reads as a first plan, and so does a session whose marker is gone — a
+#     cleared temp directory, a session resumed after a cleanup — or cannot be trusted: one
+#     that does not parse, or names another transcript. That is strict about the FLOOR and
+#     lenient about the WINDOW. With no boundary to count from, the hook counts the whole
+#     transcript, so the dispatches an earlier pass already used count again, and a revision
+#     can clear with nothing fresh dispatched at all. That leak predates the revision floor;
+#     closing it needs a boundary that outlives the temp directory, which this hook does not
+#     have. The test suite pins it, so that whoever closes it changes this note with it.
 # Matching the plan text instead would not close the hole: a material revision is
 # different text by definition, so similarity cannot separate a heavy revision from a
 # new plan any better than the marker does, and it would add a way to fail.
@@ -84,14 +94,16 @@ refuse() {  # $1 = the specific reason
     echo "and needs at least $STRESS_TEST_REVISION_MIN_DISPATCHES sub-agent(s) dispatched since the last pass, the"
     echo "devil's advocate among them (a critic for each angle the revision touched is"
     echo "recommended). See interaction-preferences.md, \"Always stress-test a plan before"
-    echo "presenting it\" and \"A changed plan is a new plan.\" This is a repo-wide policy"
-    echo "taking effect on this call, not something specific to this plan."
+    echo "presenting it\" and \"A changed plan is stress-tested again.\" This is a repo-wide"
+    echo "policy taking effect on this call, not something specific to this plan."
     echo ""
     echo "What to do:"
     echo "  1. Dispatch the remaining sub-agents now, in parallel — one per angle."
     echo "  2. At least one dispatch's prompt or description must contain the phrase"
     echo "     \"devil's advocate\" (straight apostrophe, curly apostrophe, or no"
-    echo "     apostrophe at all — \"devils advocate\" — all match)."
+    echo "     apostrophe at all — \"devils advocate\" — all match), naming that dispatch"
+    echo "     as the advocate. A reference back to an earlier round's advocate — \"round"
+    echo "     one's devil's advocate\", \"the devil's advocate's objection\" — does not count."
     echo "  3. Call ExitPlanMode again. Dispatches from a blocked attempt still count —"
     echo "     this call does not reset your progress, so top up rather than restart."
     echo ""
@@ -222,15 +234,31 @@ fi
 # keep only ones naming a subagent-dispatch tool -> emit description and prompt as one
 # line, both coerced to text in case either arrives as a non-string (a number, say), with
 # internal newlines flattened to spaces so multi-paragraph prompts don't split across
-# output lines.
-QUALIFYING=$(printf '%s' "$WINDOW" | jq -R -c --argjson names "$NAMES_JSON" '
+# output lines -> blank out every reference BACK to an earlier round's advocate (below).
+#
+# Why the back-references go: a revision's critics are briefed on the last round's findings
+# as a matter of course, so "round one's devil's advocate objected to X" turns up in a
+# critic's prompt, and at the revision floor the phrase match is the whole check — a citation
+# would clear it with no advocate dispatched at all. Three forms are blanked: the possessive
+# ("the devil's advocate's objection" is its output, not it), a prior-round qualifier in front
+# ("round one's", "the first round's", "previous", "earlier", "prior", "last", "original"),
+# and "from round one" / "from the first round" after. This is a heuristic, and it only ever
+# narrows what counts, so its misses fall on the side the phrase match already fell on before
+# it; a possessive that is not a prior round ("this plan's devil's advocate") is the role and
+# still counts. Matched in jq so the regex engine is the same on every platform.
+# The apostrophes are straight, curly or absent, as in the phrase match below.
+BACKREF_RE="devil['’]?s advocate['’]s"
+BACKREF_RE="$BACKREF_RE|\\b(earlier|previous|prior|last|first|original|round[ -]?(one|1))([ -]round)?(['’]s)? +devil['’]?s advocate"
+BACKREF_RE="$BACKREF_RE|devil['’]?s advocate from (round[ -]?(one|1)|the (first|earlier|previous|prior|last) round)"
+QUALIFYING=$(printf '%s' "$WINDOW" | jq -R -c --argjson names "$NAMES_JSON" --arg backref "$BACKREF_RE" '
   (fromjson? // empty) |
   select((.isSidechain // false | tostring) != "true") |
   (.message.content // [])[]? |
   select(.type == "tool_use") |
   select(.name as $n | $names | index($n) != null) |
   (((.input.description // "") | tostring) + " " +
-   (((.input.prompt // "") | tostring) | gsub("\n"; " ")))
+   (((.input.prompt // "") | tostring) | gsub("\n"; " "))) |
+  gsub($backref; " "; "i")
 ' 2>/dev/null || true)
 
 COUNT=0

@@ -323,8 +323,12 @@ Two things that document cannot know, which are this skill's to add:
   inherits an approved plan either way; the point is that they inherit the review as well. A
   finding raised, considered and dismissed is the only record that the question was asked.
 
-**A changed plan is a new plan** — including after the user edits it in plan mode. That rule and
-its cap are interaction-preferences.md's; read the bound there rather than inventing one here.
+**A changed plan is stress-tested again** — including after the user edits it in plan mode. That
+rule, its bar and its cap are interaction-preferences.md's; read them there rather than inventing
+them here. **Following another plan in the session does not make this one a revision.** A plan
+made in the session that approved a `/riprap:brainstorm` design is a new plan and takes the
+first-plan bar, although the hook reads it as a revision and will accept less —
+interaction-preferences.md's Enforcement section says why it cannot tell.
 
 ### 8. Write it down, and hand it over
 

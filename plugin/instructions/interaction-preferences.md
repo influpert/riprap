@@ -83,8 +83,8 @@ switch is a transport requirement, not approval of a plan or of any option.
 **Before exiting plan mode with a first plan, dispatch at least three sub-agents in parallel —
 two critics from distinct angles plus the devil's advocate — and five where the plan can bear
 it: four critics plus the advocate.** A revision of a plan already presented has a lower bar of
-its own, under *A changed plan is a new plan* below. There is no exemption for plans that look
-small.
+its own, under *A changed plan is stress-tested again* below. There is no exemption for plans
+that look small.
 
 **One carve-out, and only one: no answer can come back.** Plan mode's whole purpose is to give
 a human a review surface, so a run where nobody can answer — a scheduled job, a queue worker, a
@@ -138,7 +138,7 @@ Findings come back classified:
 Present the plan with the surviving findings visible. "Four critics and the advocate,
 here is what they found and what changed" is reviewable. "Looks good to me" is a report about a mood.
 
-### A changed plan is a new plan
+### A changed plan is stress-tested again
 
 **Whenever a plan changes materially — after review feedback, after a discovery
 mid-implementation, after a deviation report — stress-test the revision before presenting
@@ -184,28 +184,44 @@ classifies its findings with the table above, so a plan it produces has met this
 A `PreToolUse` hook — `bin/hooks/riprap/claude/require-plan-stress-test.sh` — blocks
 `ExitPlanMode` until enough qualifying sub-agent dispatches have happened since the last
 passing check, one of them with a prompt or description that names the devil's advocate:
-three for a session's first plan, and one for every plan after it. It enforces the floors, not
+three for a session's first plan, and one for every plan after it. A reference back to an
+earlier round's advocate — "round one's devil's advocate", "the devil's advocate's objection" —
+is blanked out before that match, because a revision's critics are briefed with exactly those
+citations, and at the revision floor the phrase is the whole check. It enforces the floors, not
 the recommendations: a hook cannot tell a plan that needed four angles from one that needed
 two, or a revision that touched one angle from one that touched three, so the extra critics are
 a judgement left to whoever writes the plan. Both floors live in
 `bin/hooks/riprap/lib/stress-test-patterns.sh` — `STRESS_TEST_MIN_DISPATCHES` for a first plan,
 `STRESS_TEST_REVISION_MIN_DISPATCHES` for a revision — each project-configurable through its
-`.local.sh` extension point. The tool names a dispatch is recorded under are not: that is a
-fact about the runtime, not a project preference, so it is a plain constant in the hook script
-itself, corrected upstream rather than configured around.
+`.local.sh` extension point. Set the first-plan floor alone and the revision floor follows it:
+until the two were separate that one value was the floor for every `ExitPlanMode`, and an update
+must not quietly lower a bar a project raised on purpose. Set both to keep them apart. The tool
+names a dispatch is recorded under are not configurable: that is a fact about the runtime, not a
+project preference, so it is a plain constant in the hook script itself, corrected upstream
+rather than configured around.
 
-**Which floor applies is a proxy, and it leaks in one direction.** This rule lowers the bar for
-a plan that *materially revises* one already presented. The hook can see neither half of that:
-it cannot tell a material change from a reworded one, and it cannot tell a revision from an
-unrelated plan that happens to come later in the same session. So it reads every `ExitPlanMode`
-after a recorded pass in the same session as a revision. An unrelated second plan in a long
-session therefore clears the hook on the devil's advocate alone, although this rule still asks
-the first-plan bar of it; meeting that bar is on the plan's author, as the critics above either
-floor already are. The proxy's other errors run strict: a trivial edit to a presented plan still
-needs one fresh advocate before it is shown, and a new session, or a marker the hook cannot
-trust, starts again at the first-plan floor. Matching the plan text would not close the gap: a
+**Which floor applies is a proxy, and it leaks.** This rule lowers the bar for a plan that
+*materially revises* one already presented. The hook can see neither half of that: it cannot
+tell a material change from a reworded one, and it cannot tell a revision from an unrelated plan
+that happens to come later in the same session. So it reads every `ExitPlanMode` after a
+recorded pass in the same session as a revision, and a second, unrelated plan clears the hook on
+the devil's advocate alone, although this rule still asks the first-plan bar of it. That is not a
+long-session rarity: riprap's own skills land in it by design. `/riprap:spec` presents two plans
+in one run — its concerns, then the whole-feature go/no-go — and a `/riprap:architect` plan made
+in the session that approved a `/riprap:brainstorm` design follows a pass. Each of those is a new
+plan, and meeting the first-plan bar there is on the plan's author, as the critics above either
+floor already are. The proxy errs the other way too: a trivial edit to a presented plan still
+needs one fresh advocate before it is shown. Matching the plan text would not close the gap: a
 material revision is different text by definition, so similarity cannot tell a heavy revision
 from a new plan.
+
+**A lost marker leaks as well, and that leak is older than the revision floor.** A new session
+starts at the first-plan floor, and so does one whose marker is gone — a cleared temp directory,
+a session resumed after a cleanup — or cannot be trusted. That is strict about the floor and
+lenient about the window: with no boundary to count from, the hook counts the whole transcript,
+so the dispatches an earlier pass already used count again, and a revision can clear with
+nothing fresh dispatched at all. Closing it needs a boundary that outlives the temp directory,
+which the hook does not have.
 
 **There is no pre-commit counterpart, deliberately.** Every other guardrail in this family
 also ships a git hook that scans staged file content — this rule has nothing there to give

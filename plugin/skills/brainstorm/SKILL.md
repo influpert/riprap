@@ -277,8 +277,8 @@ What survives goes into the plan file's Risks section before it is presented.
 parts of it. This is the only time the design is shown, so it is shown whole.
 
 **If they send it back**, revise in plan mode and present it again the same way — never as a
-diff in chat. A materially changed design is a new design: interaction-preferences.md owns when a
-revision has to be stress-tested again and why that stops after one further round.
+diff in chat. A materially changed design is stress-tested again: interaction-preferences.md owns
+when, at what bar, and why that stops after one further round.
 
 Unattended, take the carve-out interaction-preferences.md states: stress-test anyway, proceed on
 the findings, and record that nobody approved the design in the design itself.

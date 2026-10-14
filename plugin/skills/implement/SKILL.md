@@ -68,10 +68,10 @@ Four smaller things, each because the owning document cannot see them:
   planning gate this skill hands the work straight back — three review gates on a five-line fix
   is the disproportionate ceremony testing.md's own carve-out warns teaches everybody to skip the
   mechanism on the day it matters.
-- **Deviation routing.** interaction-preferences.md owns *a changed plan is a new plan*. What it
-  does not say is which discoveries change a plan and where a changed one goes. And: **the
-  implementer never edits the plan document.** It is the record of what was approved, and
-  rewriting it to match what got built destroys the only evidence a deviation happened.
+- **Deviation routing.** interaction-preferences.md owns *a changed plan is stress-tested
+  again*. What it does not say is which discoveries change a plan and where a changed one goes.
+  And: **the implementer never edits the plan document.** It is the record of what was approved,
+  and rewriting it to match what got built destroys the only evidence a deviation happened.
 - **Plan-versus-tree.** git.md's staging rule keeps *somebody else's* work out of your commit.
   This one keeps *your own unplanned* work out, and only the plan can tell the two apart.
 - **The pull request body's assembly order** — which part comes from the plan, which from the

@@ -107,6 +107,8 @@ This is a planning-only, stakeholder-facing role: it defines, and it does not bu
 
     Call `EnterPlanMode` → write the summary + go/no-go question to the plan file → run the plan stress test from `interaction-preferences.md` (the Challenge Framework's criteria make good critic angles; the devil's advocate is required on top) → `ExitPlanMode` for stakeholder review. On Codex, ask the user to select Plan mode first, as that file describes; the agent cannot switch modes itself.
 
+    This is a new plan, not a revision of Checkpoint 1's concerns, so it takes the first-plan stress-test bar in interaction-preferences.md. The hook reads every plan after the first in a session as a revision and will accept less; that document's Enforcement section says why it cannot tell.
+
 12. **UI Design Workflow**:
 
     a. **Gate first — does this feature have a user-facing surface at all?** A nightly batch job, an internal API, a schema migration does not. If it does not, say so in one line, record that in the feature document, and go to step 13 without building anything. Ask the stakeholder here whether they want a design at all; an explicit "no" ends it, and is recorded rather than re-argued later.

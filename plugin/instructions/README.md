@@ -159,7 +159,7 @@ beat one 215-line file when either would answer the question.
 
 - First session in a repo? → [project-standards.md](project-standards.md) (~180)
 - Handed a request that could be read more than one way? Proposing a plan, an approach, or
-  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~440)
+  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~530)
 - Writing anything a person reads — a reply, a plan, a task, a commit message, a pull request
   body? → [writing-style.md](writing-style.md) (~115). Checking a finished document against the
   full standard? → `/riprap:write`
@@ -171,7 +171,7 @@ beat one 215-line file when either would answer the question.
 - Handed a requirement, and the plan has to be built by somebody who was not here? →
   `/riprap:architect`. Handed an approved plan and building it? → `/riprap:implement`, which
   runs the tests, the reviews and the pull request in one loop.
-- Picking up from a previous session, or ending one? → [handoffs.md](handoffs.md) (~150)
+- Picking up from a previous session, or ending one? → [handoffs.md](handoffs.md) (~170)
 
 **Writing code**
 
@@ -189,15 +189,15 @@ beat one 215-line file when either would answer the question.
 
 **Committing and merging**
 
-- Branching, worktrees, writing outside one, when to commit, opening a pull request? → [git.md](git.md) (~255)
-- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~160)
+- Branching, worktrees, writing or deleting outside one, when to commit, opening a pull request? → [git.md](git.md) (~275)
+- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~165)
 - A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~135)
-- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~165)
+- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~200)
 - CI is red, or needs re-running? → [ci-hygiene.md](ci-hygiene.md) (~60)
 
 **Security**
 
-- Handling a credential, a token, or a key? → [secret-hygiene.md](secret-hygiene.md) (~85)
+- Handling a credential, a token, or a key? → [secret-hygiene.md](secret-hygiene.md) (~200)
 - Wondering what the allow/deny lists actually stop? → [permissions.md](permissions.md) (~50)
 
 **Extending the guardrails**

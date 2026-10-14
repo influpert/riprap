@@ -2,9 +2,11 @@
 # PreToolUse hook: require a minimum stress-test dispatch floor before ExitPlanMode.
 #
 # Enforces the mechanical half of interaction-preferences.md's "Always stress-test a plan
-# before presenting it": at least three sub-agents — distinct-angle critics plus a mandatory
-# devil's advocate — dispatched before the plan is shown. The rule recommends five; this
-# enforces only the floor. It counts dispatches;
+# before presenting it" and "A changed plan is a new plan": a first plan needs at least
+# three sub-agents — distinct-angle critics plus a mandatory devil's advocate — dispatched
+# before it is shown; a revision needs at least one, the devil's advocate. The rule
+# recommends five for a first plan and a critic for each angle a revision touched; this
+# enforces only the two floors. It counts dispatches;
 # it cannot verify critique quality, angle distinctness, honest classification, or that
 # findings were folded into the plan — see this rule's own "## Enforcement" subsection in
 # interaction-preferences.md, and never describe this hook, in a message or elsewhere, as
@@ -16,6 +18,23 @@
 # dispatches after that point, so a revision needs a fresh batch. A BLOCKED attempt never
 # advances the marker, so dispatches made on retry accumulate rather than resetting the
 # count to zero on every attempt.
+#
+# Which floor applies is read off the same marker, and that is a proxy with a known hole.
+# The rule lowers the bar for a plan that MATERIALLY revises one already presented; this
+# hook can see neither half of that. It cannot tell a material change from a reworded one,
+# and it cannot tell a revision from an unrelated plan that happens to come later in the
+# same session. So it treats every ExitPlanMode after a recorded pass for this transcript
+# as a revision, and applies the revision floor:
+#   - An unrelated second plan in the same session clears on the devil's advocate alone,
+#     although the rule still asks the first-plan bar of it. That is the lenient direction,
+#     and it is left to the plan's author, as the extra critics above the floor already are.
+#   - A trivial edit to a presented plan, which the rule does not ask to be stress-tested
+#     again, still needs one fresh advocate before ExitPlanMode. That costs one dispatch.
+#   - A new session, a cleared temp directory, or a marker that does not parse or names
+#     another transcript reads as a first plan — the strict direction, never the lenient one.
+# Matching the plan text instead would not close the hole: a material revision is
+# different text by definition, so similarity cannot separate a heavy revision from a
+# new plan any better than the marker does, and it would add a way to fail.
 #
 # Every failure mode below is treated as "cannot verify compliance", not as "compliant by
 # default": a missing dependency, a missing lib file, or a marker that could not be written
@@ -59,11 +78,14 @@ refuse() {  # $1 = the specific reason
     echo ""
     echo "$1"
     echo ""
-    echo "riprap requires dispatching at least $STRESS_TEST_MIN_DISPATCHES sub-agents before"
-    echo "every ExitPlanMode call: distinct-angle critics plus a mandatory devil's advocate"
-    echo "(five recommended). See interaction-preferences.md, \"Always stress-test a plan before"
-    echo "presenting it.\" This is a repo-wide policy taking effect on this call, not"
-    echo "something specific to this plan."
+    echo "riprap requires a stress-test before every ExitPlanMode call. A session's first plan"
+    echo "needs at least $STRESS_TEST_MIN_DISPATCHES sub-agents: distinct-angle critics plus a mandatory devil's"
+    echo "advocate (five recommended). Every later plan in the session is read as a revision"
+    echo "and needs at least $STRESS_TEST_REVISION_MIN_DISPATCHES sub-agent(s) dispatched since the last pass, the"
+    echo "devil's advocate among them (a critic for each angle the revision touched is"
+    echo "recommended). See interaction-preferences.md, \"Always stress-test a plan before"
+    echo "presenting it\" and \"A changed plan is a new plan.\" This is a repo-wide policy"
+    echo "taking effect on this call, not something specific to this plan."
     echo ""
     echo "What to do:"
     echo "  1. Dispatch the remaining sub-agents now, in parallel — one per angle."
@@ -85,15 +107,16 @@ refuse() {  # $1 = the specific reason
   exit 2
 }
 
-# A fallback so refuse() (which names this count in its message) has something to read
+# Fallbacks so refuse() (which names both counts in its message) has something to read
 # even when the lib below turns out to be missing — under `set -u`, an unset reference
 # inside refuse() would abort with bash's own "unbound variable" error before reaching
 # this function's own `exit 2`, which is a fail-open exit code by this hook's own logic.
-# Sourcing the lib below overrides this with its own value (still 3, unless a project's
-# .local.sh raises or lowers it).
+# Sourcing the lib below overrides these with its own values (still 3 and 1, unless a
+# project's .local.sh raises or lowers them).
 STRESS_TEST_MIN_DISPATCHES=3
+STRESS_TEST_REVISION_MIN_DISPATCHES=1
 
-# The lib file holds only STRESS_TEST_MIN_DISPATCHES now (see its own header for why
+# The lib file holds only the two floors (see its own header for why
 # QUALIFYING_TOOL_NAMES moved out of it). A missing or unreadable lib file would otherwise
 # make `source` abort the script with bash's own exit 1 — which Claude Code treats as
 # non-blocking, the exact fail-open failure mode the jq check above exists to prevent, just
@@ -147,12 +170,33 @@ fi
 # sharing a basename self-corrects to "no marker" rather than silently sharing state.
 MARKER="$MARKER_DIR/$(basename "$TRANSCRIPT")"
 
+# PRIOR_PASS is what selects the revision floor, so only a marker that parses AND names this
+# very transcript sets it. Anything less is not evidence that an earlier plan passed, and
+# reading it as one would hand the lower floor to whatever corrupted or collided the marker;
+# it reads as a first plan instead, counting from the start of the transcript.
 BOUNDARY=0
+PRIOR_PASS=0
 if [ -f "$MARKER" ]; then
   MARKER_BYTES=$(sed -n '1p' "$MARKER" 2>/dev/null || true)
   MARKER_PATH=$(sed -n '2p' "$MARKER" 2>/dev/null || true)
-  case "$MARKER_BYTES" in ''|*[!0-9]*) MARKER_BYTES=0 ;; esac
-  [ "$MARKER_PATH" = "$TRANSCRIPT" ] && BOUNDARY="$MARKER_BYTES"
+  case "$MARKER_BYTES" in
+    ''|*[!0-9]*) ;;
+    *)
+      if [ "$MARKER_PATH" = "$TRANSCRIPT" ]; then
+        BOUNDARY="$MARKER_BYTES"
+        PRIOR_PASS=1
+      fi
+      ;;
+  esac
+fi
+
+# A pass already recorded for this transcript means a plan was shown earlier in this
+# session, so this call is read as a revision of it — the proxy the header above explains,
+# including the unrelated-new-plan case it lets through.
+if [ "$PRIOR_PASS" = 1 ]; then
+  FLOOR="$STRESS_TEST_REVISION_MIN_DISPATCHES"
+else
+  FLOOR="$STRESS_TEST_MIN_DISPATCHES"
 fi
 
 TOTAL_BYTES=$(wc -c < "$TRANSCRIPT" 2>/dev/null || echo 0)
@@ -202,7 +246,7 @@ if [ -n "$QUALIFYING" ] && printf '%s\n' "$QUALIFYING" | grep -qiE "devil('|’)
   ADVOCATE=1
 fi
 
-if [ "$COUNT" -ge "$STRESS_TEST_MIN_DISPATCHES" ] && [ "$ADVOCATE" = 1 ]; then
+if [ "$COUNT" -ge "$FLOOR" ] && [ "$ADVOCATE" = 1 ]; then
   # Write via a temp file and atomic rename, never a direct `>` truncate: two concurrent
   # passing calls for the same transcript (a retry racing an in-flight one) would otherwise
   # risk one writer's partial content being overwritten mid-write rather than replaced
@@ -222,7 +266,22 @@ writable marker, a later revision could silently reuse this pass instead of requ
 fresh dispatches, so this is treated as unverifiable rather than allowed."
 fi
 
+# Name the floor that applied, so a block on a revision does not send the reader off to
+# dispatch a first plan's whole roster, and a block on a first plan does not suggest the
+# advocate alone would do. The revision message also says what this check cannot tell
+# apart, because that is the one moment a reader is looking at it.
 FOUND_WORD="not found"
 [ "$ADVOCATE" = 1 ] && FOUND_WORD="found"
-refuse "Found $COUNT qualifying dispatch(es) since the last passing check (need
-$STRESS_TEST_MIN_DISPATCHES); a devil's-advocate-flavored dispatch was $FOUND_WORD."
+if [ "$PRIOR_PASS" = 1 ]; then
+  refuse "Revision floor: a plan already passed this check earlier in this session, so this
+call is read as a revision of it and needs at least $FLOOR qualifying dispatch(es) since
+that pass, the devil's advocate among them.
+Found $COUNT qualifying dispatch(es) since that pass; a devil's-advocate-flavored dispatch
+was $FOUND_WORD.
+This check cannot tell a revision from an unrelated new plan. If this is a new plan, the
+rule still asks the first-plan bar of it — at least $STRESS_TEST_MIN_DISPATCHES, five recommended — even though
+this check would accept fewer."
+fi
+refuse "First-plan floor: no plan has passed this check earlier in this session, so this one
+needs at least $FLOOR qualifying dispatch(es), the devil's advocate among them.
+Found $COUNT qualifying dispatch(es); a devil's-advocate-flavored dispatch was $FOUND_WORD."

@@ -80,9 +80,11 @@ switch is a transport requirement, not approval of a plan or of any option.
 
 ## Always stress-test a plan before presenting it
 
-**Before exiting plan mode, dispatch at least three sub-agents in parallel — two critics
-from distinct angles plus the devil's advocate — and five where the plan can bear it: four
-critics plus the advocate.** There is no exemption for plans that look small.
+**Before exiting plan mode with a first plan, dispatch at least three sub-agents in parallel —
+two critics from distinct angles plus the devil's advocate — and five where the plan can bear
+it: four critics plus the advocate.** A revision of a plan already presented has a lower bar of
+its own, under *A changed plan is a new plan* below. There is no exemption for plans that look
+small.
 
 **One carve-out, and only one: no answer can come back.** Plan mode's whole purpose is to give
 a human a review surface, so a run where nobody can answer — a scheduled job, a queue worker, a
@@ -140,8 +142,9 @@ here is what they found and what changed" is reviewable. "Looks good to me" is a
 
 **Whenever a plan changes materially — after review feedback, after a discovery
 mid-implementation, after a deviation report — stress-test the revision before presenting
-it.** Same bar as the first time: at least two critics from
-distinct angles, four recommended, plus the devil's advocate, findings classified.
+it.** The bar is lower than the first time: **at least the devil's advocate**, findings
+classified. Add a critic for each angle the revision touched — a new dependency wants codebase
+fit, a new migration wants deploy safety — as a recommendation, not as the floor.
 
 Material means the approach changed, a subsystem entered or left scope, a new dependency or
 migration appeared, or the verification story changed. Reordered steps and reworded
@@ -162,6 +165,15 @@ and has no way to tell which parts of it were ever looked at. Worse, a revision 
 under time pressure with the original's momentum behind it, which is the worst available
 condition for self-review.
 
+**Why the advocate is the floor and the full roster is not:** the first round's critics already
+read every part of the plan that did not change, and a revision is usually written in answer to
+them — so sending the whole roster again mostly re-reads what they cleared, at the full cost of
+the first round, every time. What nobody has yet asked of the revision is whether *it* should
+be done, and that momentum is exactly why the revision will not ask it of itself. The advocate
+is the one critic whose brief is that question, so it is the one a revision cannot drop. The
+critics for the angles the revision touched are still worth sending; a hook simply cannot tell
+which angles those are.
+
 The unattended carve-out stated above applies here unchanged.
 
 `/riprap:advise` runs a critic roster of this shape, the devil's advocate included, and
@@ -170,14 +182,30 @@ classifies its findings with the table above, so a plan it produces has met this
 ### Enforcement
 
 A `PreToolUse` hook — `bin/hooks/riprap/claude/require-plan-stress-test.sh` — blocks
-`ExitPlanMode` until at least three qualifying sub-agent dispatches have happened since the last
-passing check, one of them with a prompt or description that names the devil's advocate. It
-enforces the floor, not the recommendation of five: a hook cannot tell a plan that needed four
-angles from one that needed two, so the extra critics are a judgement left to whoever writes
-the plan. The floor itself lives in `bin/hooks/riprap/lib/stress-test-patterns.sh`,
-project-configurable through its `.local.sh` extension point. The tool names a dispatch is
-recorded under do not: that is a fact about the runtime, not a project preference, so it is a
-plain constant in the hook script itself, corrected upstream rather than configured around.
+`ExitPlanMode` until enough qualifying sub-agent dispatches have happened since the last
+passing check, one of them with a prompt or description that names the devil's advocate:
+three for a session's first plan, and one for every plan after it. It enforces the floors, not
+the recommendations: a hook cannot tell a plan that needed four angles from one that needed
+two, or a revision that touched one angle from one that touched three, so the extra critics are
+a judgement left to whoever writes the plan. Both floors live in
+`bin/hooks/riprap/lib/stress-test-patterns.sh` — `STRESS_TEST_MIN_DISPATCHES` for a first plan,
+`STRESS_TEST_REVISION_MIN_DISPATCHES` for a revision — each project-configurable through its
+`.local.sh` extension point. The tool names a dispatch is recorded under are not: that is a
+fact about the runtime, not a project preference, so it is a plain constant in the hook script
+itself, corrected upstream rather than configured around.
+
+**Which floor applies is a proxy, and it leaks in one direction.** This rule lowers the bar for
+a plan that *materially revises* one already presented. The hook can see neither half of that:
+it cannot tell a material change from a reworded one, and it cannot tell a revision from an
+unrelated plan that happens to come later in the same session. So it reads every `ExitPlanMode`
+after a recorded pass in the same session as a revision. An unrelated second plan in a long
+session therefore clears the hook on the devil's advocate alone, although this rule still asks
+the first-plan bar of it; meeting that bar is on the plan's author, as the critics above either
+floor already are. The proxy's other errors run strict: a trivial edit to a presented plan still
+needs one fresh advocate before it is shown, and a new session, or a marker the hook cannot
+trust, starts again at the first-plan floor. Matching the plan text would not close the gap: a
+material revision is different text by definition, so similarity cannot tell a heavy revision
+from a new plan.
 
 **There is no pre-commit counterpart, deliberately.** Every other guardrail in this family
 also ships a git hook that scans staged file content — this rule has nothing there to give

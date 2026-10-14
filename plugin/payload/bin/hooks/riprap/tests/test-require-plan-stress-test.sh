@@ -207,6 +207,58 @@ printf 'not-a-number\ngarbage-second-line\n' > "$STATE_DIR/$(basename "$T")"
 check "corrupted marker (non-numeric) -> treated as no marker, counts from start, allow" 0 "$(payload "$T")"
 
 echo
+echo "--- Revision floor: once a plan has passed, a later one needs only the devil's advocate ---"
+
+# The hook cannot see whether a later plan revises the earlier one or is unrelated to it.
+# Its proxy is that any ExitPlanMode after a recorded pass for the same transcript is a
+# revision, so these tests drive one transcript through a first plan and then revisions.
+T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")" "${ADVOCATE[@]}")
+check "first plan at the first-plan floor -> allow, and records the pass" 0 "$(payload "$T")"
+printf '%s\n' "${ADVOCATE[@]}" >>"$T"
+check "revision with only a fresh devil's advocate -> allow (the revision floor)" 0 \
+  "$(payload "$T" "a revised plan")"
+check "second revision, nothing dispatched since the last pass -> block (marker advanced again)" 2 \
+  "$(payload "$T" "revised again")"
+case "$ERR" in
+  *"Revision floor:"*"at least 1 qualifying"*"Found 0 qualifying"*) \
+    ok "revision block names the revision floor, what it needs, and what was found" ;;
+  *) bad "revision block did not name the revision floor and its need: $ERR" ;;
+esac
+printf '%s\n' "$(dispatch "c3" "check the new migration")" >>"$T"
+check "revision with a critic but no devil's advocate -> block (the advocate is the revision floor)" 2 \
+  "$(payload "$T" "revised again")"
+case "$ERR" in
+  *"Revision floor:"*"Found 1 qualifying"*"not found"*) \
+    ok "revision block says the count was met but the advocate is missing" ;;
+  *) bad "revision block did not say the advocate was missing: $ERR" ;;
+esac
+printf '%s\n' "${ADVOCATE[@]}" >>"$T"
+check "the same revision topped up with the advocate -> allow (the blocked attempt did not reset)" 0 \
+  "$(payload "$T" "revised again")"
+
+T=$(new_transcript "${ADVOCATE[@]}")
+check "first plan with only the devil's advocate -> block (the revision floor is not a first plan's)" 2 \
+  "$(payload "$T")"
+case "$ERR" in
+  *"Revision floor:"*) bad "a first plan's block claimed the revision floor: $ERR" ;;
+  *"First-plan floor:"*"at least 3 qualifying"*"Found 1 qualifying"*) \
+    ok "first-plan block names the first-plan floor, what it needs, and what was found" ;;
+  *) bad "first-plan block did not name the first-plan floor and its need: $ERR" ;;
+esac
+
+# A marker that cannot be trusted is not evidence that an earlier plan passed, so it must
+# not unlock the lower floor: these read as a first plan, the strict direction.
+T=$(new_transcript "${ADVOCATE[@]}")
+printf 'not-a-number\n%s\n' "$T" > "$STATE_DIR/$(basename "$T")"
+check "corrupted marker for this very transcript -> first-plan floor, advocate alone -> block" 2 \
+  "$(payload "$T")"
+
+T=$(new_transcript "${ADVOCATE[@]}")
+printf '0\n/elsewhere/%s\n' "$(basename "$T")" > "$STATE_DIR/$(basename "$T")"
+check "marker recorded for a different transcript path -> first-plan floor, advocate alone -> block" 2 \
+  "$(payload "$T")"
+
+echo
 echo "--- Fault tolerance: malformed trailing line ---"
 
 T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
@@ -247,6 +299,21 @@ mkdir -p "$(dirname "$LOCAL_OVERRIDE")"
 printf 'STRESS_TEST_MIN_DISPATCHES=1\n' > "$LOCAL_OVERRIDE"
 T=$(new_transcript "${ADVOCATE[@]}")
 check "with the floor overridden to 1, a single devil's-advocate dispatch -> allow" 0 "$(payload "$T")"
+rm -f "$LOCAL_OVERRIDE"
+
+# The revision floor is its own constant, overridable the same way and independently of the
+# first-plan floor: a project that wants a critic beside the advocate on every revision can say so.
+printf 'STRESS_TEST_REVISION_MIN_DISPATCHES=2\n' > "$LOCAL_OVERRIDE"
+T=$(new_transcript "$(dispatch "c1" "p1")" "$(dispatch "c2" "p2")" "${ADVOCATE[@]}")
+check "revision floor overridden to 2: the first plan is unaffected -> allow" 0 "$(payload "$T")"
+printf '%s\n' "${ADVOCATE[@]}" >>"$T"
+check "revision floor overridden to 2: the advocate alone -> block" 2 "$(payload "$T" "a revised plan")"
+case "$ERR" in
+  *"Revision floor:"*"at least 2 qualifying"*) ok "the overridden revision floor is the one named" ;;
+  *) bad "the block did not name the overridden revision floor: $ERR" ;;
+esac
+printf '%s\n' "$(dispatch "c3" "p3")" >>"$T"
+check "revision floor overridden to 2: the advocate plus one critic -> allow" 0 "$(payload "$T" "a revised plan")"
 rm -f "$LOCAL_OVERRIDE"
 
 echo

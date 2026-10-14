@@ -156,7 +156,9 @@ the plan should not happen at all. There is no trivial-plan exemption: a plan's 
 the worst possible judge of whether it needs review, and the plans that most need it are
 exactly the ones that feel finished. A revision inherits the approval of the original without
 inheriting its review, which is how an unreviewed approach ships under a reviewed plan's
-banner.
+banner — so it needs at least a fresh devil's advocate before it is shown again. The full
+roster is the first plan's bar: the first round's critics already read whatever the revision
+left alone, and what nobody has asked yet is whether the revised plan should happen at all.
 
 **Never merge a security-sensitive change autonomously.** Hooks, permissions, CI
 configuration, auth, payments, and dependency manifests need a human on the merge, however

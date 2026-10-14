@@ -99,7 +99,8 @@ materially.** Dispatch critic subagents from distinct angles, plus a devil's adv
 brief is that the plan should not happen at all. There is no trivial-plan exemption: a
 plan's own author is the worst possible judge of whether it needs review, and the plans
 that most need it are exactly the ones that feel finished. A revision inherits the approval
-of the original without inheriting its review.
+of the original without inheriting its review, so it needs at least a fresh devil's
+advocate before it is shown again.
 → [interaction-preferences.md](interaction-preferences.md)
 
 **Never merge a security-sensitive change autonomously.** Hooks, permissions, CI config,

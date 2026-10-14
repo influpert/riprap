@@ -30,7 +30,7 @@ format what you just wrote, keep the handoff current, and mark the end of a sess
 | merge gate | Bash | Refuses an autonomous merge of a security-sensitive change | **yes** |
 | worktree boundary | Bash, Edit, Write, NotebookEdit | Refuses a write whose target lands outside the worktree — a file nothing will clean up | **yes** |
 | tech footprint | Write | Refuses a file whose language or toolchain nothing in the repository already uses | **yes** |
-| plan stress test | ExitPlanMode | Refuses to exit plan mode below a minimum floor of dispatched critic sub-agents | **yes** |
+| plan stress test | ExitPlanMode | Refuses to exit plan mode below a minimum floor of dispatched critic sub-agents — three for a session's first plan, the devil's advocate alone for each plan after it | **yes** |
 | format on write | Edit, Write | Runs `bin/format` on the file just written | no |
 | plan approved | ExitPlanMode | Asks for the handoff to be written, or rewritten, from the plan just approved | no |
 | unattended stretch begins | ScheduleWakeup, CronCreate, Workflow, RemoteTrigger, a backgrounded Agent/Task | Refuses the call unless a handoff already exists for the branch — checks presence only, never staleness | **yes** |

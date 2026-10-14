@@ -132,8 +132,9 @@ configured, the hook that calls it enforces nothing; `bin/riprap verify` says wh
 **Run everything from the repository root.** A relative path that resolves differently than
 you expect is the most common cause of an agent editing the wrong copy of a file.
 
-**Never write outside your worktree.** Scratch goes in its `tmp/`, not `/tmp` or a sibling
-checkout: nothing cleans up a file the diff cannot see. → [git.md](git.md)
+**Never write outside your worktree.** Scratch goes in its `tmp/` — once `git check-ignore
+tmp/probe` confirms git ignores it — not `/tmp` or a sibling checkout: nothing cleans up a file
+the diff cannot see. → [git.md](git.md)
 
 ---
 

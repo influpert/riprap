@@ -52,9 +52,15 @@ the branch will live for a single commit.
 ## Never write outside your worktree
 
 **Every file you create or change goes inside the worktree you are working in.** Scratch files,
-logs, throwaway output and `mktemp` results go in its `tmp/`, which git ignores; never in
-`/tmp`, the home directory, a sibling checkout, or the main checkout while the work lives in a
-worktree.
+logs, throwaway output and `mktemp` results go in its `tmp/`; never in `/tmp`, the home
+directory, a sibling checkout, or the main checkout while the work lives in a worktree.
+
+**Check that git ignores `tmp/` before you rely on it.** riprap's install seeds a
+`tmp/.gitignore` that does, but a seed is written once and never replaced: a project that
+already had its own keeps it, and a branch cut before the install has none. `git check-ignore
+-v tmp/probe` prints the rule that ignores it; if it prints nothing, scratch in `tmp/` lands in
+the next `git add -A`, which is no better than a stray file in `/tmp`. Then ask the user where
+scratch should go rather than picking somewhere yourself.
 
 **Why:** you only ever clean up where you are working. A file written anywhere else is not in
 the diff and not in `git status`, so nothing reminds anyone it exists, and when the work is done

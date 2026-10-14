@@ -332,6 +332,14 @@ fi
 
 [ -n "$BLOCK_TARGET" ] || exit 0
 
+# Where scratch should go instead — but only if git really ignores it here. The
+# payload's tmp/.gitignore is a seed: a project that already had one keeps its own,
+# and a branch cut before the install has none. Pointing an agent at a tmp/ that git
+# does not ignore trades a stray file outside the worktree for one in front of the
+# next `git add -A`. Same probe as handoff_dir_is_ignored in lib/handoff-common.sh.
+TMP_IGNORED=0
+git -C "$WORKTREE" check-ignore -q tmp/riprap-probe 2>/dev/null && TMP_IGNORED=1
+
 {
   echo "❌ Blocked: this writes outside the worktree."
   echo ""
@@ -345,9 +353,19 @@ fi
   echo "   Worktree: $WORKTREE"
   echo ""
   echo "A file written outside the worktree is not in the diff and not in git status,"
-  echo "and nothing removes it when the work is done. Put scratch files, logs and"
-  echo "throwaway output in the worktree's tmp/ directory, which git ignores. If you"
-  echo "meant to work in another worktree, cd into it in a command of its own first, so"
+  echo "and nothing removes it when the work is done."
+  echo ""
+  if [ "$TMP_IGNORED" -eq 1 ]; then
+    echo "Put scratch files, logs and throwaway output in $WORKTREE/tmp/ instead;"
+    echo "git ignores it here."
+  else
+    echo "Do NOT move it to tmp/ instead: git does not ignore tmp/ in this worktree, so"
+    echo "scratch there would be swept into the next commit. Ask the user where scratch"
+    echo "output should go. (riprap's install seeds tmp/.gitignore; check with"
+    echo "git check-ignore -v tmp/probe.)"
+  fi
+  echo ""
+  echo "If you meant to work in another worktree, cd into it in a command of its own first, so"
   echo "the session follows it. If the user asked for this file outside the worktree,"
   echo "ask them to create it: this hook governs agent tool calls, not commands typed"
   echo "at a terminal."

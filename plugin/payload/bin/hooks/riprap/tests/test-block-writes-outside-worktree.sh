@@ -151,6 +151,27 @@ echo
 echo "--- The block message has to explain itself ---"
 check_contains "names the target" "$OTHER/a.txt" "$(write "$OTHER/a.txt")"
 check_contains "names the worktree" "$REPO" "$(write "$OTHER/a.txt")"
-check_contains "says where scratch goes instead" "tmp/ directory" "$(write "$OTHER/a.txt")"
+
+echo
+echo "--- It points at tmp/ only when git really ignores tmp/ ---"
+check_contains "tmp/ not ignored: says not to move the write there" "Do NOT move it to tmp/" \
+  "$(write "$OTHER/a.txt")"
+check_contains "tmp/ not ignored: says to ask the user" "Ask the user where scratch" \
+  "$(write "$OTHER/a.txt")"
+# A tmp/ that exists but is not ignored is the case the seed cannot guarantee: a
+# project with its own tmp/ and no ignore rule for it.
+mkdir -p "$REPO/tmp"
+check_contains "tmp/ exists but is not ignored: still says not to" "Do NOT move it to tmp/" \
+  "$(write "$OTHER/a.txt")"
+# What /riprap:install seeds.
+printf '*\n!.gitignore\n' >"$REPO/tmp/.gitignore"
+check_contains "tmp/ ignored: names the worktree's tmp/" "$REPO/tmp/ instead" \
+  "$(write "$OTHER/a.txt")"
+check_contains "tmp/ ignored: says git ignores it here" "git ignores it here" \
+  "$(write "$OTHER/a.txt")"
+check "tmp/ ignored or not, the write outside is still blocked" 2 "$(write "$OTHER/a.txt")"
+# The probe is per worktree: the second worktree has no tmp/.gitignore of its own.
+CLAUDE_PROJECT_DIR="$TREE" check_contains "another worktree without the seed: says not to" \
+  "Do NOT move it to tmp/" "$(write "$OTHER/a.txt")"
 
 summary

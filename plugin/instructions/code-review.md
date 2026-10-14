@@ -70,7 +70,7 @@ Three things land, and each has one correct response:
 | What lands | What you do |
 |---|---|
 | **CI goes red** | Diagnose and fix it. This is rule 6 — a red run *on your own pull request* is the task, not a report. Push the fix; do not ask first. |
-| **A review comment** | Address it or answer it. Every comment gets one of the two, and "answer it" means saying why the change is not being made, not silence. Classify the comments first — BLOCKER, MAJOR, MINOR or NON-ISSUE, per [interaction-preferences.md](interaction-preferences.md) — because a human reviewer's comment arrives without a class. Then start on the blocking ones without asking, and offer the MINORs while you work: that document's "fix, then offer". |
+| **A review comment** | Address it or answer it. Every comment gets one of the two, and "answer it" means saying why the change is not being made, not silence. Classify it first, because a human reviewer's comment arrives without a class, then follow [interaction-preferences.md](interaction-preferences.md)'s "fix, then offer". The class decides whether you change the code, never whether you reply: a comment you defer or dismiss still gets its answer in its own thread. |
 | **A merge conflict** | Resolve it yourself: merge trunk into the branch, fix the conflicts, push. Escalate only when both sides changed the same logic and picking one loses behaviour. |
 
 **This does not reopen "never push without being asked"**

@@ -294,7 +294,7 @@ would be taking the shape of a rule without the reason for it.
 
 **A review's blocking findings are not a question.** When findings come back against code or
 tests — from `/riprap:review`, or from a human reviewer on a pull request — start on every
-BLOCKER and MAJOR at once, without pausing to ask which of them to fix. The classes above
+BLOCKER and MAJOR at once, without pausing to ask which of them to fix. The classes in the stress-test table
 already answered that: code-review.md and testing.md both require the blocking tier fixed, so a
 "which of these shall I fix?" spends a round trip to be told what the rules already say, and
 leaves the work idle for exactly as long as the user takes to reply. A plan stress-test's
@@ -336,7 +336,7 @@ work does not depend on, so an answer that arrives mid-fix changes nothing alrea
 **With no answer — nobody there, or a sub-agent with no route to the user — this is the
 default, and it is the only one:** proceed on the blocking fixes, fix a MINOR only where it
 is trivially correct, defer the rest, ignore the NON-ISSUEs, and record every one of them.
-The section above gives the reason for proceeding at all; the bias towards deferral is that a
+*When there is nobody to answer* gives the reason for proceeding at all; the bias towards deferral is that a
 review is not a licence to grow the diff.
 
 ### Trigger words in your own draft

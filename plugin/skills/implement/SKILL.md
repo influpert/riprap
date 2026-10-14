@@ -287,9 +287,7 @@ nonsense on a branch with no implementation:
 | blockers outstanding | change the tests first — that is testing.md's bar, and implementing against tests you know are incomplete converts a finding into a regression inside the artifact everyone will later cite as proof |
 | do not merge | the tests and the plan disagree. That is step 1's question again, not a test bug — go back to it. |
 
-Then the checkpoint below. **At gate 1 the blocking fixes start regardless**, because testing.md
-forbids implementing with any outstanding. The user can still overrule one, and then it is an
-explicit disagreement with that document, recorded as one.
+Then the checkpoint below.
 
 **Test fixes from this gate are committed on their own too**, before step 5 — amend the
 tests-only commit or add a second one, and watch each changed assertion fail again for the reason

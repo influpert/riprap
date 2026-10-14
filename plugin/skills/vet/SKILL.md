@@ -87,8 +87,7 @@ A separate turn, with the review's findings as input.
   offer".
 - **MINOR** in the same scheme: **tell the user about them as the blocking fixes start**, per
   that same section, and fix what the user accepts. With no answer, that section's no-answer
-  default applies — fixes to code near the change are how a separable pull request stops being
-  separable. **Under the payload workflow the remediation turns are sub-agents with no route to
+  default applies. **Under the payload workflow the remediation turns are sub-agents with no route to
   the user**, so they always take that default, and the handover lists each deferred MINOR
   (`interaction-preferences.md`'s class). Once the workflow returns, the session that launched it
   offers them to the user, and any accepted become a fresh `/riprap:vet` run — never an extra

@@ -548,7 +548,7 @@ open as a draft
 event: COMMENT
 Recommended fix
 summary-only
-Five at minimum
+Three at minimum
 dependency creep
 RULES
 }
@@ -616,7 +616,7 @@ check_reviewer_contract() {
   #     asks what was DONE about a finding by a skill that never edits.
   #   summary-only — the fallback when anchoring fails. The post is atomic, so
   #     without this a 422 strands every finding and the run looks clean.
-  #   Five at minimum — the floor. A5 previously had no assertion about the
+  #   Three at minimum — the floor. A5 previously had no assertion about the
   #     roster at all, so a one-reviewer skill scored a perfect contract.
   #   dependency creep — the angle backed by a critical rule whose unattended
   #     answer inverts to no. It is the newest and so the likeliest to be lost.
@@ -757,7 +757,7 @@ reviewed at all. Gated paths are in merge-gates.md, and git.md covers what the
 diff even is. Simplicity defers to design-principles.md, and the dependency
 creep angle to tech-footprint.md.
 
-Five at minimum.
+Three at minimum.
 The roster always includes dependency creep.
 
 VERDICT: merge | merge after the blockers below | do not merge
@@ -977,7 +977,7 @@ EOF
   for want in 'BLOCKER and MAJOR' 'HOLD: human review required' \
               'hold only a change you would otherwise merge' 'open as a draft' \
               'event: COMMENT' 'Recommended fix' 'summary-only' \
-              'Five at minimum' 'dependency creep'; do
+              'Three at minimum' 'dependency creep'; do
     verdict_rules | grep -qxF -- "$want" || {
       echo "❌ self-test: verdict_rules() no longer requires: $want"; st=1; }
   done

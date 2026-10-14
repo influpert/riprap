@@ -30,6 +30,19 @@ check_contains() {
   esac
 }
 
+# check_not_contains DESCRIPTION NEEDLE JSON_PAYLOAD — assert the message does NOT
+# say something. A message that points at the wrong document, or gives a reason
+# that is false for the case in front of the reader, passes every check_contains
+# that only looks for the right words somewhere in it.
+check_not_contains() {
+  local desc="$1" needle="$2" json="$3" out
+  out=$(printf '%s' "$json" | "$HOOK" 2>&1 >/dev/null || true)
+  case "$out" in
+    *"$needle"*) FAIL=$((FAIL + 1)); printf 'FAIL: %s (stderr contained %s)\n' "$desc" "$needle" ;;
+    *) PASS=$((PASS + 1)); printf 'PASS: %s\n' "$desc" ;;
+  esac
+}
+
 summary() {
   printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
   [ "$FAIL" -eq 0 ]

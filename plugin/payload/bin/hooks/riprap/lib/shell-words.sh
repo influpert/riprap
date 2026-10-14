@@ -13,6 +13,12 @@
 #   TOKEN_QUOTED parallel to TOKENIZED: 1 for a word any part of which was quoted
 #                or backslash-escaped, else 0. Stripping the quotes makes `'>'`
 #                and `>` the same word; this is what still tells them apart.
+#   TOKEN_HEREDOC_AT, TOKEN_HEREDOC_BODY
+#                command and redirects modes only: one entry per heredoc, in
+#                order. The body's text, and the index in TOKENIZED the token
+#                after its `<<` has, so a reader walking the tokens knows which
+#                command it belongs to: the one whose ending operator is the
+#                first at or after that index.
 
 # tokenize_words TEXT — split TEXT into words, like `read -ra` but with quoting.
 #
@@ -34,18 +40,22 @@ tokenize_words() { tokenize_shell "$1" words; }
 # Heredoc bodies and comments are dropped. What they contain is data handed to
 # a command's stdin or nothing at all, and read as commands it is a source of
 # false matches: a pull request body that quotes a command would look like it
-# runs it.
+# runs it. The bodies are still handed back, in TOKEN_HEREDOC_BODY, for the one
+# reader that runs its stdin as commands: a shell with no script of its own.
+# A here-string (`<<<`) is not a heredoc; its word stays an ordinary word.
 tokenize_command() { tokenize_shell "$1" command; }
 
 # tokenize_redirects TEXT — tokenize_command, and also split out each unquoted
-# output redirection operator as a word of its own: `>`, `>>` and `>|`, with the
-# descriptor number in front of it when there is one (`2>`). So `echo hi>/tmp/x`
-# comes back as `echo` `hi` `>` `/tmp/x`, and `2>/dev/null` as `2>` `/dev/null`,
-# as the shell reads them. A descriptor is all digits and unquoted, which is the
-# shell's rule too: `a2>f` is the word `a2` and a redirection of stdout. An
-# operator word always has TOKEN_OP=0 and TOKEN_QUOTED=0, and a quoted or escaped
-# `>` is never one. `&` stays the operator it is in command mode, so `&>` arrives
-# as `&` then `>`, and `>&2` as `>` then `&` then `2`.
+# redirection operator as a word of its own: `>`, `>>` and `>|`, `<` and `<>`,
+# with the descriptor number in front of it when there is one (`2>`, `0<`). So
+# `echo hi>/tmp/x` comes back as `echo` `hi` `>` `/tmp/x`, and `2>/dev/null` as
+# `2>` `/dev/null`, as the shell reads them. A descriptor is all digits and
+# unquoted, which is the shell's rule too: `a2>f` is the word `a2` and a
+# redirection of stdout. An operator word always has TOKEN_OP=0 and
+# TOKEN_QUOTED=0, and a quoted or escaped `>` or `<` is never one. `&` stays the
+# operator it is in command mode, so `&>` arrives as `&` then `>`, and `>&2` as
+# `>` then `&` then `2`. The input half exists because a reader that cannot tell
+# `< list.txt` from an argument takes the file stdin comes from for an operand.
 #
 # A mode of its own rather than part of tokenize_command, because a hook that
 # reads commands without caring about redirections should not have its words
@@ -58,16 +68,25 @@ tokenize_redirects() { tokenize_shell "$1" redirects; }
 # is literal; inside double quotes it escapes only `"` and `\`. A backslash
 # before a literal newline is a line continuation and is elided, NOT treated as
 # "escape the newline", which would splice the next line into the current word.
+#
+# A command substitution inside double quotes ("$(...)") is part of the word it
+# sits in, and is kept whole, unread. But the shell parses its inside afresh, so
+# a quote in there neither closes the outer quotes nor opens new ones, and a
+# heredoc body in there is data whatever it holds. `git commit -m "$(cat <<'EOF'`
+# is the commonest multi-line command an agent writes; read as plain double
+# quotes, one stray `"` in the message closed them and left the rest of the
+# message to be read as commands.
 tokenize_shell() {  # $1 = text, $2 = words | command | redirects
   local s="$1" mode="$2" cmd=0
   local i=0 len=${#s}
-  local ch nxt cur="" cur_q=0 in_word=0 state="none"
+  local ch nxt cur="" cur_q=0 in_word=0 state="none" start
   local BSLASH=$'\\' NL=$'\n' TAB=$'\t'
   local -a heredocs=()
-  local d strip line rest
   TOKENIZED=()
   TOKEN_OP=()
   TOKEN_QUOTED=()
+  TOKEN_HEREDOC_AT=()
+  TOKEN_HEREDOC_BODY=()
   # Everything command mode does, redirects mode does too.
   [ "$mode" = words ] || cmd=1
   while [ "$i" -lt "$len" ]; do
@@ -82,10 +101,17 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
           case "$nxt" in
             '"' | "$BSLASH") cur+="$nxt"; i=$((i + 1)) ;;
             "$NL") i=$((i + 1)) ;;
+            # An escaped `$` or backtick is a literal one. Kept as it always was,
+            # backslash and all, but taken in one step so `\$(` opens nothing.
+            '$' | '`') cur+="$ch$nxt"; i=$((i + 1)) ;;
             *) cur+="$ch" ;;
           esac
         elif [ "$ch" = '"' ]; then
           state="none"
+        elif [ "$ch" = '$' ] && [ "${s:$((i + 1)):1}" = "(" ]; then
+          start=$i
+          _tw_subst_end
+          cur+="${s:$start:$((i - start + 1))}"
         else
           cur+="$ch"
         fi
@@ -104,47 +130,25 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
           # A comment runs to the end of the line; the newline itself still
           # ends the command, so stop just before it.
           while [ "$i" -lt "$len" ] && [ "${s:$((i + 1)):1}" != "$NL" ]; do i=$((i + 1)); done
-        elif [ "$cmd" -eq 1 ] && [ "$ch" = "<" ] && [ "${s:$((i + 1)):1}" = "<" ] \
-            && [ "${s:$((i + 2)):1}" != "<" ]; then
-          # A heredoc: remember its delimiter, and skip its body at the next
-          # newline. `<<<` is a here-string, whose word is an ordinary word.
-          _tw_flush
-          i=$((i + 2))
-          strip=0
-          if [ "${s:$i:1}" = "-" ]; then strip=1; i=$((i + 1)); fi
-          while [ "$i" -lt "$len" ] && { [ "${s:$i:1}" = " " ] || [ "${s:$i:1}" = "$TAB" ]; }; do i=$((i + 1)); done
-          d=""
-          while [ "$i" -lt "$len" ]; do
-            ch="${s:$i:1}"
-            case "$ch" in
-              "'" | '"' | "$BSLASH") ;;
-              [[:space:]] | ';' | '&' | '|' | '(' | ')' | '<' | '>') break ;;
-              *) d+="$ch" ;;
-            esac
-            i=$((i + 1))
-          done
-          heredocs+=("$strip:$d")
-          continue
+        elif [ "$cmd" -eq 1 ] && [ "$ch" = "<" ] && [ "${s:$((i + 1)):1}" = "<" ]; then
+          if [ "${s:$((i + 2)):1}" = "<" ]; then
+            # `<<<`, a here-string, whose word is an ordinary word. Taken whole:
+            # one `<` at a time, its last two read as a heredoc, and the word
+            # vanished as that heredoc's delimiter.
+            cur+="<<<"; in_word=1; i=$((i + 2))
+          else
+            # A heredoc: remember its delimiter, and skip its body at the next
+            # newline.
+            _tw_flush
+            _tw_heredoc_open "${#TOKENIZED[@]}"
+            continue
+          fi
         elif [ "$cmd" -eq 1 ] && [ "$ch" = "$NL" ]; then
           _tw_flush
           _tw_op ";"
-          if [ "${#heredocs[@]}" -gt 0 ]; then
-            # Skip each pending body, in order, up to its delimiter line. A
-            # body whose delimiter never comes runs to the end of the text.
-            for d in "${heredocs[@]}"; do
-              strip="${d%%:*}"; d="${d#*:}"
-              while [ "$i" -lt "$len" ]; do
-                rest="${s:$((i + 1))}"
-                line="${rest%%"$NL"*}"
-                i=$((i + 1 + ${#line}))
-                [ "$strip" -eq 1 ] && while [ "${line:0:1}" = "$TAB" ]; do line="${line:1}"; done
-                [ "$line" = "$d" ] && break
-              done
-            done
-            heredocs=()
-          fi
-        elif [ "$mode" = redirects ] && [ "$ch" = ">" ]; then
-          # An output redirection. Digits already gathered, unquoted, are its
+          [ "${#heredocs[@]}" -eq 0 ] || _tw_heredoc_bodies keep
+        elif [ "$mode" = redirects ] && { [ "$ch" = ">" ] || [ "$ch" = "<" ]; }; then
+          # A redirection. Digits already gathered, unquoted, are its
           # descriptor; any other word in progress ends here.
           nxt=""
           if [ "$in_word" -eq 1 ] && [ "$cur_q" -eq 0 ] && [ -n "$cur" ]; then
@@ -155,9 +159,9 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
           else
             _tw_flush
           fi
-          nxt+=">"
-          case "${s:$((i + 1)):1}" in
-            ">" | "|") nxt+="${s:$((i + 1)):1}"; i=$((i + 1)) ;;
+          nxt+="$ch"
+          case "$ch${s:$((i + 1)):1}" in
+            ">>" | ">|" | "<>") nxt+="${s:$((i + 1)):1}"; i=$((i + 1)) ;;
           esac
           TOKENIZED+=("$nxt"); TOKEN_OP+=(0); TOKEN_QUOTED+=(0)
         else
@@ -189,6 +193,120 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
 
 # Helpers for tokenize_shell; they read and write its locals through bash's
 # dynamic scope.
+
+# _tw_heredoc_open POS — at the `<<` at i, read the delimiter after it and queue
+# its body to be skipped at the next newline. POS is the index the next token will
+# have. Leaves i on the first character after the delimiter.
+_tw_heredoc_open() {
+  local pos="$1" strip=0 d="" c
+  i=$((i + 2))
+  if [ "${s:$i:1}" = "-" ]; then strip=1; i=$((i + 1)); fi
+  while [ "$i" -lt "$len" ] && { [ "${s:$i:1}" = " " ] || [ "${s:$i:1}" = "$TAB" ]; }; do i=$((i + 1)); done
+  while [ "$i" -lt "$len" ]; do
+    c="${s:$i:1}"
+    case "$c" in
+      "'" | '"' | "$BSLASH") ;;
+      [[:space:]] | ';' | '&' | '|' | '(' | ')' | '<' | '>') break ;;
+      *) d+="$c" ;;
+    esac
+    i=$((i + 1))
+  done
+  heredocs+=("$pos:$strip:$d")
+}
+
+# _tw_heredoc_bodies [keep] — at the newline at i, skip each queued body, in order,
+# up to its delimiter line; a body whose delimiter never comes runs to the end of
+# the text. With `keep`, each body is also handed back in TOKEN_HEREDOC_AT and
+# TOKEN_HEREDOC_BODY. Leaves i at the end of the last delimiter line.
+_tw_heredoc_bodies() {
+  local h pos strip d rest line body
+  for h in "${heredocs[@]}"; do
+    pos="${h%%:*}"; h="${h#*:}"
+    strip="${h%%:*}"; d="${h#*:}"
+    body=""
+    while [ "$i" -lt "$len" ]; do
+      rest="${s:$((i + 1))}"
+      line="${rest%%"$NL"*}"
+      i=$((i + 1 + ${#line}))
+      if [ "$strip" -eq 1 ]; then
+        while [ "${line:0:1}" = "$TAB" ]; do line="${line:1}"; done
+      fi
+      [ "$line" != "$d" ] || break
+      body+="$line$NL"
+    done
+    if [ "${1:-}" = keep ]; then
+      TOKEN_HEREDOC_AT+=("$pos"); TOKEN_HEREDOC_BODY+=("$body")
+    fi
+  done
+  heredocs=()
+}
+
+# _tw_subst_end — from the `$(` at i, inside double quotes, step i to the `)` that
+# closes it, the way the shell finds that `)`: past nested parentheses and
+# substitutions, quoted runs, comments, and heredoc bodies, whose quotes and
+# parentheses are all data. Leaves i on that `)`, or on the last character of the
+# text when nothing closes it. It only finds the end; what is inside is never read
+# as commands. Limit: a `case` pattern's unpaired `)` ends it early, which is
+# where the old reading of the quotes left everything anyway.
+_tw_subst_end() {
+  # One character per open context: `(` for a parenthesis or substitution, `"` for
+  # double quotes. The substitution's heredocs are its own, and their bodies are
+  # skipped without being handed back: they are data in a word.
+  local stack="(" c prev="(" rest
+  local -a heredocs=()
+  i=$((i + 2))
+  while [ "$i" -lt "$len" ]; do
+    c="${s:$i:1}"
+    if [ "${stack#"${stack%?}"}" = '"' ]; then
+      case "$c" in
+        "$BSLASH") i=$((i + 1)) ;;
+        '"') stack="${stack%?}" ;;
+        '$') if [ "${s:$((i + 1)):1}" = "(" ]; then stack+="("; i=$((i + 1)); fi ;;
+      esac
+    else
+      case "$c" in
+        "$BSLASH") i=$((i + 1)) ;;
+        "'")
+          rest="${s:$((i + 1))}"
+          case "$rest" in
+            *"'"*) rest="${rest%%"'"*}"; i=$((i + 1 + ${#rest})) ;;
+            *) i=$len ;;
+          esac
+          ;;
+        '"') stack+='"' ;;
+        '(') stack+="(" ;;
+        ')')
+          stack="${stack%?}"
+          [ -n "$stack" ] || return 0
+          ;;
+        '#')
+          # A comment only where a word starts; `$#` and `${#x}` are not one.
+          case "$prev" in
+            ' ' | "$TAB" | "$NL" | ';' | '(' | '|' | '&')
+              while [ "$((i + 1))" -lt "$len" ] && [ "${s:$((i + 1)):1}" != "$NL" ]; do i=$((i + 1)); done
+              ;;
+          esac
+          ;;
+        '<')
+          if [ "${s:$((i + 1)):1}" = "<" ]; then
+            if [ "${s:$((i + 2)):1}" = "<" ]; then
+              i=$((i + 2))
+            else
+              _tw_heredoc_open 0
+              prev="x"
+              continue
+            fi
+          fi
+          ;;
+        "$NL") [ "${#heredocs[@]}" -eq 0 ] || _tw_heredoc_bodies ;;
+      esac
+    fi
+    prev="$c"
+    i=$((i + 1))
+  done
+  i=$((len - 1))
+}
+
 _tw_flush() {
   if [ "$in_word" -eq 1 ]; then
     TOKENIZED+=("$cur"); TOKEN_OP+=(0); TOKEN_QUOTED+=("$cur_q")

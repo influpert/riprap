@@ -8,8 +8,9 @@
 # land after `cd x && ...`" is one question, and a hook that answers it differently
 # from its sibling is a hook with a hole the other one closed. The worktree-write hook
 # grew its own walk first; this is that walk lifted out, and extended with what the
-# destructive-command hook needed (reserved words, `&>`, backticks, `cd -P`), so the
-# next hook starts from the shared definition instead of a third copy. The
+# destructive-command hook needed (reserved words, `&>`, backticks, `cd -P`, input
+# redirections, heredoc bodies), so the next hook starts from the shared definition
+# instead of a third copy. The
 # worktree-write hook still runs its own copy; moving it onto this one is what
 # finishes the job.
 #
@@ -24,9 +25,13 @@
 #   pushd / popd is applied, with these globals set:
 #
 #     WALK_WORDS      its words. Leading reserved words (`{`, `if`, `then`, `do`,
-#                     `!`, ...) are dropped, and so are its redirections, so
-#                     `echo hi >f` is the words `echo` `hi`.
+#                     `!`, ...) are dropped, and so are its redirections, input
+#                     and output, so `echo hi >f` is the words `echo` `hi` and
+#                     `xargs rm <list` is `xargs` `rm`. A here-string stays: `<<<`
+#                     and its word are words.
 #     WALK_REDIRECTS  the targets of its output redirections (`>f`, `2>>f`, `&>f`).
+#     WALK_HEREDOCS   the bodies of its heredocs, in order. Data to most commands;
+#                     the script itself to a shell that has no script file.
 #     WALK_DIR        the directory it runs in: absolute and normalized, empty when
 #                     there was none to start from, or WALK_UNKNOWN.
 #     WALK_PREV_OP    the operator before it (`;` `&&` `||` `|` `&` `(` `)` or a
@@ -132,16 +137,19 @@ _walk_is_reserved() {
 
 walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
   local text="$1" start="$2" callback="$3"
-  local dir="$2" prev_op="" t q op k n bt=0
+  local dir="$2" prev_op="" t q op k n bt=0 hd=0
   local -a toks=() ops=() quoted=() seg=() redirs=() substack=() pushed=()
-  # Kept in a variable: a regex written inline after =~ is quoted differently across
+  local -a hd_at=() hd_body=() heres=()
+  # Kept in variables: a regex written inline after =~ is quoted differently across
   # bash versions, and a `\>` that reaches regcomp is a word boundary, not a `>`.
-  local redir_re='^[0-9]*>[>|]?$'
+  local redir_re='^[0-9]*>[>|]?$' input_re='^[0-9]*<>?$'
 
   tokenize_redirects "$text"
   toks=(${TOKENIZED[@]+"${TOKENIZED[@]}"})
   ops=(${TOKEN_OP[@]+"${TOKEN_OP[@]}"})
   quoted=(${TOKEN_QUOTED[@]+"${TOKEN_QUOTED[@]}"})
+  hd_at=(${TOKEN_HEREDOC_AT[@]+"${TOKEN_HEREDOC_AT[@]}"})
+  hd_body=(${TOKEN_HEREDOC_BODY[@]+"${TOKEN_HEREDOC_BODY[@]}"})
   n=${#toks[@]}
 
   k=0
@@ -160,11 +168,18 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
 
     if [ "$op" -eq 1 ]; then
       # The end of a simple command: report it, then apply its directory change.
+      # Its heredocs are the ones opened before this operator.
+      heres=()
+      while [ "$hd" -lt "${#hd_at[@]}" ] && [ "${hd_at[$hd]}" -le "$k" ]; do
+        heres+=("${hd_body[$hd]}")
+        hd=$((hd + 1))
+      done
       if [ "${#seg[@]}" -gt 0 ] || [ "${#redirs[@]}" -gt 0 ]; then
         # shellcheck disable=SC2034  # the WALK_ globals are what the callback reads
         {
           WALK_WORDS=(${seg[@]+"${seg[@]}"})
           WALK_REDIRECTS=(${redirs[@]+"${redirs[@]}"})
+          WALK_HEREDOCS=(${heres[@]+"${heres[@]}"})
           WALK_DIR="$dir"
           WALK_PREV_OP="$prev_op"
           WALK_NEXT_OP="$t"
@@ -200,10 +215,11 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
     fi
 
     # An unquoted redirection: `grep '>' f` redirects nothing. It and its target
-    # are kept out of the words.
-    if [ "$q" -eq 0 ] && [[ "$t" =~ $redir_re ]]; then
+    # are kept out of the words, and an output target is recorded. An input source
+    # is only where stdin comes from: `xargs rm < list` has no operand `list`.
+    if [ "$q" -eq 0 ] && { [[ "$t" =~ $redir_re ]] || [[ "$t" =~ $input_re ]]; }; then
       if [ "$((k + 1))" -lt "$n" ] && [ "${ops[$((k + 1))]}" -eq 0 ]; then
-        redirs+=("${toks[$((k + 1))]}")
+        if [[ "$t" =~ $redir_re ]]; then redirs+=("${toks[$((k + 1))]}"); fi
         k=$((k + 2))
       elif [ "$((k + 1))" -lt "$n" ] && [ "${toks[$((k + 1))]}" = "&" ]; then
         # `>&2`, `2>&1`, `>&-`: a descriptor duplication, not a file and not a

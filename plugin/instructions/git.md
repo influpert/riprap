@@ -82,19 +82,25 @@ writes through its own flags and a path held in a variable both pass — so the 
 keep, and the hook only catches the slips. A project that genuinely needs a directory outside the worktree adds its
 prefix to `WORKTREE_WRITE_ALLOWED_PREFIXES` in `bin/hooks/lib/worktree-write-patterns.local.sh`.
 
-**Deleting has the same boundary, held tighter: the directory the session is working in.**
-`rm`, `unlink`, `find -delete`, `git clean -f` and `git reset --hard` destroy nothing outside
-it. This rule exists because an agent once ran `rm -f` on untracked files in a different
+**Deleting has the same boundary: the worktree you are working in** — or, outside any git
+checkout, the directory itself — with no exception for the host's state. `rm`, `unlink`,
+`find -delete`, `git clean -f` and `git reset --hard` destroy nothing outside it, and that
+includes tool caches and `/tmp`: from a path alone, another checkout, another session's scratch
+and a cache every project on the machine shares look the same, and none of them is the task's
+to remove. This rule exists because an agent once ran `rm -f` on untracked files in a different
 checkout on the same machine, and an untracked file has no history to restore it from. When
 one is refused, **do not rephrase it** — not with a `cd` first, in the same command or a call
-of its own, nor with a subshell, `sh -c`, `git -C` or `find` instead of `rm`. Moving into
-another worktree to work there is still fine; moving only so a refused deletion passes is the
-rephrasing. The rule is about what gets destroyed, not how the command is
+of its own, nor with a subshell, `sh -c`, a heredoc into a shell, `git -C` or `find` instead of
+`rm`. Moving into another worktree to work there is still fine; moving only so a refused
+deletion passes is the rephrasing. The rule is about what gets destroyed, not how the command is
 spelled, and a rephrasing that slips past the check is the same deletion with its one safeguard
 gone. Show the user the exact command and let them run it. `block-destructive-outside-cwd.sh`
 follows `cd`, `pushd`, `popd` and subshells, reads past `sudo`, `env`, `timeout`, `xargs` and a
-full path like `/bin/rm`, and checks `git -C` and `find`'s starting points; a path held in a
-variable passes it, so here too the hook only catches the slips.
+full path like `/bin/rm`, reads a heredoc fed to a shell, and checks `git -C` and `find`'s
+starting points; a path held in a variable passes it, so here too the hook only catches the
+slips. If it refuses a command that deletes nothing — a commit message or pull request body
+that quotes one — the text is what it misread: pass it from a file under `tmp/` with
+`git commit -F` or `gh pr create --body-file`.
 
 ## Do not run `git diff` before committing
 

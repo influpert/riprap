@@ -97,7 +97,24 @@ refuse() {
   exit 2
 }
 
-unverifiable() { refuse "Cannot verify this merge: $1"; }
+# A merge this gate could not check is not a merge it found to be gated, so it gets
+# its own message. Sharing refuse()'s would tell the agent to post a hold comment,
+# apply a label and request a review on a pull request whose files nobody looked at.
+cannot_check() {
+  {
+    echo "⛔ Blocked by riprap's merge gate: it could not check which files this merge touches."
+    echo ""
+    echo "$1"
+    echo ""
+    echo "Nothing was merged. If the problem is the command's form, run it once more as a"
+    echo "plain \`gh pr merge <number> --repo <owner/repo>\`, with no wrapper or variable. If gh is"
+    echo "missing, unauthenticated or offline, stop and tell the user. Do not look for"
+    echo "another way to merge: this gate exists so that a merge it cannot see does not happen."
+  } >&2
+  exit 2
+}
+
+unverifiable() { cannot_check "Cannot verify this merge: $1"; }
 
 # --- find every merge the command runs ---------------------------------------
 
@@ -314,7 +331,7 @@ evaluate a supplied file list outside it."
 fi
 if [ -z "${RIPRAP_TEST_PR_FILES:-}" ]; then
   command -v gh >/dev/null 2>&1 || \
-    refuse "Cannot verify this PR: 'gh' is not installed, so the changed files are unknown."
+    cannot_check "Cannot verify this PR: 'gh' is not installed, so the changed files are unknown."
 fi
 
 MATCHED=""
@@ -322,7 +339,7 @@ for target in "${TARGETS[@]}"; do
   dir="${target%%$'\t'*}"; rest="${target#*$'\t'}"
   repo="${rest%%$'\t'*}"; sel="${rest#*$'\t'}"
   label="${sel:-the pull request for the current branch}${repo:+ in $repo}"
-  [ -d "$dir" ] || refuse "Cannot verify $label: it runs in $dir, which does not exist."
+  [ -d "$dir" ] || cannot_check "Cannot verify $label: it runs in $dir, which does not exist."
   if [ -n "${RIPRAP_TEST_PR_FILES:-}" ]; then
     FILES=$(cd "$dir" && RIPRAP_GATE_DIR="$dir" RIPRAP_GATE_REPO="$repo" RIPRAP_GATE_PR="$sel" \
       $RIPRAP_TEST_PR_FILES 2>/dev/null) || \
@@ -332,10 +349,10 @@ for target in "${TARGETS[@]}"; do
     [ -z "$sel" ] || args+=("$sel")
     [ -z "$repo" ] || args+=(--repo "$repo")
     FILES=$(cd "$dir" && gh "${args[@]}" --name-only 2>/dev/null) || \
-      refuse "Cannot verify $label: 'gh pr diff' failed in $dir (offline, unauthenticated, or no such PR)."
+      cannot_check "Cannot verify $label: 'gh pr diff' failed in $dir (offline, unauthenticated, or no such PR)."
   fi
   [ -n "$FILES" ] || \
-    refuse "Cannot verify $label: its changed-file list came back empty."
+    cannot_check "Cannot verify $label: its changed-file list came back empty."
   hits=$(merge_gate_match "$FILES" || true)
   [ -z "$hits" ] || MATCHED+="${MATCHED:+$'\n'}$hits"
 done

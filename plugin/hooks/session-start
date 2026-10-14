@@ -175,8 +175,18 @@ escape_for_json() {
     printf '%s' "$s"
 }
 
+# The router's Quick reference names bin/test, bin/lint, bin/format, bin/setup and
+# bin/riprap verify, all of which /riprap:install provides. Where it never ran,
+# those names point at nothing and no payload hook enforces anything, and a model
+# that trusts the router runs commands that do not exist. Say so, once, with the
+# router — a resumed session already has it.
+payload_note=""
+if [ -n "$project" ] && [ ! -e "${project}/bin/riprap" ]; then
+  payload_note=$'\n\n'"This repository has not installed riprap's payload (there is no bin/riprap): the Quick reference's bin/ commands exist only where the project provides them itself, and riprap's guardrail hooks do not run here. Use the project's own test, lint and setup commands."
+fi
+
 if [ -z "${brief:-}" ]; then
-  context="$(escape_for_json "${preamble}"$'\n\n'"${router}${handoff_note}")"
+  context="$(escape_for_json "${preamble}"$'\n\n'"${router}${payload_note}${handoff_note}")"
 else
   context="$(escape_for_json "${preamble}${handoff_note}")"
 fi

@@ -98,7 +98,7 @@ echo
 echo "--- The block message has to explain itself ---"
 check_contains "names the offending path" "$OTHER" \
   "{\"tool_name\":\"Bash\",\"cwd\":\"$WORK\",\"tool_input\":{\"command\":\"rm -rf $OTHER/.git\"}}"
-check_contains "says what to do instead" "run it yourself at a terminal" \
+check_contains "says what to do instead" "let them run it at" \
   "{\"tool_name\":\"Bash\",\"cwd\":\"$WORK\",\"tool_input\":{\"command\":\"rm -rf $OTHER/.git\"}}"
 
 summary

@@ -64,7 +64,7 @@ if [ ${#STAGED[@]} -gt 0 ] && [ -x bin/lint ] && ! grep -q '^# riprap:stub$' bin
     exit 1
   fi
   if [ "$LINT_STATUS" -ne 0 ]; then
-    echo "❌ bin/lint failed. Fix the issues, or commit with --no-verify to skip." >&2
+    echo "❌ bin/lint failed. Fix what it reports and commit again." >&2
     exit 1
   fi
 
@@ -140,8 +140,9 @@ if [ -n "$ADDED" ]; then
       echo ""
       echo "$HITS"
       echo ""
-      echo "   Remove it and rotate the credential — it is in your reflog either way."
-      echo "   If this is a documented example, add 'lint-ok:secrets' to the line."
+      echo "   Remove it, and rotate the credential (or tell whoever owns it to) — it is"
+      echo "   in the reflog either way. If this is a documented fake rather than a live"
+      echo "   credential, add 'lint-ok:secrets' to the line instead."
     } >&2
     FAILED=1
   fi
@@ -211,8 +212,8 @@ fi
 
 if [ "$FAILED" -ne 0 ]; then
   echo "" >&2
-  echo "Commit rejected. Use --no-verify to override, sparingly — bypassing a" >&2
-  echo "hook defeats the reason it exists." >&2
+  echo "Commit rejected. Fix what is listed above and commit again. --no-verify skips" >&2
+  echo "these checks; use it only when a person has decided to, not to get past a failure." >&2
   exit 1
 fi
 

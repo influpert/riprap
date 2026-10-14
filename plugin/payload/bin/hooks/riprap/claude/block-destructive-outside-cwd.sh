@@ -283,12 +283,11 @@ if [ -n "$BLOCK_REASON" ]; then
     echo "cwd: $CWD"
     echo "Reason: $BLOCK_REASON"
     echo ""
-    echo "rm / git clean -f* / git reset --hard are auto-approved only when their"
-    echo "target stays inside the working directory. If this is genuinely intended,"
-    echo "run it yourself at a terminal — this hook governs agent tool calls, not"
-    echo "commands you type directly."
-    echo ""
-    echo "See riprap's project-standards guardrail (riprap.dev/reference) for the rule."
+    echo "riprap lets rm, git clean -f and git reset --hard run only when their target"
+    echo "stays inside the working directory. Do not rephrase the command to get past"
+    echo "this check (for example as cd <dir> && rm ...). If the deletion is genuinely"
+    echo "wanted, tell the user what you meant to run and why, and let them run it at"
+    echo "their own terminal; this hook governs agent tool calls, not what a person types."
   } >&2
   exit 2
 fi

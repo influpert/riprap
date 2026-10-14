@@ -204,5 +204,19 @@ case "$(ctx '{"source":"compact"}')" in
   *"tmp/handoff/work.md"*) bad "with no .cwd the router reached into a worktree it was never told about" ;;
   *) ok "with no .cwd the router answers for CLAUDE_PROJECT_DIR, as before" ;; esac
 
+echo
+echo "--- session-start says when the payload is missing ---"
+
+# The router's Quick reference names bin/ commands only /riprap:install provides.
+# Without the note, a repository that never installed it is told to run commands
+# that do not exist; with the note in an installed one, it is told its hooks do not run.
+case "$(ctx '{"source":"startup"}')" in
+  *"has not installed riprap's payload"*) ok "no bin/riprap: the router says the payload is missing" ;;
+  *) bad "no bin/riprap: the router still promises bin/ commands that do not exist" ;; esac
+mkdir -p "$P/bin" && printf '#!/bin/sh\n' >"$P/bin/riprap" && chmod +x "$P/bin/riprap"
+case "$(ctx '{"source":"startup"}')" in
+  *"has not installed riprap's payload"*) bad "bin/riprap present: the router still says the payload is missing" ;;
+  *) ok "bin/riprap present: no missing-payload note" ;; esac
+
 printf '\n=== %d passed, %d failed ===\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

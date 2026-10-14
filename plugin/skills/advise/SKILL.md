@@ -25,8 +25,6 @@ context on every step, and the only text that needs the depth is the text you fi
 
 Build a deeply researched and adversarially critiqued plan on any topic.
 
-**Model**: use the most capable model available to you, with the largest context window. This skill runs several agents in parallel over a lot of material; a smaller model produces critics that agree with each other.
-
 ## Steps
 
 ### 1. Enter Plan Mode
@@ -35,7 +33,11 @@ Call `EnterPlanMode`. The system will provide a plan file path — write your fi
 
 ### 2. Intake
 
-Use the structured choice UI defined in `interaction-preferences.md` to ask (up to 4 questions per turn):
+Read what the repository and the request already settle before asking anything — the tech
+stack, existing constraints, prior attempts recorded in the code or its docs. Then ask what
+research cannot settle, **one question at a time** through the structured choice UI in
+`interaction-preferences.md`, each shaped by the last answer. The themes to cover, as far as
+they are still open:
 - What is the topic or decision to plan?
 - What is the desired outcome / definition of success?
 - What constraints must the plan respect (time, budget, team size, tech stack, etc.)?
@@ -43,7 +45,7 @@ Use the structured choice UI defined in `interaction-preferences.md` to ask (up 
 
 ### 3. Clarification Loop
 
-Continue asking clarifying questions with that structured choice UI until you genuinely have enough context to research effectively. Cover as needed:
+Keep asking, one question at a time, until you genuinely have enough context to research effectively. Cover as needed:
 - Stakeholders affected and their interests
 - Prior attempts and why they failed or stalled
 - Known risks or non-starters
@@ -83,17 +85,17 @@ Spawn these critic sub-agents **in parallel** (single Agent tool call). Pass eac
 **Agent A — The Skeptic**
 > Challenge every assumption in this plan. What is being taken for granted that might not be true? What premises could collapse under pressure?
 > Plan: `<draft>`
-> Return 3–7 specific assumption challenges, each one sentence.
+> Return up to 7 specific assumption challenges, each one sentence — none if none hold up.
 
 **Agent B — The Risk Analyst**
 > Identify what could go wrong. Focus on execution risks, external dependencies, and catastrophic failure modes that the plan does not address.
 > Plan: `<draft>`
-> Return 3–7 risks with a one-line likelihood/impact estimate each.
+> Return up to 7 risks with a one-line likelihood/impact estimate each — none if none hold up.
 
 **Agent C — The Resource Critic**
 > Challenge whether the timeline, effort, and scope estimates are realistic. What is being underestimated? Where is magical thinking hiding?
 > Plan: `<draft>`
-> Return 3–5 resource or scope concerns.
+> Return up to 5 resource or scope concerns — none if none hold up.
 
 **Agent D — The Alternative Proponent**
 > Propose 2–3 fundamentally different ways to achieve the same objective. What does each trade off relative to the current plan?
@@ -103,14 +105,24 @@ Spawn these critic sub-agents **in parallel** (single Agent tool call). Pass eac
 **Agent E — The Stakeholder Advocate** *(only if stakeholders were identified in intake)*
 > You represent the people most affected by this plan. What concerns would they raise? What is missing from their perspective?
 > Plan: `<draft>` / Stakeholders: `<list>`
-> Return 3–5 stakeholder concerns.
+> Return up to 5 stakeholder concerns — none if none hold up.
+
+**Agent F — The Devil's Advocate** *(always)*
+> Argue that this plan should not happen at all. What is the case for the status quo, and what does this cost that nobody has priced?
+> Plan: `<draft>`
+> Return the strongest case against doing it, in a short paragraph, and the one condition under which you would drop the objection.
+
+Agent F is not optional. Every other critic asks how to do this well, and so presupposes doing
+it; only this one can come back with "don't". It is also what the plan stress-test in
+`interaction-preferences.md` requires before `ExitPlanMode`, and riprap's hook refuses the call
+without it.
 
 ### 7. Integrate Critiques
 
-For each meaningful critique from the agents:
-- **Accept** → incorporate into the plan
-- **Reject** → note the reason inline (one sentence)
-- **Escalate** → surface as an open question in the final plan
+Classify every critique with the classes in `interaction-preferences.md`, and act on each as
+that file's table says — it owns both the classes and what each one does to a plan. Where a
+critique turns on something only the user can decide, put it under Open Questions
+rather than guessing.
 
 ### 8. Write Final Plan
 

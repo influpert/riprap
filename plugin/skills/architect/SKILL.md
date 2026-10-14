@@ -145,10 +145,12 @@ session without that integration, which is most of the sessions that will need i
 
 ## Steps
 
-### 1. Enter plan mode before you read anything
+### 1. Enter plan mode before you research
 
-Call `EnterPlanMode` **first — before the first `Read`, `Grep` or `Glob`.** Two reasons, and the
-second is the one that gets forgotten:
+Settle the stored answers above first: reading `riprap-skills.md` and writing a new answer to it
+are the only things this skill does outside plan mode. Then call `EnterPlanMode` **before the
+first `Read`, `Grep` or `Glob` of anything the task touches.** Two reasons, and the second is the
+one that gets forgotten:
 
 - It restricts the session to read-only tools, which is what makes *never writes source*
   mechanical rather than merely intended. A rule the harness enforces survives a long session; a
@@ -163,9 +165,12 @@ the mockup goes through the host's mockup tool or the fallback.
 
 **That third one needs plan mode to be left and re-entered, so do it explicitly.** You cannot
 know a mockup is needed before reading, and this step requires plan mode before the first read,
-so "write it beforehand" is not a reachable branch. Call `ExitPlanMode` naming the mockup as the
-only thing it covers, write it, call `EnterPlanMode` again before step 6, and record in the plan
-that you did. A mockup skipped because the sequencing looked impossible is the outcome design.md
+so "write it beforehand" is not a reachable branch. Do not call `ExitPlanMode` for it: that call
+is reserved for a plan, and riprap's stress-test hook refuses it until the plan's critics have
+run. Ask the user to leave plan mode through the host's mode control, saying it is only so the
+mockup can be written — a mode switch is transport, not approval, as interaction-preferences.md
+puts it. Write the mockup, call `EnterPlanMode` again before step 6, and record in the plan that
+you did. A mockup skipped because the sequencing looked impossible is the outcome design.md
 says must not happen quietly.
 
 Unattended, interaction-preferences.md and development-workflow.md both carve out a run with
@@ -176,10 +181,14 @@ nobody to confirm. Both still require the plan to be written down and its reason
 Four questions, answered before anything is explored. Say what you found.
 
 - **Where do the requirements come from?** A `/riprap:spec` run — read its feature document
-  whole, since it owns the problem, the scope, the acceptance criteria and the design link, none
-  of which this skill re-derives. Or a tracker item, where the stored answer records one. Or the
+  (`tmp/riprap/feature-<slug>.md`) whole, since it owns the problem, the scope, the acceptance
+  criteria and the design link, none of which this skill re-derives. Or a `/riprap:brainstorm`
+  design — its `DESIGN:` line, or the path its stored answer records — read whole: its approach
+  and what it rules out were approved in plan mode, so they are settled here, not asked again. Or
+  a tracker item, where the stored answer records one. Or the
   sentence the user typed, which is the ordinary case and must work.
-- **The slug.** Kebab-case, derived once, and **reused from the spec run when there was one.**
+- **The slug.** Kebab-case, derived once, and **reused from the spec or brainstorm run when
+  there was one.**
   Every artifact in the pipeline shares it; a slug invented afresh is how a plan stops finding
   its feature document.
 - **Is this above the planning gate?** development-workflow.md's, and this is the honest exit. If
@@ -209,8 +218,9 @@ would — earlier, and carrying an approval.
 The section that earns the artifact. One row per requirement: **what already exists, with
 `path:line`** · **what is missing** · **what has to change in what exists**.
 
-- **Dispatch this to sub-agents, in parallel, one area each** — the router's second behavioural
-  rule. Each returns findings with paths, not file contents. Reading three subsystems into your
+- **Where the change spans more than one area, dispatch this to sub-agents, in parallel, one
+  area each** — the router's second behavioural rule. Each returns findings with paths, not file
+  contents; a change that a few reads cover, you read yourself. Reading three subsystems into your
   own context to write four table rows is how a plan ends up written from a half-remembered read.
 - **Every claim carries a path, and you check the paths.** A claim nobody can locate is a rumour;
   its reader can neither verify nor use it.

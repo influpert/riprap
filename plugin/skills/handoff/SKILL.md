@@ -104,7 +104,10 @@ the approach that was approved, what was rejected on the way and why, the condit
 
 ### 3. Write it
 
-To `tmp/handoff/handoff-<YYYY-MM-DD>-<topic>.md`, replacing whatever was there:
+If this work already has a handoff — the one whose branch marker names this branch — rewrite
+that file in place and keep its name, even when its date is not today's: a second file for the
+same branch is two handoffs, and the hooks read only the newest. Otherwise create
+`tmp/handoff/handoff-<YYYY-MM-DD>-<topic>.md`:
 
 ```markdown
 # <topic>

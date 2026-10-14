@@ -46,13 +46,24 @@ default: one pass to find, one to confirm the fixes landed and to catch what the
 introduced. Beyond four, a loop is no longer converging on quality — it is grinding, and the
 tell is in the next section.
 
-**Confirm there is something to review.** Run `git status --short` and confirm a diff exists,
-or that the pull request has commits. A loop started against a clean tree produces a
+**Confirm there is something to review.** Check that the branch differs from its base —
+`git diff --stat "$(git merge-base origin/<base> HEAD)"..HEAD` prints something, or the pull
+request has commits. `git status --short` is not this check: it shows only uncommitted changes,
+so a branch whose work is all committed looks empty. A loop started against a clean tree produces a
 confident empty report on each pass, and an empty findings list reads as an endorsement.
+
+**On Claude Code, run the payload workflow when it is installed.** If
+`.claude/workflows/riprap-vet.js` exists in the repository, run it with `pr`, `repo` (the
+worktree's absolute path) and `branch`; it sequences this skill and keeps each turn in its own
+agent. It needs an open pull request. Without one, run `/riprap:review` once instead and stop:
+this loop pushes, and pushing a branch that has no pull request is the user's call.
 
 ## The cycle
 
-Each cycle is two turns, in this order, and they must not be collapsed into one.
+Each cycle is two turns, in this order, and they must not be collapsed into one. A turn here is
+a separate context, not a pause for the user: the workflow gives each its own agent, and without
+it, dispatch the remediation to its own sub-agent, or at least post the review before editing
+anything. Do not end your turn and wait between them.
 
 ### 1. Review
 
@@ -99,12 +110,11 @@ A separate turn, with the review's findings as input.
 **The disposition comment is owed even when nothing blocked.** A cycle finding only MINOR and
 NON-ISSUE — `interaction-preferences.md`'s lower classes — has no fixes to make, and it is tempting to skip the whole remediation turn —
 at which point the MINORs have been raised, deferred by omission, and recorded nowhere. Post
-the table anyway. This is not hypothetical: the first loop run against a real pull request
-did exactly that, and the deferrals had no destination until the handover picked them up.
+the table anyway; otherwise the deferrals have no destination until the handover picks them up.
 
 ## Stopping
 
-Three ways this ends, and only one of them is quiet.
+Four ways this ends, and only one of them is quiet.
 
 **Clean.** The verdict is `merge`, with nothing outstanding at BLOCKER or MAJOR in
 `interaction-preferences.md`'s scheme, and the intended number of cycles has run. Go to the

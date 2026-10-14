@@ -21,10 +21,6 @@ context on every step, and the only text that needs the depth is the text you fi
 Take an idea that is not yet a design, find out what the user actually wants through a
 structured interview, and hand over a design they have approved in plan mode.
 
-**Model**: use the most capable model available to you. The value of this skill is in the
-questions it decides not to ask and the approach it argues against; a smaller model asks
-everything and agrees with whatever was said last.
-
 **This skill designs. It never writes source.** Not a stub, not a prototype, not a scaffold
 "to make the idea concrete". A design that arrives with code attached has already been decided
 by the code, and the review becomes a review of the diff rather than of the idea.
@@ -108,9 +104,11 @@ directory that moved. Say so and ask again rather than guessing.
 
 ## Steps
 
-### 1. Enter plan mode before you read anything
+### 1. Enter plan mode before you research
 
-Call `EnterPlanMode` **first — before the first `Read`, `Grep` or `Glob`.** It restricts the
+Settle the stored answer above first: reading `riprap-skills.md` and writing a new answer to it
+are the only things this skill does outside plan mode. Then call `EnterPlanMode` **before the
+first `Read`, `Grep` or `Glob` of anything the idea touches.** It restricts the
 session to read-only tools, which is what makes *never writes source* mechanical rather than
 merely intended, and it puts the plan file — the only place this skill presents a design — in
 place before there is anything to present.
@@ -145,9 +143,10 @@ invented afresh is how `/riprap:architect` stops finding the design.
 
 ### 3. Research before the first question
 
-**Never ask what you could read.** Dispatch the exploration to sub-agents in parallel, one area
-each — the router's second behavioural rule — and have each return findings with paths, not file
-contents:
+**Never ask what you could read.** Where the idea spans more than one area, dispatch the
+exploration to sub-agents in parallel, one area each, and have each return findings with paths,
+not file contents; where a few reads cover it, read them yourself — the router's second
+behavioural rule. Either way, cover:
 
 - the code, docs and instructions the idea touches, and anything that already does part of it
 - recent history in those areas: what changed lately, and what was tried and reverted

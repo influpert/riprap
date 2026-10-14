@@ -20,6 +20,12 @@ choose. Do not replace it with a request for a typed number.
 The plugin root is available as `${CLAUDE_PLUGIN_ROOT}` on both supported plugin runtimes. Pass
 any user-requested `--force` or `--dry-run` option through to the installer.
 
+## 0. Refuse riprap's own source
+
+If `plugin/payload/MANIFEST` exists at the repository root, this is riprap's own source
+repository, which develops the payload and does not adopt it. Installing here drops seed stubs,
+git hooks and token-shaped test fixtures into its root. Say so and stop, whoever asked.
+
 ## 1. Copy the payload
 
 From the repository root, run:

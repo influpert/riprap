@@ -331,15 +331,12 @@ between a stale default and a deletion list.
    - Held back for review: 2
    ```
 
-7. **Ask for confirmation, one category at a time**
+7. **Ask for confirmation, one category at a time**, through the structured choice UI
+   defined in `interaction-preferences.md` — never a `[Y/n]` prompt to type back. One question
+   per category, naming the count, with the recommended option first: *delete all listed* ·
+   *choose which* · *keep all*. For example, "Delete the 9 merged branches listed above?"
 
-   ```
-   Delete 9 merged branches? [Y/n]
-   Delete 5 stale branches? [y/N]  (review the list first)
-   Delete 3 branches tracking a deleted remote? [Y/n]
-   ```
-
-   Suggested defaults, which the user can always override:
+   Recommended options, which the user can always override:
 
    - Merged: yes. The commits are in the base branch already.
    - Stale: no. Ask the user to read the list and name the ones to drop.
@@ -396,7 +393,9 @@ between a stale default and a deletion list.
    or unauthenticated, say so and finish with the branch report alone:
 
    ```bash
-   command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1
+   # The same check as category 3, for the same reason: `gh auth status` exits 0 on an
+   # invalid token. Where gh is unusable but the session has the GitHub MCP tools, use those.
+   command -v gh >/dev/null 2>&1 && gh api "repos/{owner}/{repo}" --jq .full_name >/dev/null 2>&1
    ```
 
    ```bash

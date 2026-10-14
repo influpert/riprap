@@ -380,7 +380,9 @@ The merge-base form, because both `git log` range forms report other people's me
 yours — git.md's Detection section has the precise reason and the rule that falls out of it.
 Once the pull request exists, `gh pr diff` is the source of truth instead.
 
-Then push. If a force is ever needed, `--force-with-lease` and never the plain form.
+Then push. Invoking this skill was the request for a pull request, so this push is asked for;
+"never push unasked" still holds for everything outside this run. If a force is ever needed,
+`--force-with-lease` and never the plain form.
 
 ### 8. Open the pull request
 
@@ -460,9 +462,10 @@ proceed · fix the lesser findings too, naming what that adds · proceed with th
 outstanding · stop, this needs a different plan. Gate 1 omits the third, per step 4.
 
 **"Unless the user decides otherwise", precisely.** The user may overrule any *finding*. Where
-they overrule one at the blocking tier, interaction-preferences.md's disagreement rule applies:
-ask once more, explicitly, then **record it** — in the decisions record and later in the body's
-disposition column, as dismissed by the user, with the reason. A finding dropped in silence is
+they overrule one at the blocking tier, push back once, explicitly — interaction-preferences.md,
+*Push back — never just agree* — and if they hold, **record it** — in the decisions record and later in the body's
+disposition column, as **Ignored — overruled by the user**, with their reason (the one case
+`/riprap:review`'s disposition table allows for a blocking finding to be Ignored). A finding dropped in silence is
 indistinguishable from one nobody made, which is the whole argument code-review.md makes for
 publishing them.
 
@@ -480,7 +483,7 @@ non-termination reason.
 - **The plan is the contract.** Deviation is a message, never a commit, and the plan document is
   never edited to match what got built.
 - **Tests first, and as their own commit.** Without that boundary gate 1 has no artifact.
-- **Three gates, three checkpoints, no gate twice.**
+- **Three gates, three checkpoints, at most two passes per gate.**
 - **A surprise file is a question**, not a hunk to stage.
 - **Verified or not claimed** — quote the command and its output, and treat a 127 as the absence
   of a test run rather than as a pass.

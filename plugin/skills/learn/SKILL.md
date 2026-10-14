@@ -1,6 +1,6 @@
 ---
 name: learn
-description: Review the current session and update the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) and .riprap/instructions/ with new learnings, patterns, or insights discovered. Use when the user runs /riprap:learn or asks to document what was learned this session.
+description: Review the current session and record what it taught — rules about this repository in .riprap/instructions/, preferences about how this user wants the agent to work in the host's memory. Use when the user runs /riprap:learn or asks to document what was learned this session.
 ---
 
 # Learn - Document Session Learnings
@@ -11,11 +11,18 @@ Before starting, check whether riprap's router is already in context. If not, re
 `${CLAUDE_PLUGIN_ROOT}/instructions/README.md`; this keeps the workflow correct when native
 lifecycle hooks are disabled or not yet trusted. Follow the router's document links on demand.
 
-Review the current session and update the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) with any new learnings, patterns, or insights discovered.
+Review the current session and record what it taught, where the next session will read it.
 
 ## Where lessons go
 
-**Always the project's own `.riprap/instructions/` — never riprap's.** riprap's guardrail
+**A rule about this repository goes in the project's own `.riprap/instructions/` — never in
+riprap's.** The active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md`
+on Codex) gets at most one line pointing at that directory, never the lesson itself. A
+preference about how this user wants the agent to work, anywhere, belongs in the host's memory
+instead: written into the repository it becomes a rule every other contributor must obey without
+knowing why (interaction-preferences.md, *Capturing feedback*).
+
+**Not into riprap's files.** riprap's guardrail
 documents ship inside the plugin and are replaced wholesale whenever it updates, so a lesson
 written there survives until the next `/plugin update` and not one minute longer. It will
 disappear without warning and without a diff, which is worse than never recording it.

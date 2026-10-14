@@ -250,7 +250,8 @@ published empty.
 
 Set every version file named in *What this needs to know*, in one commit. If those paths are review-
 gated — they usually are, and should be — the bump goes through a pull request like
-any other change. Wait for it to merge. Do not tag yet.
+any other change. A person merges it: hand the pull request over, keep the handoff current,
+and end the turn; resume at step 5 when they say it has merged. Do not tag yet.
 
 **Where the stored answer names a project script, run the script instead.** Setting the
 files is what it is for, and it is the only thing checking the version actually moves
@@ -259,7 +260,14 @@ the same number is how a bump lands half-applied.
 
 ### 5. Tag the commit that merged
 
-Tag the merge commit specifically, and immediately.
+**Stop before anything publishes.** Pushing the tag is the step that cannot be taken back,
+so show the user the merge commit, the CI result on that commit — read from the forge, and
+red or unreadable is a reason to stop, not to ask — and the exact command that will publish.
+Run it only on their explicit go-ahead in this session; where a project script publishes,
+offer to run it or hand them the command, whichever they prefer. With nobody to answer, stop
+here and say what is ready: publishing is never the reversible reading.
+
+Then tag the merge commit specifically, and without delay.
 
 A tag cut before the bump merges points at a commit that a squash-merge discards, and
 publishing from it builds the release out of a commit that is not on the base branch.

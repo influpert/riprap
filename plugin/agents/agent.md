@@ -48,9 +48,8 @@ see below.
   two human-only acts.** Bump the version and open the pull request, but do not merge it.
   Run everything up to `--finish` (or the equivalent publish command), but do not run that
   command yourself. Stop at each and report that the branch is ready for a human to take
-  that step — the skill's own text doesn't say this, because it assumes an interactive
-  session where a person is already watching; dispatched through this agent, nobody
-  necessarily is.
+  that step. The skill also stops before publishing, but there it asks a person to go
+  ahead; dispatched through this agent nobody necessarily can, so here the stop is final.
 
 ## Process
 
@@ -63,6 +62,8 @@ see below.
    above. If that check says to stop, stop there — do not invoke the skill. Otherwise,
    invoke that skill with the `Skill` tool on Claude Code. On Codex, read the registered
    `${CLAUDE_PLUGIN_ROOT}/skills/<name>/SKILL.md` file. Follow its process exactly on either
-   host — don't skip its gates or improvise around it.
+   host — don't skip its gates or improvise around it. Assume no answer can come back to you:
+   where the skill asks a question, take its no-answer branch (proceed and record, per the
+   router), and stop at every act the skill reserves for a person.
 4. If the role doesn't match any entry, say so, then complete the task directly using
    ordinary engineering judgment — do not invent or guess a skill.

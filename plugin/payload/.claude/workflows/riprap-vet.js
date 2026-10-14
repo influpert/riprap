@@ -323,8 +323,11 @@ restated here.
 
 Cycles run: ${history.length}. Final review: ${last?.verdict} — ${last?.blocking} blocking.
 
-DO NOT MERGE. Do not request a platform review, and do not write anything shaped like an
-approval; merge-gates.md forbids the last outright. Report the pull request's state and stop.
+Never merge. If a changed path is one merge-gates.md gates, run that document's hold sequence,
+which includes requesting the owner's review formally, and say in the handover that you did.
+Otherwise do not request a platform review. Never write anything shaped like an approval;
+merge-gates.md forbids it outright. If CI is red on the pull request, say what is failing. Report
+the pull request's state and stop.
 
 Return what you posted and the pull request's current state.`,
   { label: 'handover', phase: 'Handover' })

@@ -20,21 +20,21 @@ context on every step, and the only text that needs the depth is the text you fi
 
 Define new features through a structured 5-phase stakeholder interview. Challenge requests for value, redundancy, and complexity. Generate reviewable UI mockups, create a detailed feature document, and break the feature into phased work items for implementation planning.
 
-**Model**: Use Opus
+This is a planning-only, stakeholder-facing role: it defines, and it does not build. Write nothing outside `tmp/riprap/` — no source, no tests, no edits to existing files. Your job is to interview, challenge, research, document, and create work items.
 
-**IMPORTANT**: This is a planning-only, stakeholder-facing role. Do NOT implement any code changes, create source files, modify files, or write tests — **except** inside a scratch area for drafting feature documents and mockups. Your job is to interview, challenge, research, document, and create work items.
+**Where the output goes.** The feature document is `tmp/riprap/feature-<slug>.md`, which is where `/riprap:architect` looks for it; task notes and any mockup files go beside it. Before the first write, `git check-ignore -v tmp/riprap/feature-probe.md` must name a rule. If it prints nothing, ask the user where scratch should go rather than picking somewhere yourself.
 
 ## Steps (Single Run — Not a Loop)
 
 1. **Startup**: Begin the feature-definition workflow and announce that a stakeholder feature interview is starting.
 
-2. **Refresh and re-read**: Review the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex) and any relevant files in `.riprap/instructions/`, then re-read this skill file before proceeding so you are working from the current guidance.
+2. **Read the project's guidance**: the relevant files in `.riprap/instructions/`, and the active host's root instruction file (`CLAUDE.md` on Claude Code or `AGENTS.md` on Codex).
 
-3. **Greeting and context**: Ask the stakeholder for the feature name and a one-sentence description using the structured choice UI defined in `interaction-preferences.md`. Establish what prompted this request.
+3. **Greeting and context**: Ask the stakeholder for the feature name and a one-sentence description using the structured choice UI defined in `interaction-preferences.md`. Establish what prompted this request. Derive the slug from the feature name now — kebab-case, once — and use it for every file this run writes; `/riprap:architect` reuses it.
 
-4. **Phase 1 — Vision & Problem** (4-5 questions via that structured choice UI):
+4. **Phase 1 — Vision & Problem**:
 
-   Ask these questions one batch at a time using that structured choice UI. Adapt follow-ups based on answers.
+   **How every phase is asked.** One question at a time through that structured choice UI, each shaped by the last answer. The bullets in each phase are the themes to cover, not a quota: skip any the request or your research already settles, and say so in one line. The complexity gate and the 95% bar in `interaction-preferences.md` decide how many questions the feature is worth.
 
    - What specific problem does this feature solve? Who experiences this problem?
    - Who requested or reported this? (user feedback, business need, competitor gap, internal observation)
@@ -42,7 +42,7 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
    - What does success look like? Define a measurable outcome (metric, behavior change, revenue impact).
    - Is there an existing workaround users are using today? How painful is it?
 
-5. **Phase 2 — Users & Personas** (4-5 questions):
+5. **Phase 2 — Users & Personas**:
 
    - Which user type benefits most? (name the personas this project actually serves)
    - Describe the primary user journey step by step — from trigger to completion.
@@ -50,7 +50,7 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
    - Are there accessibility or localization requirements beyond the locales the project already supports?
    - How frequently will users interact with this feature? (daily, weekly, one-time setup)
 
-6. **Phase 3 — Scope & Boundaries** (4-5 questions):
+6. **Phase 3 — Scope & Boundaries**:
 
    Before asking, explore the codebase with `Grep` and `Glob` to identify existing features that might overlap.
 
@@ -62,17 +62,13 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
 7. **Challenge Checkpoint 1** — evaluate against the Challenge Framework (see below):
 
-   After Phase 3, run the 5-point evaluation. Present findings via **Plan Mode** so the stakeholder can review with inline comments:
+   After Phase 3, run the 5-point evaluation. Put each concern to the stakeholder as its own structured-choice question — the evidence, your recommendation first, and the options — so each one gets a decision that binds. This is a set of choices, not a plan, so it does not go through `ExitPlanMode`, which `interaction-preferences.md` reserves for a plan and its stress test.
 
-   1. Call `EnterPlanMode`.
-   2. Write the concerns, evidence, options per concern, and recommendations to the system-specified plan file.
-   3. Call `ExitPlanMode` and let the stakeholder review.
-
-   Do NOT write the concerns to the scratch area and open them for review in the editor — the editor has no inline-comment affordance.
+   Do not write the concerns to `tmp/riprap/` and open them in the editor for review — the editor has no inline-comment affordance.
 
    If no concerns found, acknowledge and proceed without Plan Mode. If stakeholder accepts concerns and proceeds despite risks, document each concern in the Risks section of the feature page.
 
-8. **Competitor Research**:
+8. **Competitor Research** — when the feature faces a market and web search is available in this session; for an internal tool, say so in one line and skip it:
 
    Ask the stakeholder which competitors or similar platforms they'd like to compare against. If they name specific ones, research those using `WebSearch`. If they don't have specific competitors in mind, use `WebSearch` to discover 3-5 similar products in this project's space.
 
@@ -83,17 +79,17 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
    Present the competitive analysis summary to the stakeholder.
 
-9. **Phase 4 — Integration & Dependencies** (4-5 questions):
+9. **Phase 4 — Integration & Dependencies**:
 
    Before asking, explore the relevant project structure and data model to understand the current architecture.
 
-   - Which existing models/tables does this feature touch? (Present findings from schema exploration)
+   - Which existing data — tables, schemas, stored files — does this feature touch? (Present findings from exploration)
    - Does this require new database tables or columns?
    - Does this need background jobs?
    - Does this integrate with external APIs or third-party services?
-   - Which existing controllers/views are affected?
+   - Which existing screens, endpoints or modules are affected?
 
-10. **Phase 5 — Constraints & Priorities** (4-5 questions):
+10. **Phase 5 — Constraints & Priorities**:
 
     - What is the desired timeline or deadline?
     - Are there hard technical constraints? (browser support, performance thresholds, data volume)
@@ -109,7 +105,7 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
     - Key risks and concerns (if any remain)
     - Confidence level that this delivers value
 
-    Call `EnterPlanMode` → write the summary + go/no-go question to the plan file → `ExitPlanMode` for stakeholder review.
+    Call `EnterPlanMode` → write the summary + go/no-go question to the plan file → run the plan stress test from `interaction-preferences.md` (the Challenge Framework's criteria make good critic angles; the devil's advocate is required on top) → `ExitPlanMode` for stakeholder review. On Codex, ask the user to select Plan mode first, as that file describes; the agent cannot switch modes itself.
 
 12. **UI Design Workflow**:
 
@@ -136,11 +132,11 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
     g. If "Request changes", iterate (max 3 rounds) until the design direction is agreed.
 
-    h. Record where the design lives — its link on the design surface, or its path in the scratch area — and, if step (a) skipped the design, record that decision and its reason instead. An undocumented skip is indistinguishable from the rule being forgotten.
+    h. Record where the design lives — its link on the design surface, or its path in `tmp/riprap/` — and, if step (a) skipped the design, record that decision and its reason instead. An undocumented skip is indistinguishable from the rule being forgotten.
 
 13. **Create the feature document**:
 
-    Write the feature document to the scratch area using the structure below. Capture the problem statement, user journey, scope, success metrics, acceptance criteria, risks, and where the design lives (or why none was needed) so it can be handed off to implementation or design stakeholders.
+    Write the feature document to `tmp/riprap/feature-<slug>.md` using the structure below. Capture the problem statement, user journey, scope, success metrics, acceptance criteria, risks, and where the design lives (or why none was needed) so it can be handed off to implementation or design stakeholders.
 
     Feature document structure:
 
@@ -192,7 +188,7 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
     | [name]   | Yes/No      | [notes]         | [notes] |
 
     ## Design
-    [Link to the design on its surface, or its path in the scratch area — or the recorded reason no design was needed]
+    [Link to the design on its surface, or its path in `tmp/riprap/` — or the recorded reason no design was needed]
 
     ## Risks & Concerns
     - [concern from challenge checkpoints, with stakeholder's response]
@@ -205,7 +201,7 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
 14. **Create tracking tasks** for Phase 1 (MVP):
 
-    Create one or more backlog tasks for the MVP work. Each task should include a clear description, acceptance criteria, dependencies, and an effort estimate. Save the task notes in the scratch area so they can be transferred into your project tracking system when needed.
+    Create one or more backlog tasks for the MVP work. Each task should include a clear description, acceptance criteria, dependencies, and an effort estimate. Save the task notes in `tmp/riprap/` so they can be transferred into your project tracking system when needed.
 
 15. **Summary to stakeholder**:
 
@@ -213,17 +209,16 @@ Define new features through a structured 5-phase stakeholder interview. Challeng
 
     | Item | Details |
     |------|---------|
-    | Feature Document | Saved in the scratch area |
+    | Feature Document | `tmp/riprap/feature-<slug>.md` |
     | Total Phases | [N] |
     | Phase 1 Tasks | [N] created for the MVP |
     | Overall Complexity | [S/M/L/XL] |
     | Priority | [P0-P3] |
     | Recommended First Task | [Task title] |
 
-    Then — ALWAYS, as the final interaction of the run — ask via that structured choice UI whether the created tasks should move to the next stage in your workflow or remain in backlog for later.
+    Then, as the final interaction of the run, name the next step — `/riprap:architect` over the feature document — and ask via that structured choice UI whether to start it now or leave the tasks for later.
 
-16. **Notify and exit**:
-    Record the completed feature-definition summary and exit the workflow.
+16. **Exit** with one line: `FEATURE: tmp/riprap/feature-<slug>.md — next: /riprap:architect`.
 
 ## Feature Acceptance Testing
 
@@ -233,7 +228,7 @@ When another agent or stakeholder reports that all tasks under a feature have be
 
 1. **Startup**: Begin the acceptance-testing workflow for the feature and confirm the current scope.
 
-2. **Refresh context**: Review the latest feature notes, acceptance criteria, and the approved design — on its surface, or from the scratch area.
+2. **Refresh context**: Review the latest feature notes, acceptance criteria, and the approved design — on its surface, or from `tmp/riprap/`.
 
 3. **Verify completion**: Confirm every task under the feature is marked as resolved before proceeding.
 
@@ -255,19 +250,19 @@ Before proceeding past Phase 3, evaluate every feature request against these cri
 | **Integration** | Does this fit naturally with the existing architecture? | Flag architectural friction, suggest ways to align |
 | **Market** | How do competitors handle this? | Present competitor approaches, validate our approach is differentiated |
 
-**Important**: Challenging does NOT mean blocking. The stakeholder has final say. But every concern must be documented in the feature page's Risks section, even if the stakeholder chooses to proceed.
+Challenging does not mean blocking. The stakeholder has final say. But every concern must be documented in the feature page's Risks section, even if the stakeholder chooses to proceed.
 
 ## Guidelines
 
-- **Planning only** — never create, modify, or delete source code. You MAY write files in a scratch area for feature documents, mockups, and task descriptions.
+- **Planning only** — never create, modify, or delete source code. Feature documents, mockups and task notes go under `tmp/riprap/`.
 - **Always challenge** — run the Challenge Framework after Phase 3. Never skip it.
 - **Document concerns even when overridden** — stakeholder's decision is final, but risks must be recorded.
-- **Ask, don't assume** — use the structured choice UI defined in `interaction-preferences.md` for every phase. Never fill in answers yourself.
-- **Research competitors** — use `WebSearch` to validate the feature direction. Ask the stakeholder first which competitors to focus on.
+- **Ask what you cannot read** — research first; ask through the structured choice UI defined in `interaction-preferences.md` only what the repository cannot settle, and never invent an answer the stakeholder did not give.
+- **Research competitors where there is a market** — use web search, when the session has it, to validate the feature direction. Ask the stakeholder first which competitors to focus on.
 - **MVP first** — Phase 1 tasks should be the smallest slice that delivers value.
 - **Acceptance criteria required** — every task must have clear, testable acceptance criteria.
 - **Link everything** — tasks reference the feature page, feature page lists its tasks.
 - **Design iteration limit** — max 3 rounds of revision to prevent scope creep in the interview.
 - **Invoked manually** — this workflow is started by a stakeholder, not spawned automatically by another agent.
 - **Respect existing patterns** — explore the codebase before proposing new patterns. Reuse what exists.
-- **Phased questions** — present questions in thematic batches (Vision, Users, Scope, Integration, Constraints), not all at once.
+- **Phased themes** — work through Vision, Users, Scope, Integration and Constraints in order, one question at a time.

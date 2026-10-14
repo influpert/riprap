@@ -456,7 +456,7 @@ landed, and *offer* `/riprap:prune` rather than running it.
 **Each gate: present, start, then offer** — interaction-preferences.md's "fix, then offer".
 Present the findings grouped by the classes that document defines, each carrying your proposed
 disposition, and **start on everything at the blocking tier in the same turn**, without asking
-which to fix, then offer the MINORs as that section describes. The one thing this skill adds to
+which to fix, then offer the MINORs as interaction-preferences.md describes. The one thing this skill adds to
 the offer: name what each finding would add to the diff, because that is the cost the user is
 choosing.
 

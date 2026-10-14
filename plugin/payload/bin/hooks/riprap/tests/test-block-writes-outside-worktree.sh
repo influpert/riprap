@@ -198,6 +198,20 @@ check "pushd in two levels, popd twice -> allow" 0 \
   "$(bash_in "$REPO" "pushd src; pushd $OTHER; popd; touch x")"
 check "...but an absolute write after a pushd is still checked -> block" 2 \
   "$(bash_in "$REPO" "pushd src && touch $OTHER/x")"
+check "a subshell's pushd does not reach the popd after it -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER; (pushd src; ls); popd; touch x")"
+check "...without the subshell, that popd lands outside -> block" 2 \
+  "$(bash_in "$REPO" "pushd $OTHER; pushd src; ls; popd; touch x")"
+check "a subshell's popd does not empty the stack outside it -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER; (popd); popd; touch x")"
+check "a popd inside a subshell uses the stack it inherited -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER; (popd; touch x)")"
+check "...without that popd, the subshell is still outside -> block" 2 \
+  "$(bash_in "$REPO" "pushd $OTHER; (touch x)")"
+check "a process substitution's pushd does not leak either -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER; diff <(pushd src) <(ls); popd; touch x")"
+check "a pushd out inside a subshell, then a relative write there -> block" 2 \
+  "$(bash_in "$REPO" "(pushd $OTHER; touch x)")"
 
 echo
 echo "--- A cd the hook cannot expand leaves relative targets unchecked, not refused ---"

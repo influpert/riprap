@@ -37,9 +37,9 @@
 # writes through its own flags (`git worktree add`, `curl -o`, a compiler's output
 # directory) is not parsed. `cd <dir>` and `pushd <dir>` are followed through a
 # command line, `popd` returns to where the matching `pushd` started, and a
-# parenthesised subshell restores the directory it started in; a `cd` or `pushd` the
-# hook cannot expand, and any other form of `pushd` or `popd`, leaves relative targets
-# after it unchecked. A quoted or escaped `>` (`grep '>' f`) is an argument, not a
+# parenthesised subshell or a process substitution restores both the directory and
+# the pushd stack it started with; a `cd` or `pushd` the hook cannot expand, and any
+# other form of `pushd` or `popd`, leaves relative targets after it unchecked. A quoted or escaped `>` (`grep '>' f`) is an argument, not a
 # redirection, and is not checked.
 #
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
@@ -296,6 +296,23 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   SAVED=()
   SAVED_LENS=()
   PROC_IS_REDIR=0
+  # A subshell, and so a process substitution, gets a copy of the pushd stack:
+  # what it pushes and pops is gone at its `)`. Each level's copy of PUSHED is
+  # kept in PUSHED_SAVED, its length in PUSHED_SAVED_LENS.
+  PUSHED_SAVED=()
+  PUSHED_SAVED_LENS=()
+  save_pushed() {
+    PUSHED_SAVED+=("${PUSHED[@]+"${PUSHED[@]}"}")
+    PUSHED_SAVED_LENS+=("${#PUSHED[@]}")
+  }
+  restore_pushed() {
+    local n="${PUSHED_SAVED_LENS[$((${#PUSHED_SAVED_LENS[@]} - 1))]}" j
+    unset 'PUSHED_SAVED_LENS[${#PUSHED_SAVED_LENS[@]}-1]'
+    PUSHED=()
+    j=$((${#PUSHED_SAVED[@]} - n))
+    while [ "$j" -lt "${#PUSHED_SAVED[@]}" ]; do PUSHED+=("${PUSHED_SAVED[$j]}"); j=$((j + 1)); done
+    while [ "$n" -gt 0 ]; do unset 'PUSHED_SAVED[${#PUSHED_SAVED[@]}-1]'; n=$((n - 1)); done
+  }
 
   # is_procsub K — whether tokens K and K+1 open a process substitution: an
   # unquoted `>` or `<` word straight before the `(` operator.
@@ -330,6 +347,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     # and read what is inside as commands of their own, in a subshell's directory.
     if [ "$op" -eq 0 ] && is_procsub "$i"; then
       STACK+=("$EFF")
+      save_pushed
       if [ "$PROC_IS_REDIR" -eq 1 ]; then KINDS+=(redir); else KINDS+=(proc); fi
       PROC_IS_REDIR=0
       SAVED+=("${SEG[@]+"${SEG[@]}"}")
@@ -366,13 +384,14 @@ if [ "$TOOL_NAME" = "Bash" ]; then
       fi
       SEG=()
       case "$t" in
-        "(") STACK+=("$EFF"); KINDS+=(sub) ;;
+        "(") STACK+=("$EFF"); KINDS+=(sub); save_pushed ;;
         ")")
           if [ "${#STACK[@]}" -gt 0 ]; then
             EFF="${STACK[$((${#STACK[@]} - 1))]}"
             unset 'STACK[${#STACK[@]}-1]'
             kind="${KINDS[$((${#KINDS[@]} - 1))]}"
             unset 'KINDS[${#KINDS[@]}-1]'
+            restore_pushed
             if [ "$kind" != sub ]; then
               # Put the enclosing command's words back. As an operand the
               # substitution is a /dev/fd path, which is not a file to check; as

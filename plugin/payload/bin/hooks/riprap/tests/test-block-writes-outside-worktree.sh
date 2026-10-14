@@ -129,6 +129,37 @@ check "2>| outside -> block" 2 "$(bash_in "$REPO" "make 2>| $OTHER/err")"
 check "...2>| inside -> allow" 0 "$(bash_in "$REPO" "make 2>| tmp/err")"
 
 echo
+echo "--- A process substitution is a command of its own, and an operand of the one around it ---"
+check "tee to a file outside, after a process substitution -> block" 2 \
+  "$(bash_in "$REPO" "echo hi | tee >(wc -l) $OTHER/log")"
+check "...the same tee, to a file inside -> allow" 0 "$(bash_in "$REPO" "echo hi | tee >(wc -l) tmp/log")"
+check "tee to a process substitution alone -> allow (/dev/fd is not a file)" 0 \
+  "$(bash_in "$REPO" "echo hi | tee >(wc -l)")"
+check "a write inside the process substitution -> block" 2 \
+  "$(bash_in "$REPO" "echo hi | tee >(cat > $OTHER/x) tmp/log")"
+check "...the same write, inside the worktree -> allow" 0 \
+  "$(bash_in "$REPO" "echo hi | tee >(cat > tmp/x) tmp/log")"
+check "cp from an input substitution to outside -> block" 2 "$(bash_in "$REPO" "cp <(echo x) $OTHER/y")"
+check "...to inside -> allow" 0 "$(bash_in "$REPO" "cp <(echo x) tmp/y")"
+check "redirect into a process substitution that writes outside -> block" 2 \
+  "$(bash_in "$REPO" "echo hi > >(tee $OTHER/z)")"
+check "redirect into a process substitution that writes inside -> allow" 0 \
+  "$(bash_in "$REPO" "echo hi > >(tee tmp/z)")"
+check "a redirected-to substitution is not an operand: cp keeps its destination -> block" 2 \
+  "$(bash_in "$REPO" "cp src/a.txt $OTHER/b > >(cat)")"
+check "...with the destination inside -> allow" 0 "$(bash_in "$REPO" "cp src/a.txt tmp/b > >(cat)")"
+check "nested substitutions keep each level's operands -> block" 2 \
+  "$(bash_in "$REPO" "tee >(tee >(wc -l) $OTHER/inner) tmp/outer")"
+check "...with both levels inside -> allow" 0 "$(bash_in "$REPO" "tee >(tee >(wc -l) tmp/inner) tmp/outer")"
+check "a cd inside a substitution does not leak out -> allow" 0 \
+  "$(bash_in "$REPO" "diff <(cd $OTHER && ls) <(ls); touch inside.txt")"
+check "...and does apply inside it -> block" 2 "$(bash_in "$REPO" "diff <(cd $OTHER && touch x) <(ls)")"
+check "a quoted > before a subshell is not a substitution -> block (the subshell still runs)" 2 \
+  "$(bash_in "$REPO" "echo '>'; (touch $OTHER/x)")"
+check "an unclosed substitution still checks what it holds -> block" 2 \
+  "$(bash_in "$REPO" "tee >(touch $OTHER/x")"
+
+echo
 echo "--- Bash commands that write ---"
 check "tee outside -> block" 2 "$(bash_in "$REPO" "echo hi | tee -a $OTHER/log")"
 check "tee inside -> allow" 0 "$(bash_in "$REPO" "echo hi | tee tmp/log")"

@@ -15,6 +15,9 @@
 #     before them or not, and the operands of tee,
 #     touch, mkdir, and the destination of cp / mv / install / ln. A bare `mktemp`
 #     writes to the system temporary directory, so it is a write outside too.
+#   - A process substitution, `>(cmd)` or `<(cmd)`, is a command of its own and is
+#     checked like any other. To the command around it, it is one operand that is not
+#     a file, so `tee >(wc -l) /tmp/x` still has /tmp/x as an operand.
 #
 # The boundary is the worktree that contains the project: `git rev-parse
 # --show-toplevel` of CLAUDE_PROJECT_DIR, which run-payload-hook has already pointed at
@@ -283,6 +286,24 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   STACK=()
   PUSHED=()
   SEG=()
+  # Parallel to STACK: what opened each parenthesis. `sub` is a subshell; `proc` is a
+  # process substitution standing as an operand, and `redir` one standing as a
+  # redirection target. A process substitution sits inside the command that uses it,
+  # so that command's words so far are set aside in SAVED (SAVED_LENS says how many
+  # each level took) and put back at the `)`. Two flat arrays because bash 3.2 has
+  # no arrays of arrays.
+  KINDS=()
+  SAVED=()
+  SAVED_LENS=()
+  PROC_IS_REDIR=0
+
+  # is_procsub K — whether tokens K and K+1 open a process substitution: an
+  # unquoted `>` or `<` word straight before the `(` operator.
+  is_procsub() {
+    [ "$(($1 + 1))" -lt "$N" ] && [ "${OPS[$1]}" -eq 0 ] && [ "${QUOTED[$1]}" -eq 0 ] \
+      && { [ "${TOKS[$1]}" = ">" ] || [ "${TOKS[$1]}" = "<" ]; } \
+      && [ "${TOKS[$(($1 + 1))]}" = "(" ] && [ "${OPS[$(($1 + 1))]}" -eq 1 ]
+  }
 
   # follow_cd DEST — move EFF the way `cd DEST` would. Relative to an unknown or
   # missing directory, the result is still that. Otherwise expand it, and a
@@ -304,6 +325,19 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   i=0
   while [ "$i" -le "$N" ]; do
     if [ "$i" -lt "$N" ]; then t="${TOKS[$i]}"; op="${OPS[$i]}"; else t=";"; op=1; fi
+
+    # A process substitution opens: set the enclosing command aside, unfinished,
+    # and read what is inside as commands of their own, in a subshell's directory.
+    if [ "$op" -eq 0 ] && is_procsub "$i"; then
+      STACK+=("$EFF")
+      if [ "$PROC_IS_REDIR" -eq 1 ]; then KINDS+=(redir); else KINDS+=(proc); fi
+      PROC_IS_REDIR=0
+      SAVED+=("${SEG[@]+"${SEG[@]}"}")
+      SAVED_LENS+=("${#SEG[@]}")
+      SEG=()
+      i=$((i + 2))
+      continue
+    fi
 
     if [ "$op" -eq 1 ]; then
       # End of a simple command: follow a directory change, or check its writes.
@@ -332,11 +366,26 @@ if [ "$TOOL_NAME" = "Bash" ]; then
       fi
       SEG=()
       case "$t" in
-        "(") STACK+=("$EFF") ;;
+        "(") STACK+=("$EFF"); KINDS+=(sub) ;;
         ")")
           if [ "${#STACK[@]}" -gt 0 ]; then
             EFF="${STACK[$((${#STACK[@]} - 1))]}"
             unset 'STACK[${#STACK[@]}-1]'
+            kind="${KINDS[$((${#KINDS[@]} - 1))]}"
+            unset 'KINDS[${#KINDS[@]}-1]'
+            if [ "$kind" != sub ]; then
+              # Put the enclosing command's words back. As an operand the
+              # substitution is a /dev/fd path, which is not a file to check; as
+              # a redirection target it is not an operand at all.
+              n="${SAVED_LENS[$((${#SAVED_LENS[@]} - 1))]}"
+              unset 'SAVED_LENS[${#SAVED_LENS[@]}-1]'
+              j=$((${#SAVED[@]} - n))
+              while [ "$j" -lt "${#SAVED[@]}" ]; do SEG+=("${SAVED[$j]}"); j=$((j + 1)); done
+              while [ "$n" -gt 0 ]; do unset 'SAVED[${#SAVED[@]}-1]'; n=$((n - 1)); done
+              [ "$kind" = redir ] || SEG+=("/dev/fd/63")
+              i=$((i + 1))
+              continue
+            fi
           fi
           ;;
       esac
@@ -348,7 +397,11 @@ if [ "$TOOL_NAME" = "Bash" ]; then
     # Redirections and their targets are kept out of the command's words, so
     # `echo hi >f` has no operand f.
     if [ "${QUOTED[$i]}" -eq 0 ] && [[ "$t" =~ $REDIR_RE ]]; then
-      if [ "$((i + 1))" -lt "$N" ] && [ "${OPS[$((i + 1))]}" -eq 0 ]; then
+      if is_procsub "$((i + 1))"; then
+        # `> >(cmd)`: the target is a command, checked when the loop reaches it.
+        PROC_IS_REDIR=1
+        i=$((i + 1))
+      elif [ "$((i + 1))" -lt "$N" ] && [ "${OPS[$((i + 1))]}" -eq 0 ]; then
         check_target "${TOKS[$((i + 1))]}" "$EFF"
         i=$((i + 2))
       elif [ "$((i + 1))" -lt "$N" ] && [ "${TOKS[$((i + 1))]}" = "&" ]; then
@@ -357,7 +410,7 @@ if [ "$TOOL_NAME" = "Bash" ]; then
         i=$((i + 2))
         if [ "$i" -lt "$N" ] && [ "${OPS[$i]}" -eq 0 ]; then i=$((i + 1)); fi
       else
-        # Followed by some other operator (`>(cmd)`): nothing to check here.
+        # Followed by some other operator: nothing to check here.
         i=$((i + 1))
       fi
       continue

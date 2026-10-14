@@ -71,6 +71,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # walk_commands and WALK_UNKNOWN.
 # shellcheck source=../lib/shell-walk.sh
 . "$SCRIPT_DIR/../lib/shell-walk.sh"
+# shell_tool and shell_tool_text: which tools run a shell command, and their text.
+# shellcheck source=../lib/shell-tools.sh
+. "$SCRIPT_DIR/../lib/shell-tools.sh"
 
 # The host's state directory, for plans and memory. Two subdirectories rather than the
 # whole of it: the rest holds settings, and a hook that waved writes to the permission
@@ -110,10 +113,17 @@ INPUT=$(cat)
 TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty')
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 
-case "$TOOL_NAME" in
-  Write | Edit | NotebookEdit | Bash) ;;
-  *) exit 0 ;;
-esac
+# Bash, PowerShell or a Monitor: all three run a shell command, and a redirect
+# through either of the others writes where it would through Bash.
+SHELL_TOOL=0
+if shell_tool "$TOOL_NAME"; then
+  SHELL_TOOL=1
+else
+  case "$TOOL_NAME" in
+    Write | Edit | NotebookEdit) ;;
+    *) exit 0 ;;
+  esac
+fi
 
 # --- the boundary ------------------------------------------------------------
 
@@ -229,7 +239,7 @@ check_target() {
 
 # --- file tools ---------------------------------------------------------------
 
-if [ "$TOOL_NAME" != "Bash" ]; then
+if [ "$SHELL_TOOL" -eq 0 ]; then
   FILE_PATH=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // empty')
   [ -n "$FILE_PATH" ] || exit 0
   check_target "$FILE_PATH" "$CWD"
@@ -321,9 +331,15 @@ on_command() {
   return 0
 }
 
-if [ "$TOOL_NAME" = "Bash" ]; then
+if [ "$SHELL_TOOL" -eq 1 ]; then
   COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
   [ -n "$COMMAND" ] || exit 0
+  # A PowerShell line continuation is joined as PowerShell joins it, or the target
+  # on the second line is a command of its own. Any other backtick is read with
+  # bash's grammar and refused for nothing: a `n in a Write-Host string is everyday
+  # PowerShell, and refusing it would stop work that writes nothing.
+  shell_tool_text "$TOOL_NAME" "$COMMAND"
+  COMMAND="$SHELL_TEXT"
 
   # The walk splits redirections out the way the shell reads them, so `echo
   # hi>/tmp/x` writes /tmp/x and `cp a OUT<in` copies to OUT; it keeps a quoted `>`

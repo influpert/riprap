@@ -2,8 +2,8 @@
 # PreToolUse hook: secret hygiene. Three surfaces, three checks.
 #   - Read/Grep on a secret-bearing file or directory, or a Grep whose glob or
 #     ignored path reaches one                      -> block
-#   - Bash command that reads a secret-bearing file, by naming it or by a
-#     recursive search that reaches one             -> block
+#   - Shell command (Bash, PowerShell or a Monitor) that reads a secret-bearing
+#     file, by naming it or by a recursive search that reaches one -> block
 #   - Edit/Write content containing a token value -> block
 #
 # The rule this enforces: anything that enters a session is transmitted to the
@@ -25,6 +25,9 @@ set -eu
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/secret-patterns.sh
 source "$SCRIPT_DIR/../lib/secret-patterns.sh"
+# shell_tool and shell_tool_text: which tools run a shell command, and their text.
+# shellcheck source=../lib/shell-tools.sh
+source "$SCRIPT_DIR/../lib/shell-tools.sh"
 
 # jq is a hard dependency: the tool payload arrives as JSON on stdin and there is
 # no way to read it without one. Absent, this hook would exit 127 — which Claude
@@ -250,7 +253,12 @@ block_search() {
   exit 2
 }
 
-case "$TOOL_NAME" in
+# PowerShell and a Monitor run a shell command as Bash does, and are read as Bash
+# is; matched on Bash alone, the same `cat .env` through either was never looked at.
+SURFACE="$TOOL_NAME"
+! shell_tool "$TOOL_NAME" || SURFACE=Bash
+
+case "$SURFACE" in
   Read|Grep)
     TARGET=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty')
     # The path is judged as a Bash argument is: where it resolves from the call's
@@ -274,6 +282,12 @@ case "$TOOL_NAME" in
   Bash)
     COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
     [ -n "$COMMAND" ] || exit 0
+    # A PowerShell line continuation is joined as PowerShell joins it. Any other
+    # backtick is read with bash's grammar and refused for nothing: a `n in a
+    # Write-Host string is everyday PowerShell, and refusing it would stop work
+    # that reads nothing. What that misreads is a slip this hook can miss.
+    shell_tool_text "$TOOL_NAME" "$COMMAND"
+    COMMAND="$SHELL_TEXT"
     if secret_command_touches_env "$COMMAND" "$CWD"; then
       if [ "$SECRET_HIT_KIND" = search ]; then
         block_search

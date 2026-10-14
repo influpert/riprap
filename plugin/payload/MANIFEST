@@ -49,6 +49,7 @@ namespaced	bin/hooks/riprap/lib/hook-common.sh
 namespaced	bin/hooks/riprap/lib/merge-gate-patterns.sh
 namespaced	bin/hooks/riprap/lib/secret-patterns.sh
 namespaced	bin/hooks/riprap/lib/secret-reads.sh
+namespaced	bin/hooks/riprap/lib/shell-tools.sh
 namespaced	bin/hooks/riprap/lib/shell-walk.sh
 namespaced	bin/hooks/riprap/lib/shell-words.sh
 namespaced	bin/hooks/riprap/lib/stress-test-patterns.sh

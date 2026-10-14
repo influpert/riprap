@@ -599,6 +599,54 @@ EXPECT="$A||6" check "the same Monitor, harmless -> allow" 0 \
   "$(cmd_at "$A" Monitor 'until gh pr checks 5; do sleep 30; done; gh pr merge 5 --squash')"
 check "a Monitor on a WebSocket, with no command -> allow" 0 \
   "$(jq -cn --arg d "$A" '{tool_name: "Monitor", cwd: $d, tool_input: {ws: {url: "wss://example.com/merge"}, description: "merge events"}}')"
+# Push-Location is PowerShell's pushd, and moves the merge as Set-Location does. The
+# harmless twin proves which directory was asked: before, the merge was looked up
+# where the command started.
+EXPECT="$B||5" check "PowerShell Push-Location, then a merge -> where it went" 2 \
+  "$(cmd_at "$A" PowerShell "Push-Location $B; gh pr merge 5")"
+EXPECT="$A||5" check "... and not where the command started" 0 \
+  "$(cmd_at "$A" PowerShell "Push-Location -Path $B; gh pr merge 5")"
+EXPECT="$B||5" check "Pop-Location, which this gate does not follow, then a merge -> block" 2 \
+  "$(cmd_at "$A" PowerShell "Push-Location $B; Pop-Location; gh pr merge 5")"
+
+echo
+echo "--- A PowerShell line continuation is one command ---"
+# A backtick at the end of a line is PowerShell's line continuation. Read with
+# bash's grammar it opens a command substitution, so the merge and its next line
+# came apart: the flag on the second line was never seen, and a number there left
+# the merge with none, which gh would not have done.
+BT='`'
+EXPECT="nothing" check "--admin on a continuation line -> block" 2 \
+  "$(cmd_at "$A" PowerShell "gh pr merge 5 $BT${NL}  --admin")"
+EXPECT="nothing" check "--auto after a number on a continuation line -> block" 2 \
+  "$(cmd_at "$A" PowerShell "gh pr merge $BT${NL}  5 --auto")"
+EXPECT="$A||5" check "the number on a continuation line -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell "gh pr merge $BT${NL}  5 --squash")"
+EXPECT="$A||5" check "a Windows line ending after the backtick -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell "gh pr merge $BT"$'\r'"${NL}  5 --squash")"
+EXPECT="$A||6" check "the same continuation, harmless -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "gh pr merge $BT${NL}  5 --squash")"
+# Through Bash the same backtick opens a substitution, and what is in it runs as a
+# command of its own: gh is never handed --admin there. Joined as PowerShell's, it
+# would be, and refused.
+EXPECT="nothing" check "a backtick-newline through Bash is Bash's substitution, so --admin is not gh's -> allow" 0 \
+  "$(cmd_at "$A" Bash "gh pr merge 6 $BT${NL}--admin$BT")"
+
+echo
+echo "--- Any other backtick in a PowerShell merge is refused unread ---"
+# PowerShell reads every other backtick as an escape of the next character; bash's
+# grammar reads it as a command substitution. A merge beside one is not read the
+# way PowerShell runs it: an escaped quote opens a string to bash that PowerShell
+# never opened, and the merge after it vanished into that string.
+EXPECT="$A||5" check "a merge beside a backtick escape -> block, though harmless" 2 \
+  "$(cmd_at "$A" PowerShell "Write-Host \"merging${BT}n\"; gh pr merge 6 --squash")"
+EXPECT="nothing" check "a merge hidden from bash's grammar by an escaped quote -> block" 2 \
+  "$(cmd_at "$A" PowerShell "echo ${BT}\"; gh pr merge 6 --squash")"
+check_contains "... saying it could not check it" "could not check" \
+  "$(cmd_at "$A" PowerShell "echo ${BT}\"; gh pr merge 6 --squash")"
+check_contains "... and why" "backtick" "$(cmd_at "$A" PowerShell "echo ${BT}\"; gh pr merge 6 --squash")"
+EXPECT="nothing" check "a backtick escape with no merge in the command -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "git merge main; Write-Host \"merged${BT}n\"")"
 
 echo
 echo "--- The MCP merge tool, as other servers spell it ---"

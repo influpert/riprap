@@ -59,6 +59,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../lib/merge-gate-patterns.sh"
 # shellcheck source=../lib/shell-words.sh
 . "$SCRIPT_DIR/../lib/shell-words.sh"
+# shellcheck source=../lib/shell-tools.sh
+. "$SCRIPT_DIR/../lib/shell-tools.sh"
 
 # jq is a hard dependency: the tool payload arrives as JSON on stdin and there is
 # no way to read it without one. Absent, this hook would exit 127 — which Claude
@@ -291,8 +293,6 @@ TARGETS=()       # one "dir<TAB>repo<TAB>selector" per merge found
 SHELL_TOOL=0
 
 case "$TOOL_NAME" in
-  # The three tools that run a shell command, all with it in tool_input.command.
-  Bash | PowerShell | Monitor) SHELL_TOOL=1 ;;
   mcp__?*__enable_pr_auto_merge)
     refuse_auto "$TOOL_NAME" "${TOOL_NAME%__enable_pr_auto_merge}__merge_pull_request"
     ;;
@@ -311,13 +311,21 @@ case "$TOOL_NAME" in
     mcp_host "$owner" "$repo" "$pull"
     TARGETS=("$START_DIR"$'\t'"${MCP_HOST:+$MCP_HOST/}$owner/$repo"$'\t'"$pull")
     ;;
-  *) exit 0 ;;
+  # The three tools that run a shell command, all with it in tool_input.command
+  # (lib/shell-tools.sh), and nothing else.
+  *) shell_tool "$TOOL_NAME" || exit 0; SHELL_TOOL=1 ;;
 esac
 
 if [ "$SHELL_TOOL" -eq 1 ]; then
   # A Monitor watching a WebSocket has no command, and runs nothing.
   COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
   [ -n "$COMMAND" ] || exit 0
+  # A PowerShell line continuation is joined as PowerShell joins it: read as bash,
+  # `gh pr merge 5 `<newline>--admin` was a merge with no --admin. Any other
+  # backtick left in a PowerShell merge is refused below, once the walk has said
+  # whether there is a merge in it.
+  shell_tool_text "$TOOL_NAME" "$COMMAND"
+  COMMAND="$SHELL_TEXT"
 
   # Only a merge is our business. A command that does not even contain the word
   # passes before anything is parsed; every other command is parsed below and
@@ -1059,7 +1067,8 @@ simple_command() {
   local argv0="${w[$k]##*/}" a j
 
   case "$argv0" in
-    cd | pushd | Set-Location | sl | chdir)
+    # PowerShell's own names, beside its aliases cd, chdir, sl and pushd.
+    cd | pushd | Set-Location | sl | chdir | Push-Location)
       local t="" dir
       j=$((k + 1))
       while [ "$j" -lt "$n" ]; do
@@ -1074,7 +1083,7 @@ simple_command() {
       DIRS[$top]="$dir"
       return 0
       ;;
-    popd) DIRS[$top]="?"; return 0 ;;
+    popd | Pop-Location) DIRS[$top]="?"; return 0 ;;
     export | declare | typeset)
       # declare and typeset export only with -x. PowerShell's $env: is below.
       local exported=1
@@ -1298,6 +1307,20 @@ walk() {
 # merge arrived with its target already in TARGETS and skips straight to the
 # lookup below.
 [ "$SHELL_TOOL" -eq 0 ] || walk "$COMMAND"
+
+# A backtick left in a PowerShell command, once its continuations are joined, is
+# PowerShell's escape of the next character, and the start of a substitution to the
+# grammar the walk reads. The walk's reading of that command is not PowerShell's:
+# an escaped quote opens a string to bash that PowerShell never opens, and the
+# merge after it vanishes into the string. So a merge seen either way, by the walk
+# or as text, is refused unread. A command with no merge in it passes, backtick or
+# not: refusing every `n in a Write-Host string would refuse PowerShell's own idiom.
+if [ "$SHELL_STRAY_BACKTICK" -eq 1 ] && { [ "${#TARGETS[@]}" -gt 0 ] || merge_text "$COMMAND"; }; then
+  unverifiable "it is a PowerShell command with a backtick in it that is not a line continuation. PowerShell reads that backtick as an escape, and the shell grammar this gate reads commands with reads it as the start of another command, so what this gate would check is not what PowerShell runs." \
+"  Run the merge as a PowerShell command of its own, with no backtick in it:
+  gh pr merge <number>, with --repo <owner>/<repo> for another repository.
+  A line that ends in a backtick is fine; this gate joins it as PowerShell does."
+fi
 
 [ "${#TARGETS[@]}" -gt 0 ] || exit 0
 

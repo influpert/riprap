@@ -25,10 +25,10 @@ format what you just wrote, keep the handoff current, and mark the end of a sess
 | Hook | Runs on | What it does | Can block |
 |---|---|---|---|
 | session start | startup, resume, clear, compact, fork | Injects the router — the rules and the task-to-document map, plus the path of the current handoff. On `resume` and `fork` the context already holds it, so those get a pointer instead | no |
-| secret hygiene | Bash, Read, Grep, Edit, Write | Refuses a read of a secret-bearing file — by name, or by a recursive search that would reach one — and a write whose content matches a credential pattern | **yes** |
-| destructive-command blocker | Bash | Refuses `rm`, `find -delete`, `git clean -f` or `git reset --hard` whose target lands outside the worktree the session is working in, caches and `/tmp` included, after any `cd` and behind any prefix; the rule is in `git.md` | **yes** |
+| secret hygiene | Bash, PowerShell, Monitor, Read, Grep, Edit, Write | Refuses a read of a secret-bearing file — by name, or by a recursive search that would reach one — and a write whose content matches a credential pattern | **yes** |
+| destructive-command blocker | Bash, PowerShell, Monitor | Refuses `rm`, `find -delete`, `git clean -f` or `git reset --hard` whose target lands outside the worktree the session is working in, caches and `/tmp` included, after any `cd` and behind any prefix; the rule is in `git.md` | **yes** |
 | merge gate | Bash, PowerShell, Monitor, and the GitHub MCP server's merge and auto-merge tools | Refuses an autonomous merge of a security-sensitive change, whether through `gh pr merge`, a REST call or MCP — and refuses `--admin` and auto-merge on every pull request | **yes** |
-| worktree boundary | Bash, Edit, Write, NotebookEdit | Refuses a write whose target lands outside the worktree — a file nothing will clean up | **yes** |
+| worktree boundary | Bash, PowerShell, Monitor, Edit, Write, NotebookEdit | Refuses a write whose target lands outside the worktree — a file nothing will clean up | **yes** |
 | tech footprint | Write | Refuses a file whose language or toolchain nothing in the repository already uses | **yes** |
 | plan stress test | ExitPlanMode | Refuses to exit plan mode below a minimum floor of dispatched critic sub-agents — three for a session's first plan, the devil's advocate alone for each plan after it | **yes** |
 | format on write | Edit, Write | Runs `bin/format` on the file just written | no |
@@ -77,9 +77,11 @@ them; riprap does not rewrite global Codex configuration to bypass that decision
 gate's second matcher, for the GitHub MCP merge tools, is a regular expression over
 `mcp__<server>__<tool>` names as Claude Code documents them. Nobody has confirmed that Codex
 names and matches MCP tools the same way, so on Codex only the merge gate's Bash half is known
-to hold. Its first matcher names `PowerShell` and `Monitor` beside `Bash`: Claude Code's other
-two tools that run a shell command, which have no confirmed Codex equivalent and never fire
-there.
+to hold. Every hook that reads a shell command — secret hygiene, the destructive-command
+blocker, the merge gate and the worktree boundary — names `PowerShell` and `Monitor` beside
+`Bash`: Claude Code's other two tools that run a shell command, which have no confirmed Codex
+equivalent and never fire there. On Claude Code a PowerShell command is read with the same shell
+grammar as a Bash one, its backtick line continuations joined first as PowerShell joins them.
 
 Those are the paths for a rule *you* write. riprap's own live one level down, under
 `bin/hooks/riprap/`, which is replaced wholesale on every install — so nothing you write
@@ -138,10 +140,10 @@ would block far more than the guardrail it exists to enforce, which is a worse o
 a reminder that never arrives.
 
 **The worktree boundary fails closed even though it guards neither a behavioural nor a critical
-rule, and the reason is that it costs nothing.** It fires on Bash, Edit and Write — the same
-tools secret hygiene already refuses without `jq` — so failing open would let through no call
-that is not already blocked, and would leave the one hook that can tell where a write lands
-silent in exactly the state where nothing else is checking.
+rule, and the reason is that it costs nothing.** It fires on Bash, PowerShell, Monitor, Edit and
+Write — the same tools secret hygiene already refuses without `jq` — so failing open would let
+through no call that is not already blocked, and would leave the one hook that can tell where a
+write lands silent in exactly the state where nothing else is checking.
 
 **Scanning strategy is part of the rule, not an implementation detail.** Secrets are scanned
 on *added lines only*: a secret already committed is a rotation problem, not a reason to

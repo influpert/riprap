@@ -509,6 +509,51 @@ check "Edit tool -> allow" 0 \
   '{"tool_name":"Edit","tool_input":{"file_path":"/etc/hosts","new_string":"rm -rf /"}}'
 
 echo
+echo "--- PowerShell and Monitor run shell commands too ---"
+# Both carry the command in tool_input.command, as Bash does. This hook answered to
+# Bash alone, so the same deletion, run through either, was never looked at.
+cmd_in() {  # TOOL CWD COMMAND
+  jq -nc --arg t "$1" --arg d "$2" --arg c "$3" '{tool_name:$t,cwd:$d,tool_input:{command:$c}}'
+}
+check "PowerShell rm outside -> block" 2 "$(cmd_in PowerShell "$WORK" "rm -rf $OTHER/data")"
+check "PowerShell git reset --hard in another checkout -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "git -C $OTHER reset --hard")"
+check "PowerShell rm inside -> allow" 0 "$(cmd_in PowerShell "$WORK" "rm -rf ./build")"
+check "Monitor rm outside -> block" 2 "$(cmd_in Monitor "$WORK" "sleep 600; rm -rf $OTHER/data")"
+check "Monitor rm inside -> allow" 0 "$(cmd_in Monitor "$WORK" "sleep 600; rm -rf ./build")"
+check "a Monitor with no command -> allow" 0 \
+  "$(jq -nc --arg d "$WORK" '{tool_name:"Monitor",cwd:$d,tool_input:{ws:{url:"wss://example.com"}}}')"
+check "PowerShell with no cwd + rm -> block (fails closed as Bash does)" 2 \
+  "$(jq -nc --arg c "rm -f notes.txt" '{tool_name:"PowerShell",tool_input:{command:$c}}')"
+
+echo
+echo "--- A PowerShell line continuation is one command ---"
+# A backtick at the end of a line is PowerShell's line continuation. Read with
+# bash's grammar it opens a command substitution, which split the command in two:
+# the target, or the flag that makes it destructive, landed in a second command
+# of its own and was never checked.
+BT='`'
+NL=$'\n'
+check "the target on a continuation line -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "rm -rf $BT$NL  $OTHER/data")"
+check "the flag that destroys on a continuation line -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "git -C $OTHER clean $BT$NL  -fdx")"
+check "a Windows line ending after the backtick -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "rm -rf $BT"$'\r'"$NL  $OTHER/data")"
+check "a continuation inside the worktree -> allow" 0 \
+  "$(cmd_in PowerShell "$WORK" "rm -rf $BT$NL  ./build")"
+# Through Bash the same backtick opens a substitution, whose rm runs. Joined as
+# PowerShell's, it would be an echo's argument.
+check "a backtick-newline through Bash is still Bash's substitution -> its rm is read" 2 \
+  "$(cmd_in Bash "$WORK" "echo $BT$NL  rm -rf $OTHER/data$BT")"
+# Any other backtick is PowerShell's escape. It is left as it is, and refused for
+# nothing: the hook reads what it can around it.
+check "a backtick escape in a string, then an rm inside -> allow" 0 \
+  "$(cmd_in PowerShell "$WORK" "Write-Host \"cleaning${BT}n\"; rm -rf ./build")"
+check "a backtick escape in a string, then an rm outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "rm -rf $OTHER/data; Write-Host \"done${BT}n\"")"
+
+echo
 echo "--- The block message has to explain itself ---"
 check_contains "names the offending path" "$OTHER" \
   "{\"tool_name\":\"Bash\",\"cwd\":\"$WORK\",\"tool_input\":{\"command\":\"rm -rf $OTHER/.git\"}}"

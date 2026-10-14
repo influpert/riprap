@@ -50,8 +50,8 @@ fi
 # half of the merge gate still holds there.
 #
 # PowerShell and Monitor are Claude Code's other two tools that run a shell command, added
-# for the merge gate on the same basis: Claude Code names them so, and a Codex install that
-# has no tool by either name never fires the matcher.
+# beside Bash for every hook that reads one, on the same basis: Claude Code names them so,
+# and a Codex install that has no tool by either name never fires the matcher.
 jq -e '
   def events: ["SessionStart", "PreToolUse", "PostToolUse", "PreCompact", "Stop", "SessionEnd"];
   def matchers: ["startup", "resume", "clear", "compact", "fork", "Bash", "Read", "Grep",

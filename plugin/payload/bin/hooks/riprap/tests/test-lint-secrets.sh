@@ -805,6 +805,49 @@ run_back "the find exclusion is accepted" 's/^ *\(find .*-prune.*\)$/\1/p' \
   "$(bash_in "$PROJ" 'find . -type f -exec grep -l API_KEY {} +')" bash_in "$PROJ"
 
 echo
+echo "--- PowerShell and Monitor run shell commands too ---"
+# Both carry the command in tool_input.command, as Bash does. This hook answered to
+# Bash, Read, Grep, Edit and Write, so a read of .env through either was never
+# looked at. Get-Content is on no list, and is presumed to read what it names, as
+# any command is.
+cmd_in() {  # TOOL CWD COMMAND
+  jq -cn --arg t "$1" --arg d "$2" --arg c "$3" '{tool_name:$t,cwd:$d,tool_input:{command:$c}}'
+}
+check "PowerShell Get-Content .env -> block" 2 "$(cmd_in PowerShell "$PROJ" 'Get-Content .env')"
+check "PowerShell cat .env -> block" 2 "$(cmd_in PowerShell "$PROJ" 'cat .env')"
+check "PowerShell Get-Content .env.example -> allow" 0 "$(cmd_in PowerShell "$PROJ" 'Get-Content .env.example')"
+check "PowerShell rg -uu -> block (a search that reaches .env)" 2 "$(cmd_in PowerShell "$PROJ" 'rg -uu API_KEY')"
+check "Monitor tail -f .env -> block" 2 "$(cmd_in Monitor "$PROJ" 'tail -f .env')"
+check "Monitor tail -f on a log -> allow" 0 "$(cmd_in Monitor "$PROJ" 'tail -f src/app.ts')"
+check "a Monitor with no command -> allow" 0 \
+  "$(jq -cn --arg d "$PROJ" '{tool_name:"Monitor",cwd:$d,tool_input:{ws:{url:"wss://example.com"}}}')"
+
+echo
+echo "--- A PowerShell line continuation is one command ---"
+# A backtick at the end of a line is PowerShell's line continuation. Read with
+# bash's grammar it opens a command substitution, which split the command in two:
+# the file, or the flag that takes a search past .gitignore, landed in a second
+# command of its own and was never read as the reader's.
+BT='`'
+NL=$'\n'
+check "the file on a continuation line -> block" 2 \
+  "$(cmd_in PowerShell "$PROJ" "Get-Content $BT$NL  .env")"
+check "the flag that reaches .env on a continuation line -> block" 2 \
+  "$(cmd_in PowerShell "$PROJ" "rg API_KEY $BT$NL  -uu")"
+check "a Windows line ending after the backtick -> block" 2 \
+  "$(cmd_in PowerShell "$PROJ" "Get-Content $BT"$'\r'"$NL  .env")"
+check "a continuation onto an ordinary file -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" "Get-Content $BT$NL  src/app.ts")"
+# Any other backtick is PowerShell's escape. It is left as it is, and refused for
+# nothing: the hook reads what it can around it.
+check "a backtick escape in a string, then an ordinary read -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" "Write-Host \"reading${BT}n\"; Get-Content src/app.ts")"
+check "a backtick escape in a commit message -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" "git commit -m \"Document .env${BT}nand its example\"")"
+check "a read of .env, then a backtick escape in a string -> block" 2 \
+  "$(cmd_in PowerShell "$PROJ" "Get-Content .env; Write-Host \"done${BT}n\"")"
+
+echo
 echo "--- Token values written into tracked files ---"
 check "GitHub PAT in Write content -> block" 2 \
   "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"src/config.ts\",\"content\":\"const t = '$FAKE_GH'\"}}"

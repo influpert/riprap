@@ -58,11 +58,11 @@ test environment` is a useful sentence that discloses nothing.
 Two layers are on once `/riprap:install` has run, and a third is yours to opt into, because
 prose alone does not survive a busy afternoon.
 
-1. **A PreToolUse hook** — `bin/hooks/riprap/claude/lint-secrets.sh`, on Read, Grep, Bash,
-   Edit and Write. It refuses:
+1. **A PreToolUse hook** — `bin/hooks/riprap/claude/lint-secrets.sh`, on Read, Grep, Edit,
+   Write and the three tools that run a shell command: Bash, PowerShell and Monitor. It refuses:
    - **Read or Grep on a secret-bearing path**, and a Grep pointed at `secrets/` or
      `config/credentials/` itself.
-   - **A Bash command that names one** in an argument or a `<` redirect (`cat<.env`
+   - **A shell command that names one** in an argument or a `<` redirect (`cat<.env`
      included). Any command counts except a short list that only acts on a name — `ls`,
      `test`, `rm`, `mv`, `chmod`, `ln`, `echo`, `tee`, `export`, `git add`, `git rm`,
      `git check-ignore` and a few like them. A list of *readers* is always one short,

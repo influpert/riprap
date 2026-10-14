@@ -219,7 +219,7 @@ case "$(ctx '{"source":"startup"}')" in
   *) ok "bin/riprap present: no missing-payload note" ;; esac
 
 echo
-echo "--- hooks.json routes every merge tool to the merge gate ---"
+echo "--- hooks.json routes every shell tool, and every merge tool, to the hooks that read them ---"
 
 # A hook only sees the tool calls its matcher sends it, and the payload's own tests
 # pipe a payload straight in, so nothing there can notice a matcher that never fires.
@@ -246,17 +246,28 @@ routes() {  # $1 = tool name, $2 = hook script; true when a PreToolUse matcher s
              | .matcher // ""' "$PLUGIN/hooks/hooks.json")
   return 1
 }
-gate=block-unreviewed-merge.sh
 # PowerShell and Monitor run shell commands as Bash does, and arrive with the same
-# tool_input.command, but a matcher of "Bash" names neither: a merge run through
-# either never reached the gate. Claude Code's tools reference says to match
+# tool_input.command, but a matcher of "Bash" names neither: a merge, a read of .env,
+# an rm outside the worktree or a write outside it, run through either, never reached
+# the hook that refuses it. Claude Code's tools reference says to match
 # Bash|PowerShell in a hook that inspects shell commands, and Monitor runs under
-# Bash's own permission rules.
-for tool in Bash PowerShell Monitor mcp__github__merge_pull_request mcp__github__enable_pr_auto_merge \
+# Bash's own permission rules. Every hook that reads tool_input.command is listed
+# here; one left out is the same hole one tool over. BashOutput only reads what a
+# background command printed, and runs nothing.
+for hook in block-unreviewed-merge.sh lint-secrets.sh block-destructive-outside-cwd.sh \
+            block-writes-outside-worktree.sh; do
+  for tool in Bash PowerShell Monitor; do
+    routes "$tool" "$hook" && ok "$tool reaches $hook" || bad "$tool never reaches $hook"
+  done
+  routes BashOutput "$hook" && bad "BashOutput is sent to $hook, which has no command to read in it" \
+    || ok "BashOutput is not sent to $hook"
+done
+gate=block-unreviewed-merge.sh
+for tool in mcp__github__merge_pull_request mcp__github__enable_pr_auto_merge \
             mcp__plugin_gh_github__merge_pull_request; do
   routes "$tool" "$gate" && ok "$tool reaches the merge gate" || bad "$tool never reaches the merge gate"
 done
-for tool in Read BashOutput mcp__github__pull_request_read mcp__github__disable_pr_auto_merge \
+for tool in Read mcp__github__pull_request_read mcp__github__disable_pr_auto_merge \
             mcp__github__merge_pull_request_status; do
   routes "$tool" "$gate" && bad "$tool is sent to the merge gate, which has nothing to check in it" \
     || ok "$tool is not sent to the merge gate"

@@ -49,9 +49,13 @@
 #     command of its own, starting where the shell was started. So is a heredoc or
 #     here-string fed to a shell that has no script file to run, which reads its
 #     stdin as the script.
+#   - the command of a Bash, PowerShell or Monitor call alike: all three run a shell
+#     command, and the same rm deletes the same files through any of them. PowerShell's
+#     text is read with the same grammar, once a backtick that ends a line is joined to
+#     the next as PowerShell joins it (lib/shell-tools.sh).
 #
-# Limits, by design, because this runs on every Bash call and is there to catch slips
-# rather than an adversary: a variable other than $HOME, $TMPDIR and $PWD is not
+# Limits, by design, because this runs on every shell command and is there to catch
+# slips rather than an adversary: a variable other than $HOME, $TMPDIR and $PWD is not
 # expanded, so `rm -rf "$DIR"` is not checked, and neither is a relative path after a
 # `cd` this cannot expand (`cd "$(git rev-parse --show-toplevel)" && rm -rf build`) —
 # refusing those would block ordinary work, and a guardrail that does that gets turned
@@ -60,7 +64,10 @@
 # xargs -I template that does not start with the input all hand on names that land
 # wherever the next command runs. A script a command runs, text piped into a shell
 # (`cat <<EOF | bash`, `echo ... | sh`), and anything decoded before it reaches a
-# shell are not read.
+# shell are not read. Nor is PowerShell's own grammar past its line continuations:
+# any other backtick, its escape character, is read as bash reads it and refused for
+# nothing, Set-Location and Push-Location are not followed as cd is, and Remove-Item
+# is not an rm.
 #
 # Quoted arguments, spaces and all, are single words, and backslash escapes follow
 # shell rules (lib/shell-words.sh). A literal `--` ends flag parsing for rm, so every
@@ -81,6 +88,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # git_env_isolated, for finding the worktree.
 # shellcheck source=../lib/git-env.sh
 . "$SCRIPT_DIR/../lib/git-env.sh"
+# shell_tool and shell_tool_text: which tools run a shell command, and their text.
+# shellcheck source=../lib/shell-tools.sh
+. "$SCRIPT_DIR/../lib/shell-tools.sh"
 
 # Commands whose every non-flag argument is a path that must stay inside the
 # boundary.
@@ -112,12 +122,21 @@ fi
 INPUT=$(cat)
 TOOL_NAME=$(printf '%s' "$INPUT" | jq -r '.tool_name // empty')
 
-[ "$TOOL_NAME" = "Bash" ] || exit 0
+# Bash, PowerShell or a Monitor: all three run a shell command, and an rm through
+# either of the others deletes what it would through Bash.
+shell_tool "$TOOL_NAME" || exit 0
 
 COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 
 [ -n "$COMMAND" ] || exit 0
+
+# A PowerShell line continuation is joined as PowerShell joins it, or the target on
+# the second line is a command of its own. Any other backtick is read with bash's
+# grammar and refused for nothing: a `n in a Write-Host string is everyday
+# PowerShell, and refusing it would stop work that deletes nothing.
+shell_tool_text "$TOOL_NAME" "$COMMAND"
+COMMAND="$SHELL_TEXT"
 
 CWD_MISSING=0
 if [ -z "$CWD" ]; then

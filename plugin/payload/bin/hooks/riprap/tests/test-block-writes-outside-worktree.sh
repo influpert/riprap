@@ -320,6 +320,47 @@ check "no cwd at all, cd -, then a relative write -> block (still fails closed)"
   '{"tool_name":"Bash","tool_input":{"command":"cd -; touch y"}}'
 
 echo
+echo "--- PowerShell and Monitor run shell commands too ---"
+# Both carry the command in tool_input.command, as Bash does. This hook answered to
+# Bash alone, so the same write, run through either, was never looked at. Built
+# with jq: the commands below carry newlines and quotes.
+cmd_in() {  # TOOL CWD COMMAND
+  jq -nc --arg t "$1" --arg d "$2" --arg c "$3" '{tool_name:$t,cwd:$d,tool_input:{command:$c}}'
+}
+check "PowerShell redirect outside -> block" 2 "$(cmd_in PowerShell "$REPO" "echo hi > $OTHER/out.txt")"
+check "PowerShell redirect inside -> allow" 0 "$(cmd_in PowerShell "$REPO" "echo hi > tmp/out.txt")"
+check "PowerShell cp destination outside -> block" 2 "$(cmd_in PowerShell "$REPO" "cp src/a.txt $OTHER/")"
+check "Monitor tee outside -> block" 2 "$(cmd_in Monitor "$REPO" "tail -f app.log | tee $OTHER/log")"
+check "Monitor tee inside -> allow" 0 "$(cmd_in Monitor "$REPO" "tail -f app.log | tee tmp/log")"
+check "a Monitor with no command -> allow" 0 \
+  "$(jq -nc --arg d "$REPO" '{tool_name:"Monitor",cwd:$d,tool_input:{ws:{url:"wss://example.com"}}}')"
+check "PowerShell with no cwd, a relative write -> block (fails closed as Bash does)" 2 \
+  "$(jq -nc --arg c "echo hi > out.txt" '{tool_name:"PowerShell",tool_input:{command:$c}}')"
+
+echo
+echo "--- A PowerShell line continuation is one command ---"
+# A backtick at the end of a line is PowerShell's line continuation. Read with
+# bash's grammar it opens a command substitution, which split the command in two:
+# the destination, or the flag that names it, landed in a second command of its
+# own and was never checked.
+BT='`'
+NL=$'\n'
+check "the destination on a continuation line -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" "cp src/a.txt $BT$NL  $OTHER/a.txt")"
+check "the flag that names the destination on a continuation line -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" "cp src/a.txt $BT$NL  -t $OTHER")"
+check "a Windows line ending after the backtick -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" "cp src/a.txt $BT"$'\r'"$NL  $OTHER/a.txt")"
+check "a continuation inside the worktree -> allow" 0 \
+  "$(cmd_in PowerShell "$REPO" "cp src/a.txt $BT$NL  tmp/a.txt")"
+# Any other backtick is PowerShell's escape. It is left as it is, and refused for
+# nothing: the hook reads what it can around it.
+check "a backtick escape in a string, then a write inside -> allow" 0 \
+  "$(cmd_in PowerShell "$REPO" "Write-Host \"saving${BT}n\"; echo hi > tmp/out.txt")"
+check "a write outside, then a backtick escape in a string -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" "echo hi > $OTHER/out.txt; Write-Host \"saved${BT}n\"")"
+
+echo
 echo "--- Fail closed ---"
 check "relative write with no cwd -> block" 2 \
   '{"tool_name":"Bash","tool_input":{"command":"echo hi > out.txt"}}'

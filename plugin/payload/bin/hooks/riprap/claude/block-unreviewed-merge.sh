@@ -229,14 +229,26 @@ remote_host_path() {
   RH_PATH=$(lower "$RH_PATH"); RH_PATH="${RH_PATH#/}"; RH_PATH="${RH_PATH%/}"; RH_PATH="${RH_PATH%.git}"
 }
 
+# Whether gh here is a Windows program: bash says msys in Git Bash and cygwin in
+# Cygwin, and the gh either one runs is the Windows build.
+on_windows() { case "${OSTYPE:-}" in msys* | cygwin* | win32*) return 0 ;; *) return 1 ;; esac; }
+
 # mcp_host OWNER REPO PULL — sets MCP_HOST to the host the MCP merge of PULL in
 # OWNER/REPO is asked about on, empty for github.com; refuses when it is a guess.
 mcp_host() {
   local want line url remotes h seen="" cfg known=" github.com "
   local -a matched=() all=() hosts=()
   want=$(lower "$1/$2")
-  # gh's hosts.yml has one top-level key per host it is signed in to.
-  cfg="${GH_CONFIG_DIR:-${XDG_CONFIG_HOME:-${HOME:-}/.config}/gh}"
+  # gh's hosts.yml has one top-level key per host it is signed in to, in gh's own
+  # config directory, found as gh finds it: GH_CONFIG_DIR, XDG_CONFIG_HOME/gh, on
+  # Windows %AppData%\GitHub CLI, then ~/.config/gh. Without the Windows step, gh
+  # there was signed in to no Enterprise host as far as this could tell, and an MCP
+  # merge on one was asked about github.com.
+  if [ -n "${GH_CONFIG_DIR:-}" ]; then cfg="$GH_CONFIG_DIR"
+  elif [ -n "${XDG_CONFIG_HOME:-}" ]; then cfg="$XDG_CONFIG_HOME/gh"
+  elif [ -n "${APPDATA:-}" ] && on_windows; then cfg="$APPDATA/GitHub CLI"
+  else cfg="${HOME:-}/.config/gh"
+  fi
   if [ -r "$cfg/hosts.yml" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       case "$line" in "" | [[:space:]]* | "#"* | -*) ;; *:*) known+="$(norm_host "${line%%:*}") " ;; esac
@@ -359,15 +371,60 @@ api_endpoint() {  # $1 = a word; sets EP_*, or returns 1 when it is no merge end
   return 0
 }
 
+# cmd_name WORD — sets CMD_NAME to WORD as the lists below spell a command name:
+# lower-cased, because PowerShell and Windows read ForEach-Object, foreach-object
+# and PWSH alike, and without the .exe a Windows program may be called by. In bash
+# rather than through tr: this runs for most words of a PowerShell line, and a
+# fork for each made a long one take seconds. A word longer than every name in
+# the lists, .exe included, could match none of them, and is left as it is.
+UPPER=ABCDEFGHIJKLMNOPQRSTUVWXYZ
+LOWER=abcdefghijklmnopqrstuvwxyz
+cmd_name() {
+  CMD_NAME="$1"
+  local out="" c head i=0
+  if [ "${#CMD_NAME}" -le 21 ]; then
+    case "$CMD_NAME" in
+      *[ABCDEFGHIJKLMNOPQRSTUVWXYZ]*)
+        while [ "$i" -lt "${#CMD_NAME}" ]; do
+          c="${CMD_NAME:$i:1}"
+          case "$UPPER" in *"$c"*) head="${UPPER%%"$c"*}"; c="${LOWER:${#head}:1}" ;; esac
+          out+="$c"; i=$((i + 1))
+        done
+        CMD_NAME="$out"
+        ;;
+    esac
+  fi
+  CMD_NAME="${CMD_NAME%.exe}"
+}
+
 # A shell or evaluator given text to run: its merge is inside a string this gate
-# does not parse, so when that text holds a merge it is refused.
+# does not parse, so when that text holds a merge it is refused. PowerShell's own
+# are pwsh -Command and Invoke-Expression, its eval; cmd /c is Windows'. trap runs
+# its text when the signal comes, and PowerShell's trap its script block.
 is_evaluator() {
-  case "$1" in
-    bash | sh | zsh | dash | ksh | fish | eval | source | . | ssh | su | script) return 0 ;;
+  cmd_name "$1"
+  case "$CMD_NAME" in
+    bash | sh | zsh | dash | ksh | fish | eval | source | . | ssh | su | script | trap | \
+      pwsh | powershell | cmd | invoke-expression | iex)
+      return 0
+      ;;
     *) return 1 ;;
   esac
 }
-is_shell() { case "$1" in bash | sh | zsh | dash | ksh | fish) return 0 ;; *) return 1 ;; esac; }
+
+# shell_given_text NAME FLAG — whether the shell NAME, given FLAG next, runs the
+# text after it: a POSIX shell's -c, alone or run together (-lc); PowerShell's
+# -Command, which it takes as -c or any longer prefix; cmd's /c or /k, which Git
+# Bash users write //c so that it is not rewritten as a path.
+shell_given_text() {
+  cmd_name "$1"
+  case "$CMD_NAME" in
+    bash | sh | zsh | dash | ksh | fish) [[ "$2" =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] ;;
+    pwsh | powershell) case "$2" in [-/][Cc]*) return 0 ;; *) return 1 ;; esac ;;
+    cmd) case "$2" in /[CcKk] | //[CcKk]) return 0 ;; *) return 1 ;; esac ;;
+    *) return 1 ;;
+  esac
+}
 
 # Prefixes that run the rest of the words as the command, changing nothing this
 # gate cares about. Anything else in front of `gh` (timeout, xargs, sudo, nice)
@@ -391,8 +448,16 @@ is_plain_prefix() {
 # missing from here lets a merge behind it through unchecked, so the list leans
 # long: an extra name costs at most the refusal of a command whose words spell
 # out a merge anyway.
+#
+# Windows' and PowerShell's are here too. wsl, winpty and gsudo run their words as
+# a command; ForEach-Object, Start-Job, try and PowerShell's other names below run
+# the script block they are given, per input, later or elsewhere. Missing, `5 |
+# ForEach-Object { gh pr merge $_ }`, PowerShell's ordinary way to merge several,
+# merged a gated pull request with no lookup at all. A function's body runs
+# wherever the function is called, which need not be where it is defined.
 runs_its_arguments() {
-  case "$1" in
+  cmd_name "$1"
+  case "$CMD_NAME" in
     -*) return 0 ;;
     coproc | timeout | gtimeout | nice | ionice | chrt | taskset | stdbuf | setsid | unbuffer | \
       nohup | time | arch | perf | screen | tmux | env | command | sudo | doas | su | runuser | \
@@ -401,7 +466,10 @@ runs_its_arguments() {
       ltrace | gdb | valgrind | faketime | proxychains | proxychains4 | torsocks | tsocks | script | \
       ssh | dotenv | direnv | op | doppler | aws-vault | infisical | envchain | chamber | docker | \
       podman | kubectl | npx | bunx | bun | npm | pnpm | yarn | uv | uvx | poetry | pipenv | pdm | \
-      hatch | rye | conda | pixi | bundle | mise | rtx | asdf | nix | devbox)
+      hatch | rye | conda | pixi | bundle | mise | rtx | asdf | nix | devbox | wsl | winpty | gsudo | \
+      function | filter | foreach-object | foreach | % | where-object | where | '?' | \
+      measure-command | invoke-command | icm | start-job | sajb | start-threadjob | trace-command | \
+      try | catch | finally)
       return 0
       ;;
     *) return 1 ;;
@@ -1052,30 +1120,41 @@ simple_command() {
   fi
   case "${w[$k]}" in '$env:GH_REPO='*) set_gh_repo "=${w[$k]#\$env:GH_REPO=}" "$prev" "$next"; return 0 ;; esac
 
-  # A shell or evaluator: as the command, or a shell given -c behind a prefix the
-  # merge would otherwise be hidden by (timeout 60 bash -c "...", xargs sh -c).
+  # Whether the words after the command word can run, and how. After a command
+  # that runs them they are its command. In PowerShell they can also hold a script
+  # block, { ... }, which runs where whatever it is handed to decides: once per
+  # input, later in a job, when a variable holding it is invoked, or after an else
+  # behind a command that only prints. This gate does not read PowerShell's
+  # statements, so a merge in a block is refused unread rather than missed.
+  local through=""
+  if runs_its_arguments "$argv0"; then through="through ${w[$k]}, which this gate cannot see past"
+  elif [ "$TOOL_NAME" = PowerShell ]; then
+    for a in "${w[@]:$k}"; do
+      case "$a" in *"{"*) through="inside a PowerShell script block, which this gate does not read"; break ;; esac
+    done
+  fi
+
+  # A shell or evaluator: as the command, or a shell given its text flag where the
+  # words can run (timeout 60 bash -c "...", xargs sh -c, { pwsh -c "..." }).
   # Behind a command that only prints it, `echo bash -c "..."`, it runs nothing.
   if is_evaluator "$argv0"; then
     check_evaluator "$k"
-  elif runs_its_arguments "$argv0"; then
+  elif [ -n "$through" ]; then
     j=$((k + 1))
     while [ "$j" -lt "$n" ]; do
-      if is_shell "${w[$j]##*/}" && [[ "${w[$((j + 1))]:-}" =~ ^-[A-Za-z]*c[A-Za-z]*$ ]]; then
-        check_evaluator "$j"; break
-      fi
+      if shell_given_text "${w[$j]##*/}" "${w[$((j + 1))]:-}"; then check_evaluator "$j"; break; fi
       j=$((j + 1))
     done
   fi
 
   # Where in this command, if anywhere, a merge sits: `gh pr merge`, or a gh api
   # or curl call that parse_api or parse_curl reads as one. Looked for past the
-  # command word when that command runs the words after it, so that a merge run
-  # through `timeout` or `xargs` is found and refused rather than missed; behind
-  # any other command, echo or man, the words are text and the search stops at
-  # the command word. A gh api or curl call that only reads is passed over
-  # wherever it sits.
+  # command word where those words can run, so that a merge run through `timeout`
+  # or `xargs` is found and refused rather than missed; behind any other command,
+  # echo or man, the words are text and the search stops at the command word. A
+  # gh api or curl call that only reads is passed over wherever it sits.
   local m=-1 end=$((k + 1))
-  if runs_its_arguments "$argv0"; then end=$n; fi
+  [ -z "$through" ] || end=$n
   j=$k
   while [ "$j" -lt "$end" ]; do
     case "${w[$j]##*/}" in
@@ -1084,6 +1163,14 @@ simple_command() {
         case "$GH_SUB" in
           "pr merge")
             m=$j
+            # Past the command word it is refused unread, and for that reason:
+            # parsed first, a script block's `$_` or closing `}` was the reason
+            # given. Its own --help and --disable-auto still merge nothing, so it
+            # is parsed in a subshell, where a refusal does not end this one.
+            if [ "$j" -ne "$k" ]; then
+              if ( parse_merge "${w[@]:$GH_AT}" 2>/dev/null && [ "$NO_MERGE" -eq 1 ] ); then return 0; fi
+              break
+            fi
             if [ -n "$GH_ODD" ]; then
               unverifiable "it passes $GH_ODD before merge, which this gate does not know, so it cannot tell which pull request is meant."
             fi
@@ -1107,7 +1194,7 @@ simple_command() {
     j=$((j + 1))
   done
   [ "$m" -ge 0 ] || return 0
-  [ "$m" -eq "$k" ] || unverifiable "it runs the merge through ${w[$k]}, which this gate cannot see past."
+  [ "$m" -eq "$k" ] || unverifiable "it runs the merge $through."
 
   # No --repo: the GH_REPO in front of the command, else one exported earlier.
   if [ -z "$REPO" ]; then

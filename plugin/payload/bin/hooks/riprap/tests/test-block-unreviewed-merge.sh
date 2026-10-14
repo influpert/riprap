@@ -295,6 +295,68 @@ check "through env by its full path -> block" 2 "$(bash_at "$A" '/usr/bin/env gh
 check "a curl merge through sudo -u -> block" 2 \
   "$(bash_at "$A" 'sudo -u ci curl -X PUT https://api.github.com/repos/o/r/pulls/5/merge')"
 check "a merge handed to a shell behind xargs -> block" 2 "$(bash_at "$A" "echo 5 | xargs -I{} sh -c 'gh pr merge {}'")"
+# Windows' own wrappers run their words as a command too: wsl in Linux, winpty in a
+# console Git Bash lacks. A function's body runs wherever it is later called.
+check "through wsl -> block" 2 "$(bash_at "$A" 'wsl gh pr merge 5')"
+check "through winpty -> block" 2 "$(bash_at "$A" 'winpty gh pr merge 5')"
+check "in a function's body -> block" 2 "$(bash_at "$A" 'function f { gh pr merge 5; }; f')"
+check "a merge handed to PowerShell behind timeout -> block" 2 "$(bash_at "$A" 'timeout 60 pwsh -Command "gh pr merge 5"')"
+check "a merge handed to cmd /c, written //c in Git Bash -> block" 2 "$(bash_at "$A" 'cmd //c "gh pr merge 5"')"
+check "a merge set to run on a trap -> block" 2 "$(bash_at "$A" "trap 'gh pr merge 5' EXIT")"
+
+echo
+echo "--- A merge in a PowerShell script block is refused unread ---"
+# PowerShell runs a script block where the cmdlet given it decides: once per input
+# for ForEach-Object, later for Start-Job, whenever a variable holding one is
+# invoked. Once the gate stopped looking past a command word that does not run its
+# words, each of these merged a gated pull request with no lookup at all. The seam
+# calls everything harmless here, so a block proves a refusal rather than a check.
+ps_at() { jq -cn --arg d "$1" --arg c "$2" '{tool_name: "PowerShell", cwd: $d, tool_input: {command: $c}}'; }
+check "piped into ForEach-Object -> block" 2 "$(ps_at "$A" '5 | ForEach-Object { gh pr merge $_ --squash }')"
+check "piped into %, its alias -> block" 2 "$(ps_at "$A" '5, 6 | % { gh pr merge $_ --squash }')"
+check "% with its brace touching it -> block" 2 "$(ps_at "$A" '5 | %{ gh pr merge $_ --squash }')"
+check "foreach-object in lower case -> block" 2 "$(ps_at "$A" '5 | foreach-object { gh pr merge $_ }')"
+check "inside Measure-Command -> block" 2 "$(ps_at "$A" 'Measure-Command { gh pr merge 5 --squash }')"
+check "inside Invoke-Command -ScriptBlock -> block" 2 "$(ps_at "$A" 'Invoke-Command -ScriptBlock { gh pr merge 5 --squash }')"
+check "inside Start-Job -> block" 2 "$(ps_at "$A" 'Start-Job { gh pr merge 5 --squash } | Wait-Job | Receive-Job')"
+check "inside try -> block" 2 "$(ps_at "$A" 'try { gh pr merge 5 --squash } catch { Write-Host $_ }')"
+check "in an else block after a command that only prints -> block" 2 \
+  "$(ps_at "$A" "if (\$pending) { Write-Host 'checks pending' } else { gh pr merge 5 --squash }")"
+check "in a script block kept in a variable -> block" 2 "$(ps_at "$A" '$merge = { gh pr merge 5 --squash }; & $merge')"
+check "handed to pwsh -Command -> block" 2 "$(ps_at "$A" 'pwsh -Command gh pr merge 5')"
+check "handed to powershell.exe -c, quoted -> block" 2 "$(ps_at "$A" 'powershell.exe -c "gh pr merge 5"')"
+check "handed to cmd /c -> block" 2 "$(ps_at "$A" 'cmd /c gh pr merge 5')"
+check "handed to Invoke-Expression -> block" 2 "$(ps_at "$A" 'Invoke-Expression "gh pr merge 5 --squash"')"
+check "handed to iex -> block" 2 "$(ps_at "$A" 'iex "gh pr merge 5"')"
+check_contains "... and the refusal names the cmdlet" "through ForEach-Object" \
+  "$(ps_at "$A" '5 | ForEach-Object { gh pr merge $_ --squash }')"
+check_contains "... or the script block, where no cmdlet runs it" "script block" \
+  "$(ps_at "$A" "if (\$pending) { Write-Host 'checks pending' } else { gh pr merge 5 --squash }")"
+check_lacks "... and not that it runs through Write-Host" "through Write-Host" \
+  "$(ps_at "$A" "if (\$pending) { Write-Host 'checks pending' } else { gh pr merge 5 --squash }")"
+# A script block, a runner or a shell that holds no merge is not one, and nor is a
+# merge PowerShell only prints. The seam says "gated" for everything here, so any of
+# these taken for a merge is refused.
+with_files "src/auth/login.ts"
+check "ForEach-Object over gh pr view -> allow" 0 \
+  "$(ps_at "$A" 'gh pr list --json number | ConvertFrom-Json | ForEach-Object { gh pr view $_.number }')"
+check "Write-Host gh pr merge -> allow" 0 "$(ps_at "$A" 'Write-Host gh pr merge 5')"
+check "Write-Output of a quoted merge -> allow" 0 "$(ps_at "$A" 'Write-Output "gh pr merge 5"')"
+check "a brace in a gh read's jq -> allow" 0 "$(ps_at "$A" "gh pr view 5 --json title --jq '{t: .title}'")"
+check "pwsh -File -> allow" 0 "$(ps_at "$A" 'pwsh -NoProfile -File build.ps1')"
+check "cmd /c of something else -> allow" 0 "$(ps_at "$A" 'cmd /c dir')"
+check "iex of a read -> allow" 0 "$(ps_at "$A" 'iex "gh pr view 5"')"
+check "braces in a Bash echo, which only prints -> allow" 0 "$(bash_at "$A" 'echo { gh pr merge 5 }')"
+check "a trap that cleans up, then a merge read -> allow" 0 \
+  "$(bash_at "$A" "trap 'rm -f merge.log' EXIT; gh pr view 5 --json mergeable")"
+check "a --disable-auto behind xargs, which merges nothing -> allow" 0 \
+  "$(bash_at "$A" 'echo 5 6 | xargs -n1 gh pr merge --disable-auto')"
+# A merge that is the command of a block PowerShell runs in place is read, not
+# refused: the brace in front of it is not something it runs through.
+export RIPRAP_TEST_PR_FILES="$SCRATCH/seam"
+EXPECT="$A||5" check "a merge as a loop block's own command -> that pull request" 2 \
+  "$(ps_at "$A" 'while ($true) { gh pr merge 5 --squash; break }')"
+EXPECT="$A||6" check "... and harmless -> allow" 0 "$(ps_at "$A" 'while ($true) { gh pr merge 5 --squash; break }')"
 
 echo
 echo "--- --admin and auto-merge are refused on every pull request ---"
@@ -602,6 +664,30 @@ EXPECT="nothing" check_contains "... and names the hosts it could be" "github.co
 EXPECT="nothing" check_contains "... and how to name the host" "--repo <host>/o/r" \
   "$(mcp_at "$BOTH" "$MERGE_TOOL" "$MCP5")"
 EXPECT="nothing" check_lacks "... without the hold procedure" "hold comment" "$(mcp_at "$BOTH" "$MERGE_TOOL" "$MCP5")"
+# gh keeps its list of hosts in its own config directory: GH_CONFIG_DIR, else
+# XDG_CONFIG_HOME/gh, else on Windows %AppData%\GitHub CLI, else ~/.config/gh. Read
+# from the last alone, on Windows the gate knew no Enterprise host, and asked
+# github.com about every MCP merge on one. OSTYPE is how bash says it is on Windows,
+# msys in Git Bash, and a bash started with it set keeps it.
+WIN="$SCRATCH/win"; mkdir -p "$WIN/home" "$WIN/appdata/GitHub CLI" "$WIN/xdg/gh"
+printf 'github.com:\n    user: someone\nghe.example.com:\n    user: someone\n' >"$WIN/appdata/GitHub CLI/hosts.yml"
+printf 'github.com:\n    user: someone\n' >"$WIN/xdg/gh/hosts.yml"
+OSTYPE=msys HOME="$WIN/home" APPDATA="$WIN/appdata" GH_CONFIG_DIR="" XDG_CONFIG_HOME="" \
+  EXPECT="$GHE|ghe.example.com/o/r|5" check "on Windows, gh's hosts under %AppData% -> that host" 2 \
+  "$(mcp_at "$GHE" "$MERGE_TOOL" "$MCP5")"
+OSTYPE=msys HOME="$WIN/home" APPDATA="$WIN/appdata" GH_CONFIG_DIR="" XDG_CONFIG_HOME="" \
+  EXPECT="$GHE|o/r|5" check "... and not github.com's" 0 "$(mcp_at "$GHE" "$MERGE_TOOL" "$MCP5")"
+OSTYPE=cygwin HOME="$WIN/home" APPDATA="$WIN/appdata" GH_CONFIG_DIR="" XDG_CONFIG_HOME="" \
+  EXPECT="$GHE|ghe.example.com/o/r|5" check "... and under Cygwin, also Windows to gh" 2 \
+  "$(mcp_at "$GHE" "$MERGE_TOOL" "$MCP5")"
+# Elsewhere gh never reads %AppData%, and on Windows XDG_CONFIG_HOME comes first. A
+# host listed only where gh does not look is one it is not signed in to.
+OSTYPE=linux-gnu HOME="$WIN/home" APPDATA="$WIN/appdata" GH_CONFIG_DIR="" XDG_CONFIG_HOME="" \
+  EXPECT="$GHE|o/r|5" check "off Windows, %AppData% is not gh's -> github.com" 2 \
+  "$(mcp_at "$GHE" "$MERGE_TOOL" "$MCP5")"
+OSTYPE=msys HOME="$WIN/home" APPDATA="$WIN/appdata" GH_CONFIG_DIR="" XDG_CONFIG_HOME="$WIN/xdg" \
+  EXPECT="$GHE|o/r|5" check "on Windows, XDG_CONFIG_HOME still comes first -> github.com" 2 \
+  "$(mcp_at "$GHE" "$MERGE_TOOL" "$MCP5")"
 
 echo
 echo "--- The refusal has to be actionable ---"

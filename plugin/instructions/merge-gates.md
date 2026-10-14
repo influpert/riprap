@@ -48,19 +48,22 @@ Enterprise was refused, or, with `gh` signed in to both, checked against a names
 github.com. The host is `GH_HOST`, and the host of the checkout's remote for that repository,
 or of any of its remotes when none is one. Only a host `gh` is signed in to counts, as `gh`
 counts them, so Claude Code's cloud proxy and a mirror on another forge are not taken for a
-GitHub server. An Enterprise host goes in front of the repository, `gh pr diff --repo
-<host>/<owner>/<repo>`. Where those name two hosts, which one the MCP server merges on is a
-guess, and the merge is refused.
+GitHub server. That list is read where `gh` keeps it: `GH_CONFIG_DIR`, else `XDG_CONFIG_HOME/gh`,
+else on Windows `%AppData%\GitHub CLI`, else `~/.config/gh`. An Enterprise host goes in front of
+the repository, `gh pr diff --repo <host>/<owner>/<repo>`. Where those name two hosts, which one
+the MCP server merges on is a guess, and the merge is refused.
 
 Anything the hook can't read with certainty is refused, not guessed: a flag it doesn't know, `cd`
 to a variable, a pull request number, HTTP method or API host that is a variable, a `GH_REPO`
 assigned without `export`, a merge with no number after a `git checkout` or `git switch` in the
-same command, a merge run through `timeout`, `xargs` or `sudo`, a shell handed the merge as text
-(`bash -c`, `eval`, a pipe or a heredoc into `sh`), a GraphQL `mergePullRequest` sent through
-`gh api` or `curl`, which names its pull request by node ID, or an MCP merge the session places
-on two hosts. Those refusals say that the merge could not be checked and how to write it so that
-it can be — a `gh pr merge <number>` of its own — and do not carry the hold procedure below,
-which is for a merge that was checked.
+same command, a merge run through `timeout`, `xargs` or `sudo`, a merge in a PowerShell script
+block `{ }` handed to a cmdlet such as `ForEach-Object` or kept in a variable (either may run it
+per input, later or elsewhere), a shell handed the merge as text (`bash -c`, `pwsh -Command`,
+`cmd /c`, `eval`, `Invoke-Expression`, a pipe or a heredoc into `sh`), a GraphQL
+`mergePullRequest` sent through `gh api` or `curl`, which names its pull request by node ID, or
+an MCP merge the session places on two hosts. Those refusals say that the merge could not be
+checked and how to write it so that it can be — a `gh pr merge <number>` of its own — and do not
+carry the hold procedure below, which is for a merge that was checked.
 
 **Every spelling is looked up through `gh`, the MCP tools included.** Where `gh` is missing, or
 not signed in for the pull request's host, no merge can be checked, and each one is refused until

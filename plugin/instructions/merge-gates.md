@@ -73,9 +73,13 @@ It reads the command as written. A merge assembled at run time, run from a scrip
 as a GraphQL query kept in a file is not seen, and the gate does not pretend otherwise: it catches
 a slip, and the rule still holds where it cannot look. A PowerShell command is read with the same
 shell grammar as a Bash one, which finds a `gh` or `curl` call, `Set-Location`, `Push-Location`
-and `$env:GH_REPO`, and nothing else of PowerShell's own. A backtick that ends a line is joined
-to the next as PowerShell joins it; a PowerShell merge with any other backtick in it is refused,
-because to that grammar a backtick is not an escape, so the gate would check a different command.
+and `$env:GH_REPO`, and nothing else of PowerShell's own. First, what that grammar would misread
+is read as PowerShell reads it: a backtick that ends a line is joined to the next, a backslash is
+a path separator, and a comment is dropped. Inside single quotes, an `@'…'@` here-string or a
+comment, a backtick is text, so a commit message or pull request body that quotes `gh pr merge`
+in a code span is no merge. Anywhere else a backtick is PowerShell's escape character, which that grammar
+does not have: a merge in a command with one is refused, because the gate would be checking a
+translation of the command rather than the command.
 
 The hook machinery is on that list deliberately. A change there can disable every other
 control in the repo, and no test suite reliably catches *"the guardrail stopped

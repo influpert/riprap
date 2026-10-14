@@ -838,14 +838,76 @@ check "a Windows line ending after the backtick -> block" 2 \
   "$(cmd_in PowerShell "$PROJ" "Get-Content $BT"$'\r'"$NL  .env")"
 check "a continuation onto an ordinary file -> allow" 0 \
   "$(cmd_in PowerShell "$PROJ" "Get-Content $BT$NL  src/app.ts")"
-# Any other backtick is PowerShell's escape. It is left as it is, and refused for
-# nothing: the hook reads what it can around it.
+# Any other backtick is PowerShell's escape, read as bash's escape of the same
+# character, and refused for nothing: the hook reads what it can around it.
 check "a backtick escape in a string, then an ordinary read -> allow" 0 \
   "$(cmd_in PowerShell "$PROJ" "Write-Host \"reading${BT}n\"; Get-Content src/app.ts")"
 check "a backtick escape in a commit message -> allow" 0 \
   "$(cmd_in PowerShell "$PROJ" "git commit -m \"Document .env${BT}nand its example\"")"
 check "a read of .env, then a backtick escape in a string -> block" 2 \
   "$(cmd_in PowerShell "$PROJ" "Get-Content .env; Write-Host \"done${BT}n\"")"
+
+echo
+echo "--- PowerShell's comments, escapes and backslashes, read as PowerShell reads them ---"
+# A comment ends at the end of its line, whatever it ends in. Joined as a
+# continuation, a comment that closed a code span took the read on the next line
+# into the comment.
+check "a comment ending in a code span, then a read of .env -> block" 2 \
+  "$(cmd_in PowerShell "$PROJ" "# Show ${BT}.env${BT}${NL}Get-Content .env")"
+check "... then an ordinary read -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" "# Show ${BT}app.ts${BT}${NL}Get-Content src/app.ts")"
+# An escaped quote is a quote character to PowerShell, not the start of a string.
+check "an escaped quote, then a read of .env -> block" 2 \
+  "$(cmd_in PowerShell "$PROJ" "Write-Host ${BT}\"; Get-Content .env")"
+check "... then an ordinary read -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" "Write-Host ${BT}\"; Get-Content src/app.ts")"
+# Inside single quotes and here-strings a backtick is a character, and the code
+# span in a commit message is text.
+check "a code span naming a read of .env in a single-quoted message -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" "git commit -m 'Never run ${BT}cat .env${BT}'")"
+check "... in a here-string with an apostrophe in it -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" "git commit -m @'${NL}Don't run ${BT}cat .env${BT} here${NL}'@")"
+# A backslash is PowerShell's path separator and never an escape. Read as bash's
+# escape, .\.env was ..env, which names nothing.
+check "Get-Content .\\.env -> block" 2 "$(cmd_in PowerShell "$PROJ" 'Get-Content .\.env')"
+check "cat .\\.env -> block" 2 "$(cmd_in PowerShell "$PROJ" 'cat .\.env')"
+check "Get-Content \".\\.env\" -> block" 2 "$(cmd_in PowerShell "$PROJ" 'Get-Content ".\.env"')"
+check "Get-Content '.\\.env' -> block" 2 "$(cmd_in PowerShell "$PROJ" "Get-Content '.\\.env'")"
+check "a drive-letter path to .env -> block (the name is what counts)" 2 \
+  "$(cmd_in PowerShell "$PROJ" 'Get-Content C:\work\app\.env')"
+check "a backslash path to an ordinary file -> allow" 0 "$(cmd_in PowerShell "$PROJ" 'Get-Content .\src\app.ts')"
+check "a backslash path to the example -> allow" 0 "$(cmd_in PowerShell "$PROJ" 'Get-Content .\.env.example')"
+# In PowerShell `type` is Get-Content's alias. In bash it says what a name is, and
+# reads nothing, which is why the shared list lets it through.
+check "PowerShell type .env -> block" 2 "$(cmd_in PowerShell "$PROJ" 'type .env')"
+check "PowerShell type config\\.env -> block" 2 "$(cmd_in PowerShell "$PROJ" 'type config\.env')"
+check "Bash type .env -> allow (bash's type opens nothing)" 0 "$(cmd_in Bash "$PROJ" 'type .env')"
+
+echo
+echo "--- PowerShell's commands that act on a name, as bash's do ---"
+# Test-Path is PowerShell's test, New-Item its touch, Remove-Item its rm. Routed here
+# without them, each was presumed to read what it names, and the refusal said so,
+# for the setup idioms a Windows project's own README gives.
+check "if (Test-Path .env) -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" 'if (Test-Path .env) { Write-Host "env present" }')"
+check "Test-Path -Path .env -> allow" 0 "$(cmd_in PowerShell "$PROJ" 'Test-Path -Path .env')"
+check "New-Item -ItemType File .env -> allow" 0 "$(cmd_in PowerShell "$PROJ" 'New-Item -ItemType File .env')"
+check "Remove-Item .env -> allow" 0 "$(cmd_in PowerShell "$PROJ" 'Remove-Item .env')"
+check "Rename-Item .env .env.bak -> allow" 0 "$(cmd_in PowerShell "$PROJ" 'Rename-Item .env .env.bak')"
+check "Get-FileHash .env -> allow (a digest discloses nothing usable)" 0 \
+  "$(cmd_in PowerShell "$PROJ" 'Get-FileHash .env')"
+# Copy-Item is PowerShell's cp, and read as cp is: creating the real file from its
+# example reads only the example, and a copy to a name the patterns miss is a read.
+check "Copy-Item .env.example .env -> allow" 0 "$(cmd_in PowerShell "$PROJ" 'Copy-Item .env.example .env')"
+check "Copy-Item -Path .env.example -Destination .env -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" 'Copy-Item -Path .env.example -Destination .env')"
+check "Copy-Item -Destination .env -Path .env.example -> allow" 0 \
+  "$(cmd_in PowerShell "$PROJ" 'Copy-Item -Destination .env -Path .env.example')"
+check "Copy-Item -Destination backup.txt -Path .env -> block" 2 \
+  "$(cmd_in PowerShell "$PROJ" 'Copy-Item -Destination backup.txt -Path .env')"
+check "Copy-Item .env to a name the patterns miss -> block" 2 \
+  "$(cmd_in PowerShell "$PROJ" 'Copy-Item .env backup.txt')"
+check "Get-Content is still a reader -> block" 2 "$(cmd_in PowerShell "$PROJ" 'Get-Content -Path .env')"
 
 echo
 echo "--- Token values written into tracked files ---"

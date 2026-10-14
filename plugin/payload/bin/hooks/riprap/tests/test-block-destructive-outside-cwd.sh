@@ -546,12 +546,48 @@ check "a continuation inside the worktree -> allow" 0 \
 # PowerShell's, it would be an echo's argument.
 check "a backtick-newline through Bash is still Bash's substitution -> its rm is read" 2 \
   "$(cmd_in Bash "$WORK" "echo $BT$NL  rm -rf $OTHER/data$BT")"
-# Any other backtick is PowerShell's escape. It is left as it is, and refused for
-# nothing: the hook reads what it can around it.
+# Any other backtick is PowerShell's escape, read as bash's escape of the same
+# character, and refused for nothing: the hook reads what it can around it.
 check "a backtick escape in a string, then an rm inside -> allow" 0 \
   "$(cmd_in PowerShell "$WORK" "Write-Host \"cleaning${BT}n\"; rm -rf ./build")"
 check "a backtick escape in a string, then an rm outside -> block" 2 \
   "$(cmd_in PowerShell "$WORK" "rm -rf $OTHER/data; Write-Host \"done${BT}n\"")"
+
+echo
+echo "--- PowerShell's comments, escapes and backslashes, read as PowerShell reads them ---"
+# A comment ends at the end of its line, whatever it ends in. Joined as a
+# continuation, a comment that closed a code span took the rm on the next line
+# into the comment, and it was never read.
+check "a comment ending in a code span, then an rm outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "# Remove the sibling ${BT}node_modules${BT}${NL}rm -rf $OTHER/node_modules")"
+check "... then an rm inside -> allow" 0 \
+  "$(cmd_in PowerShell "$WORK" "# Remove the ${BT}build${BT} output${NL}rm -rf ./build")"
+check "a block comment with backticks, then an rm outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "<# clear the ${BT}data${BT} #> rm -rf $OTHER/data")"
+check "a code span in a single-quoted string, then an rm inside -> allow" 0 \
+  "$(cmd_in PowerShell "$WORK" "Write-Host 'Removing ${BT}build${BT}'; rm -rf ./build")"
+# A here-string ends only at a line that starts with '@, so an apostrophe inside
+# one closes nothing. Read as bash's single quote, it closed the string and left
+# the code span outside it, as a substitution whose rm was refused.
+check "a here-string with an apostrophe and a code span naming an rm -> allow" 0 \
+  "$(cmd_in PowerShell "$WORK" "\$msg = @'${NL}It's done: ${BT}rm -rf $OTHER/data${BT}${NL}'@; git commit -m \$msg")"
+# An escaped quote is a quote character to PowerShell. Read with bash's grammar it
+# opened a string that took the rm after it in, unread.
+check "an escaped quote, then an rm outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" "Write-Host ${BT}\"; rm -rf $OTHER/data")"
+check "... then an rm inside -> allow" 0 "$(cmd_in PowerShell "$WORK" "Write-Host ${BT}\"; rm -rf ./build")"
+# A backslash is PowerShell's path separator and never an escape. Read as bash's
+# escape, ..\riprap-other was ..riprap-other, a name inside the working directory,
+# and a double-quoted path ending in one never closed its quote.
+check "a backslash path outside -> block" 2 "$(cmd_in PowerShell "$WORK" 'rm -r -Force ..\riprap-other\data')"
+check "a backslash path inside -> allow" 0 "$(cmd_in PowerShell "$WORK" 'rm -r -Force .\build\cache')"
+check "a quoted path ending in a backslash, outside -> block" 2 \
+  "$(cmd_in PowerShell "$WORK" 'rm -r -Force "..\riprap-other\"; Write-Host done')"
+check_contains "the refusal shows the command as it was written" 'rm -r -Force ..\riprap-other\data' \
+  "$(cmd_in PowerShell "$WORK" 'rm -r -Force ..\riprap-other\data')"
+# Through Bash a backslash is still bash's escape: \. is a dot.
+check "the same backslash through Bash is bash's escape -> allow" 0 \
+  "$(cmd_in Bash "$WORK" 'rm -r ..\riprap-other')"
 
 echo
 echo "--- The block message has to explain itself ---"

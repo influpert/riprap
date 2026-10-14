@@ -282,12 +282,23 @@ case "$SURFACE" in
   Bash)
     COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
     [ -n "$COMMAND" ] || exit 0
-    # A PowerShell line continuation is joined as PowerShell joins it. Any other
-    # backtick is read with bash's grammar and refused for nothing: a `n in a
+    # PowerShell's line continuations, escapes, backslashes and comments are read
+    # as PowerShell reads them (lib/shell-tools.sh): read as bash's, `.\.env` was
+    # `..env`, and a read behind an escaped quote or after a comment ending in a
+    # code span was never seen. A backtick escape is refused for nothing: a `n in a
     # Write-Host string is everyday PowerShell, and refusing it would stop work
-    # that reads nothing. What that misreads is a slip this hook can miss.
+    # that reads nothing.
     shell_tool_text "$TOOL_NAME" "$COMMAND"
     COMMAND="$SHELL_TEXT"
+    # In PowerShell `type` is Get-Content: a reader. The shared list lets it through
+    # because bash's `type` only says what a name is.
+    if [ "$TOOL_NAME" = PowerShell ]; then
+      _kept=()
+      for _c in "${SECRET_NONREADING_COMMANDS[@]}"; do
+        [ "$_c" = type ] || _kept+=("$_c")
+      done
+      SECRET_NONREADING_COMMANDS=(${_kept[@]+"${_kept[@]}"})
+    fi
     if secret_command_touches_env "$COMMAND" "$CWD"; then
       if [ "$SECRET_HIT_KIND" = search ]; then
         block_search

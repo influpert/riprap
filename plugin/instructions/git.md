@@ -103,6 +103,14 @@ too the hook only catches the slips. If it refuses a command that deletes nothin
 message or pull request body that quotes one — the text is what it misread: pass it from a file
 under `tmp/` with `git commit -F` or `gh pr create --body-file`.
 
+Both hooks read a command run through PowerShell as they read a Bash one, once what the shell
+grammar they read with would misread is read as PowerShell reads it: a backtick that ends a line
+continues it, any other backtick escapes the character after it, a backslash is a path separator
+— `..\other` is the directory beside this one — and a comment is dropped. What they do not read
+is PowerShell's own vocabulary: `Set-Location` and `Push-Location` are not followed as `cd` is,
+`Remove-Item` is not an `rm`, and a drive-letter path (`C:\Users\…`) is not resolved, so it
+passes both hooks as though it were relative. There the rule is yours alone to keep.
+
 ## Do not run `git diff` before committing
 
 Use these instead:

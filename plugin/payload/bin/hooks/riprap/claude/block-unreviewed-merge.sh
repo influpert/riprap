@@ -320,10 +320,10 @@ if [ "$SHELL_TOOL" -eq 1 ]; then
   # A Monitor watching a WebSocket has no command, and runs nothing.
   COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
   [ -n "$COMMAND" ] || exit 0
-  # A PowerShell line continuation is joined as PowerShell joins it: read as bash,
-  # `gh pr merge 5 `<newline>--admin` was a merge with no --admin. Any other
-  # backtick left in a PowerShell merge is refused below, once the walk has said
-  # whether there is a merge in it.
+  # PowerShell's line continuations, escapes, backslashes and comments are read
+  # as PowerShell reads them (lib/shell-tools.sh): read as bash, `gh pr merge 5
+  # `<newline>--admin` was a merge with no --admin. A merge beside a backtick
+  # escape is refused below, once the walk has said whether there is one.
   shell_tool_text "$TOOL_NAME" "$COMMAND"
   COMMAND="$SHELL_TEXT"
 
@@ -1308,18 +1308,20 @@ walk() {
 # lookup below.
 [ "$SHELL_TOOL" -eq 0 ] || walk "$COMMAND"
 
-# A backtick left in a PowerShell command, once its continuations are joined, is
-# PowerShell's escape of the next character, and the start of a substitution to the
-# grammar the walk reads. The walk's reading of that command is not PowerShell's:
-# an escaped quote opens a string to bash that PowerShell never opens, and the
-# merge after it vanishes into the string. So a merge seen either way, by the walk
-# or as text, is refused unread. A command with no merge in it passes, backtick or
-# not: refusing every `n in a Write-Host string would refuse PowerShell's own idiom.
-if [ "$SHELL_STRAY_BACKTICK" -eq 1 ] && { [ "${#TARGETS[@]}" -gt 0 ] || merge_text "$COMMAND"; }; then
-  unverifiable "it is a PowerShell command with a backtick in it that is not a line continuation. PowerShell reads that backtick as an escape, and the shell grammar this gate reads commands with reads it as the start of another command, so what this gate would check is not what PowerShell runs." \
-"  Run the merge as a PowerShell command of its own, with no backtick in it:
+# A backtick escape in a PowerShell command, outside single quotes and comments,
+# was translated into bash's escape before the walk read it (lib/shell-tools.sh), so
+# an escaped quote no longer hides the merge after it. A merge the walk found there
+# is still refused unread: what this gate checks should be what PowerShell runs, not
+# a translation of it. A command the walk found no merge in passes, whatever its
+# text says. Matching the text as well refused every commit message and pull
+# request body that named a merge beside a backtick, the code spans in a
+# single-quoted message included, and every `n in a Write-Host string beside one.
+if [ "$SHELL_STRAY_BACKTICK" -eq 1 ] && [ "${#TARGETS[@]}" -gt 0 ]; then
+  unverifiable "it is a PowerShell command with a backtick escape in it. The shell grammar this gate reads commands with has no such escape, and a merge is not checked on a translation of the command PowerShell runs." \
+"  Run the merge as a PowerShell command of its own, with no backtick escape in it:
   gh pr merge <number>, with --repo <owner>/<repo> for another repository.
-  A line that ends in a backtick is fine; this gate joins it as PowerShell does."
+  A backtick that ends a line is fine, and so is one inside single quotes, a
+  here-string or a comment; this gate reads those as PowerShell does."
 fi
 
 [ "${#TARGETS[@]}" -gt 0 ] || exit 0

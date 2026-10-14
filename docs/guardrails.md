@@ -81,7 +81,15 @@ to hold. Every hook that reads a shell command — secret hygiene, the destructi
 blocker, the merge gate and the worktree boundary — names `PowerShell` and `Monitor` beside
 `Bash`: Claude Code's other two tools that run a shell command, which have no confirmed Codex
 equivalent and never fire there. On Claude Code a PowerShell command is read with the same shell
-grammar as a Bash one, its backtick line continuations joined first as PowerShell joins them.
+grammar as a Bash one, once what that grammar would misread is read as PowerShell reads it: a
+backtick that ends a line continues it, any other backtick outside single quotes and comments
+escapes the character after it, a backslash is a path separator, so `Get-Content .\.env` and
+`rm -r ..\sibling` are refused, and a comment is dropped. PowerShell's own vocabulary is read
+only where a hook says so: secret hygiene knows its name-only cmdlets (`Test-Path`, `New-Item`,
+`Remove-Item`) and reads `Copy-Item` as `cp`, and only the merge gate follows `Set-Location` and
+`Push-Location`. The destructive-command blocker and the worktree boundary do not take
+`Remove-Item` for an `rm`, and read a drive-letter path (`C:\Users\…`) as a relative one, so it
+passes them.
 
 Those are the paths for a rule *you* write. riprap's own live one level down, under
 `bin/hooks/riprap/`, which is replaced wholesale on every install — so nothing you write

@@ -353,12 +353,31 @@ check "a Windows line ending after the backtick -> block" 2 \
   "$(cmd_in PowerShell "$REPO" "cp src/a.txt $BT"$'\r'"$NL  $OTHER/a.txt")"
 check "a continuation inside the worktree -> allow" 0 \
   "$(cmd_in PowerShell "$REPO" "cp src/a.txt $BT$NL  tmp/a.txt")"
-# Any other backtick is PowerShell's escape. It is left as it is, and refused for
-# nothing: the hook reads what it can around it.
+# Any other backtick is PowerShell's escape, read as bash's escape of the same
+# character, and refused for nothing: the hook reads what it can around it.
 check "a backtick escape in a string, then a write inside -> allow" 0 \
   "$(cmd_in PowerShell "$REPO" "Write-Host \"saving${BT}n\"; echo hi > tmp/out.txt")"
 check "a write outside, then a backtick escape in a string -> block" 2 \
   "$(cmd_in PowerShell "$REPO" "echo hi > $OTHER/out.txt; Write-Host \"saved${BT}n\"")"
+
+echo
+echo "--- PowerShell's comments, escapes and backslashes, read as PowerShell reads them ---"
+# A comment ends at the end of its line, whatever it ends in. Joined as a
+# continuation, a comment that closed a code span took the write on the next line
+# into the comment.
+check "a comment ending in a code span, then a write outside -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" "# Save the ${BT}log${BT}${NL}git log > $OTHER/log.txt")"
+check "... then a write inside -> allow" 0 \
+  "$(cmd_in PowerShell "$REPO" "# Save the ${BT}log${BT}${NL}git log > tmp/log.txt")"
+# An escaped quote is a quote character to PowerShell, not the start of a string.
+check "an escaped quote, then a write outside -> block" 2 \
+  "$(cmd_in PowerShell "$REPO" "Write-Host ${BT}\"; echo hi > $OTHER/out.txt")"
+check "a code span in a single-quoted string, then a write inside -> allow" 0 \
+  "$(cmd_in PowerShell "$REPO" "Write-Host 'Saving ${BT}log${BT}'; git log > tmp/log.txt")"
+# A backslash is PowerShell's path separator and never an escape. Read as bash's
+# escape, ..\elsewhere was ..elsewhere, a name inside the worktree.
+check "a backslash path outside -> block" 2 "$(cmd_in PowerShell "$REPO" 'git log > ..\elsewhere\log.txt')"
+check "a backslash path inside -> allow" 0 "$(cmd_in PowerShell "$REPO" 'git log > .\tmp\log.txt')"
 
 echo
 echo "--- Fail closed ---"

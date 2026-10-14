@@ -33,52 +33,153 @@ shell_tool() {
 }
 
 # shell_tool_text NAME TEXT — TEXT as the bash-grammar readers should be given it,
-# in SHELL_TEXT; and SHELL_STRAY_BACKTICK=1 when it is a PowerShell command that
-# still holds a backtick they cannot read as PowerShell does.
+# in SHELL_TEXT; and SHELL_STRAY_BACKTICK=1 when it is a PowerShell command whose
+# reading rests on a backtick escape translated into bash's.
 #
 # Every reader here — lib/shell-words.sh, and the merge gate's own scan — reads
-# bash's grammar. A PowerShell command reads the same way as far as these hooks
-# look, with one exception that splits a command where PowerShell does not: a
-# backtick at the end of a line is PowerShell's line continuation, and to bash it
-# opens a command substitution. `gh pr merge 5 `<newline>--admin` is one command
-# to PowerShell and was read as a merge with no --admin, followed by something
-# else. So each backtick-newline is joined into a space, as PowerShell joins it,
-# with or without the carriage return a Windows line ending puts before the
-# newline. A backtick followed by anything else, a space included, is not a
-# continuation.
+# bash's grammar. The commands these hooks look for are spelled the same in
+# PowerShell, but four things in PowerShell's grammar mean something else to bash,
+# and each moved where a command ended or what a word was:
 #
-# Any other backtick is PowerShell's escape of the character after it, inside
-# double quotes or out — so ``` `` ``` is a literal backtick, and a newline after
-# one is a newline. That is not translated: bash reads it as the start of a
-# substitution, so an escaped quote can open a string that PowerShell never
-# opened and hide what follows it. Each hook says what it does when one is left.
-# Inside single quotes PowerShell's backtick is literal; joining one there changes
-# only the string's text, never where a command ends.
+#   - A backtick at the end of a line continues the line; to bash it opens a
+#     command substitution. `gh pr merge 5 `<newline>--admin` is one command to
+#     PowerShell and was read as a merge with no --admin. Each backtick-newline is
+#     joined into a space, as PowerShell joins it, with or without the carriage
+#     return a Windows line ending puts before the newline.
+#   - Any other backtick escapes the character after it, inside double quotes or
+#     out, and becomes bash's backslash escape of the same character. Left as a
+#     backtick, an escaped quote opened a string PowerShell never opened, and the
+#     command after it vanished into that string.
+#   - A backslash is no escape at all; it is a path separator, so `.\.env` is .env
+#     and `..\other` is the directory beside this one. Every backslash becomes a
+#     slash, which both shells read as a separator and neither as an escape. Read
+#     as bash's escape, `.\.env` was `..env`, which names nothing, and a quoted
+#     path that ended in a backslash never closed its quote.
+#   - A comment, `#` to the end of its line or `<# ... #>`, is dropped, as
+#     PowerShell drops it. A backtick inside one is the comment's text: a comment
+#     that ended with a code span continued nothing, and joined as a continuation
+#     it took the command on the next line into the comment.
+#
+# Inside single quotes, and in a literal here-string from @' to the '@ that starts
+# a line, a backtick is a character: nothing there is joined or taken for an
+# escape, so the code spans in a commit message stay text, and SHELL_STRAY_BACKTICK
+# stays 0 for them. A quote inside a here-string closes nothing, so each is escaped
+# for bash, which would otherwise end the string there. An expandable here-string,
+# @" to "@, escapes with backticks as a double-quoted string does.
+#
+# What is left misread is what bash's grammar has no word for: a drive-letter path
+# (C:\Users\x becomes C:/Users/x, which is relative to bash), a quote typed as a
+# typographic quote, which PowerShell also accepts, and a quote inside a $( )
+# inside an expandable here-string. The merge gate refuses a merge beside a
+# translated escape rather than check it on a translation; the other three hooks
+# refuse nothing for one.
 #
 # Text from any other tool is handed back as it came.
 # shellcheck disable=SC2034  # SHELL_TEXT and SHELL_STRAY_BACKTICK are what the hook reads
 shell_tool_text() {  # $1 = tool name, $2 = command text
-  local rest="$2" out="" bt='`' cr=$'\r' nl=$'\n'
+  local s="$2" out="" state=code prev=' ' c n i=0 j len
+  local bt='`' bs='\' sq="'" dq='"' cr=$'\r' nl=$'\n' tab=$'\t'
   SHELL_TEXT="$2"
   SHELL_STRAY_BACKTICK=0
   [ "$1" = PowerShell ] || return 0
-  # One step per backtick, not per character: a command with none, which is
-  # nearly every command, is not walked at all.
-  while :; do
-    case "$rest" in *"$bt"*) ;; *) break ;; esac
-    out+="${rest%%"$bt"*}"
-    rest="${rest#*"$bt"}"
-    case "$rest" in
-      "$nl"*) out+=" "; rest="${rest#"$nl"}" ;;
-      "$cr$nl"*) out+=" "; rest="${rest#"$cr$nl"}" ;;
-      *)
-        # An escape: the backtick and the character it escapes are kept together,
-        # so an escaped backtick cannot start a continuation of its own.
-        out+="$bt${rest:0:1}"
-        rest="${rest:1}"
-        SHELL_STRAY_BACKTICK=1
+  # A command with none of these, which is most of them, has nothing to translate.
+  case "$s" in *"$bt"* | *"$bs"* | *'#'* | *'@'*) ;; *) return 0 ;; esac
+  len=${#s}
+  while [ "$i" -lt "$len" ]; do
+    c="${s:$i:1}"
+    n="${s:$((i + 1)):1}"
+    case "$state" in
+      code)
+        case "$c" in
+          "$bt")
+            if [ "$n" = "$nl" ]; then
+              out+=" "; i=$((i + 2)); prev=' '; continue
+            elif [ "$n" = "$cr" ] && [ "${s:$((i + 2)):1}" = "$nl" ]; then
+              out+=" "; i=$((i + 3)); prev=' '; continue
+            fi
+            _shell_tool_escape "$n"; i=$((i + 2)); prev=x; continue
+            ;;
+          "$sq") state=sq ;;
+          "$dq") state=dq ;;
+          "$bs") c=/ ;;
+          @)
+            # A here-string opens with @' or @" and nothing after it on the line.
+            if [ "$n" = "$sq" ] || [ "$n" = "$dq" ]; then
+              j=$((i + 2))
+              while [ "$j" -lt "$len" ]; do
+                case "${s:$j:1}" in ' ' | "$tab" | "$cr") j=$((j + 1)) ;; *) break ;; esac
+              done
+              if [ "${s:$j:1}" = "$nl" ]; then
+                out+="${s:$i:$((j - i + 1))}"; i=$((j + 1)); prev="$nl"
+                if [ "$n" = "$sq" ]; then state=hsq; else state=hdq; fi
+                continue
+              fi
+            fi
+            ;;
+          '#' | '<')
+            # Only where a word starts: a # inside a word is part of it.
+            case "$prev" in
+              ' ' | "$tab" | "$cr" | "$nl" | ';' | '|' | '&' | '(' | ')' | '{' | '}')
+                if [ "$c" = '#' ]; then
+                  state=comment; i=$((i + 1)); continue
+                elif [ "$n" = '#' ]; then
+                  state=block; out+=" "; i=$((i + 2)); continue
+                fi
+                ;;
+            esac
+            ;;
+        esac
+        ;;
+      sq)
+        case "$c" in
+          "$sq") state=code ;;
+          "$bs") c=/ ;;
+        esac
+        ;;
+      dq)
+        case "$c" in
+          "$dq") state=code ;;
+          "$bt") _shell_tool_escape "$n"; i=$((i + 2)); prev=x; continue ;;
+          "$bs") c=/ ;;
+        esac
+        ;;
+      hsq | hdq)
+        # The end: '@ (or "@) at the start of a line.
+        if [ "$prev" = "$nl" ] && [ "$n" = @ ] && { [ "$state$c" = "hsq$sq" ] || [ "$state$c" = "hdq$dq" ]; }; then
+          out+="$c@"; i=$((i + 2)); prev=@; state=code; continue
+        fi
+        case "$state$c" in
+          "hsq$sq") c="'\\''" ;;
+          "hdq$dq") c='\"' ;;
+          "hdq$bt") _shell_tool_escape "$n"; i=$((i + 2)); prev=x; continue ;;
+          *"$bs") c=/ ;;
+        esac
+        ;;
+      comment)
+        # Dropped up to the newline, which still ends the command.
+        if [ "$c" != "$nl" ]; then i=$((i + 1)); continue; fi
+        state=code
+        ;;
+      block)
+        if [ "$c" = '#' ] && [ "$n" = '>' ]; then state=code; i=$((i + 2)); prev=' '; continue; fi
+        i=$((i + 1)); continue
         ;;
     esac
+    out+="$c"; prev="${s:$i:1}"; i=$((i + 1))
   done
-  SHELL_TEXT="$out$rest"
+  SHELL_TEXT="$out"
+}
+
+# _shell_tool_escape CHAR — PowerShell's backtick escape of CHAR, appended to the
+# caller's `out` as bash's grammar reads the same character: a backslash and CHAR,
+# or a slash for a backslash, which is no escape in either. A backtick at the very
+# end of the text escapes nothing and adds nothing.
+# shellcheck disable=SC2034  # SHELL_STRAY_BACKTICK is what the hook reads
+_shell_tool_escape() {
+  SHELL_STRAY_BACKTICK=1
+  case "$1" in
+    '') ;;
+    '\') out+=/ ;;
+    *) out+="\\$1" ;;
+  esac
 }

@@ -91,6 +91,19 @@ SECRET_NONREADING_COMMANDS=(
   # `kubectl delete secrets/db`, `gh api .../actions/secrets/public-key` — and a
   # file they take is sent to the service, not printed
   gh kubectl
+  # PowerShell's own names for the same acts, and the aliases it gives them:
+  # Test-Path is its test, Get-Item, Get-ChildItem and Resolve-Path its ls and
+  # realpath, Get-FileHash its sha256sum, New-Item its touch and mkdir, and
+  # Remove-Item, Rename-Item and Move-Item its rm and mv. Set-Content, Add-Content
+  # and Out-File write to the name, as tee does. Copy-Item is cp, and is read as cp
+  # is, below; Get-Content is cat, and is on no list. Set-Location is left off: it
+  # is not followed as cd is, and listed it would wave through the read after it.
+  # Listed as PowerShell spells them: a cmdlet in another case is refused as any
+  # unlisted command is.
+  Test-Path Get-Item gi Get-ChildItem gci dir Resolve-Path rvpa Split-Path Join-Path
+  Get-FileHash Write-Host Write-Output
+  New-Item ni Remove-Item ri del erase rd Rename-Item rni ren Move-Item mi move
+  Set-Content Add-Content Out-File Tee-Object Clear-Content
 )
 
 # git subcommands that act on a path without printing what is in it. Every other
@@ -1679,9 +1692,10 @@ _secret_jq() {  # CMD START
 # secret-bearing — `cp .env .env.bak`, or `cp .env ../wt/`, which keeps the
 # name — puts nothing into the session and is ordinary work, as is creating the
 # real file from its example: `cp config/app.pem.example config/app.pem` reads
-# only the example.
+# only the example. PowerShell's Copy-Item is read as cp, its -Destination wherever
+# it stands: `Copy-Item -Destination .env -Path .env.example` copies the example.
 _secret_copy() {  # CMD START
-  local cmd="$1" k="$2" n=${#_SR_W[@]} w q skip=0 target="" i last dest src
+  local cmd="$1" k="$2" n=${#_SR_W[@]} w q skip=0 target="" i last dest src named=""
   local -a ops=() opsq=()
   while [ "$k" -lt "$n" ]; do
     w="${_SR_W[$k]}"
@@ -1689,6 +1703,7 @@ _secret_copy() {  # CMD START
     k=$((k + 1))
     if [ "$skip" -eq 1 ]; then skip=0; continue; fi
     case "$cmd:$w" in
+      Copy-Item:-Destination | copy:-Destination | cpi:-Destination) named="${_SR_W[$k]:-}"; skip=1; continue ;;
       *:-t | *:--target-directory) target="${_SR_W[$k]:-}/"; skip=1; continue ;;
       *:--target-directory=*) target="${w#*=}/"; continue ;;
       *:-S | *:--suffix | install:-m | install:--mode | install:-o | install:--owner | \
@@ -1702,6 +1717,7 @@ _secret_copy() {  # CMD START
     ops+=("$w")
     opsq+=("$q")
   done
+  if [ -n "$named" ]; then ops+=("$named"); opsq+=(0); fi
   if [ -n "$target" ]; then
     last=$((${#ops[@]} - 1))
     dest="$target"
@@ -2015,7 +2031,7 @@ _secret_simple() {
     find) _secret_find "$k"; return ;;
     sed | awk | gawk | mawk | nawk | ag | ack) _secret_scripted "$cmd" "$k"; return ;;
     jq | gojq | jaq | yq) _secret_jq "$cmd" "$k"; return ;;
-    cp | install | rsync | scp) _secret_copy "$cmd" "$k"; return ;;
+    cp | install | rsync | scp | Copy-Item | copy | cpi) _secret_copy "$cmd" "$k"; return ;;
     fd | fdfind)
       # fd's operands are a pattern and directories, and it prints names, until
       # -x or -X runs a command on what it finds.

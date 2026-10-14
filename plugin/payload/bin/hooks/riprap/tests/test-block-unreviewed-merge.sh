@@ -633,11 +633,13 @@ EXPECT="nothing" check "a backtick-newline through Bash is Bash's substitution, 
   "$(cmd_at "$A" Bash "gh pr merge 6 $BT${NL}--admin$BT")"
 
 echo
-echo "--- Any other backtick in a PowerShell merge is refused unread ---"
-# PowerShell reads every other backtick as an escape of the next character; bash's
-# grammar reads it as a command substitution. A merge beside one is not read the
-# way PowerShell runs it: an escaped quote opens a string to bash that PowerShell
-# never opened, and the merge after it vanished into that string.
+echo "--- A backtick escape in a PowerShell merge is refused unread ---"
+# PowerShell reads every other backtick, outside single quotes and comments, as an
+# escape of the next character; bash's grammar reads it as a command substitution.
+# Read that way, an escaped quote opened a string PowerShell never opened, and the
+# merge after it vanished into it. The escape is now translated into bash's own
+# before anything is read, so the merge is found; but a merge is not checked on a
+# translation, so one beside an escape is refused rather than looked up.
 EXPECT="$A||5" check "a merge beside a backtick escape -> block, though harmless" 2 \
   "$(cmd_at "$A" PowerShell "Write-Host \"merging${BT}n\"; gh pr merge 6 --squash")"
 EXPECT="nothing" check "a merge hidden from bash's grammar by an escaped quote -> block" 2 \
@@ -645,8 +647,48 @@ EXPECT="nothing" check "a merge hidden from bash's grammar by an escaped quote -
 check_contains "... saying it could not check it" "could not check" \
   "$(cmd_at "$A" PowerShell "echo ${BT}\"; gh pr merge 6 --squash")"
 check_contains "... and why" "backtick" "$(cmd_at "$A" PowerShell "echo ${BT}\"; gh pr merge 6 --squash")"
+# Read through the escape, the flag behind an escaped quote is the merge's own.
+check_contains "--admin behind an escaped quote is read as gh's -> refused for --admin" "uses --admin" \
+  "$(cmd_at "$A" PowerShell "Write-Host ${BT}'; gh pr merge 6 --admin")"
 EXPECT="nothing" check "a backtick escape with no merge in the command -> allow" 0 \
   "$(cmd_at "$A" PowerShell "git merge main; Write-Host \"merged${BT}n\"")"
+
+echo
+echo "--- Text about a merge is not a merge, in PowerShell either ---"
+# Inside single quotes and here-strings a backtick is a character, and in a comment
+# it is the comment's. Refusing every PowerShell command whose text named a merge
+# beside a backtick refused the commit messages and pull request bodies that
+# describe this gate, with advice about running a merge that was never run.
+EXPECT="nothing" check "a here-string commit message naming gh pr merge in a code span -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "git commit -m @'${NL}Gate ${BT}gh pr merge${BT} behind review${NL}'@")"
+EXPECT="nothing" check "a single-quoted commit message naming it -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "git commit -m 'Gate ${BT}gh pr merge${BT} behind review'")"
+EXPECT="nothing" check "a pull request body quoting a merge with --admin -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "gh pr create --title \"Merge gate\" --body @'${NL}The gate now reads ${BT}gh pr merge 5 --admin${BT}.${NL}'@")"
+EXPECT="nothing" check "a backtick escape in a string that names a merge -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "Write-Host \"Next step: gh pr merge 5${BT}n\"")"
+# A here-string ends only at a line that starts with '@, so an apostrophe inside
+# one closes nothing. Read as bash's single quote, it closed the string and left
+# the code span outside it, as a substitution that ran a merge.
+EXPECT="nothing" check "a here-string with an apostrophe and a code span -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "git commit -m @'${NL}Don't run ${BT}gh pr merge${BT} yet${NL}'@")"
+# A comment ends at the end of its line, whatever it ends in: a backtick there is
+# no continuation, and joined as one, the merge on the next line became comment.
+check_contains "a comment ending in a code span, then --admin -> refused for --admin" "uses --admin" \
+  "$(cmd_at "$A" PowerShell "# Merge the ${BT}fix${BT}${NL}gh pr merge 5 --admin")"
+EXPECT="$A||5" check "a comment ending in a code span, then a merge -> that pull request" 2 \
+  "$(cmd_at "$A" PowerShell "# Merge the ${BT}fix${BT}${NL}gh pr merge 5 --squash")"
+EXPECT="$A||6" check "... harmless -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "# Merge the ${BT}fix${BT}${NL}gh pr merge 5 --squash")"
+EXPECT="$A||6" check "a block comment's backticks, then a harmless merge -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "<# merge the ${BT}fix${BT} #> gh pr merge 5 --squash")"
+# A backslash is PowerShell's path separator and no escape: Set-Location ..\b moves
+# to ../b. Read as bash's escape it was ..b, which does not exist, and the merge was
+# refused as one that runs nowhere.
+EXPECT="$A/../b||5" check "Set-Location to a backslash path, then a merge -> where it went" 2 \
+  "$(cmd_at "$A" PowerShell 'Set-Location ..\b; gh pr merge 5')"
+EXPECT="$A/../b||6" check "... harmless -> allow" 0 \
+  "$(cmd_at "$A" PowerShell 'Set-Location ..\b; gh pr merge 5')"
 
 echo
 echo "--- The MCP merge tool, as other servers spell it ---"

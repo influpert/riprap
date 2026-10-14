@@ -51,8 +51,10 @@
 #     stdin as the script.
 #   - the command of a Bash, PowerShell or Monitor call alike: all three run a shell
 #     command, and the same rm deletes the same files through any of them. PowerShell's
-#     text is read with the same grammar, once a backtick that ends a line is joined to
-#     the next as PowerShell joins it (lib/shell-tools.sh).
+#     text is read with the same grammar once what that grammar would misread is
+#     brought into it (lib/shell-tools.sh): a backtick that ends a line is joined to the
+#     next, any other backtick is the escape it is, a backslash is a path separator,
+#     and a comment is dropped.
 #
 # Limits, by design, because this runs on every shell command and is there to catch
 # slips rather than an adversary: a variable other than $HOME, $TMPDIR and $PWD is not
@@ -64,10 +66,10 @@
 # xargs -I template that does not start with the input all hand on names that land
 # wherever the next command runs. A script a command runs, text piped into a shell
 # (`cat <<EOF | bash`, `echo ... | sh`), and anything decoded before it reaches a
-# shell are not read. Nor is PowerShell's own grammar past its line continuations:
-# any other backtick, its escape character, is read as bash reads it and refused for
-# nothing, Set-Location and Push-Location are not followed as cd is, and Remove-Item
-# is not an rm.
+# shell are not read. Nor is the rest of PowerShell's own grammar: Set-Location and
+# Push-Location are not followed as cd is, Remove-Item is not an rm, and a
+# drive-letter path (C:\Users\x) is read as a relative one, inside the working
+# directory.
 #
 # Quoted arguments, spaces and all, are single words, and backslash escapes follow
 # shell rules (lib/shell-words.sh). A literal `--` ends flag parsing for rm, so every
@@ -131,10 +133,14 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty')
 
 [ -n "$COMMAND" ] || exit 0
 
-# A PowerShell line continuation is joined as PowerShell joins it, or the target on
-# the second line is a command of its own. Any other backtick is read with bash's
-# grammar and refused for nothing: a `n in a Write-Host string is everyday
-# PowerShell, and refusing it would stop work that deletes nothing.
+# PowerShell's line continuations, escapes, backslashes and comments are read as
+# PowerShell reads them (lib/shell-tools.sh), or a target on a continuation line,
+# behind an escaped quote or after a comment that ends in a code span is a command
+# of its own, and `..\other` is a name inside the working directory. A backtick
+# escape is refused for nothing: a `n in a Write-Host string is everyday
+# PowerShell, and refusing it would stop work that deletes nothing. The refusal
+# shows the command as it was written, not as it was translated.
+COMMAND_AS_WRITTEN="$COMMAND"
 shell_tool_text "$TOOL_NAME" "$COMMAND"
 COMMAND="$SHELL_TEXT"
 
@@ -545,7 +551,7 @@ walk_commands "$COMMAND" "$START_DIR" on_command
     echo "❌ Blocked: this destroys something outside the $BOUNDARY_NAME you are working in."
   fi
   echo ""
-  echo "Command: $COMMAND"
+  echo "Command: $COMMAND_AS_WRITTEN"
   echo "cwd: $CWD"
   echo "Reason: $BLOCK_REASON"
   echo ""

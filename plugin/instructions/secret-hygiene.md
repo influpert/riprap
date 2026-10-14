@@ -65,7 +65,12 @@ prose alone does not survive a busy afternoon.
    - **A shell command that names one** in an argument or a `<` redirect (`cat<.env`
      included). Any command counts except a short list that only acts on a name — `ls`,
      `test`, `rm`, `mv`, `chmod`, `ln`, `echo`, `tee`, `export`, `git add`, `git rm`,
-     `git check-ignore` and a few like them. A list of *readers* is always one short,
+     `git check-ignore` and a few like them, and PowerShell's names for the same acts:
+     `Test-Path`, `New-Item`, `Remove-Item`, `Rename-Item`, `Get-FileHash` and their kin, in
+     the case PowerShell spells them (`test-path` is refused as any unlisted command is).
+     `Copy-Item` is read as `cp` is, and PowerShell's `type`, which is `Get-Content`, as a
+     reader. In PowerShell a backslash is a path separator, as Windows reads it, so
+     `Get-Content .\.env` names `.env`. A list of *readers* is always one short,
      because the programs that can print a file have no end, and the one it lacks is the
      one tried after `cat` is refused. `git show <rev>:<path>` reads the path it names;
      `git log -- .env` does not, until `-p` asks for the patch.
@@ -176,7 +181,8 @@ It catches an honest slip and the obvious retry after a block. It does not follo
   `ag` or `ack`;
 - a program handed an env file that prints it in a way of its own
   (`uv run --env-file .env python -c 'print(…)'`), or one that loads `.env` without being
-  told to, as `docker compose config` does.
+  told to, as `docker compose config` does;
+- in PowerShell, a `Set-Location` or `Push-Location`, which is not followed as `cd` is.
 
 Those are the cases the rule above is for.
 

@@ -62,6 +62,16 @@
 #
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
 # refused, since there is nothing to resolve it against.
+#
+# PowerShell and Monitor run shell commands too, and what is said of Bash above
+# holds for a command run through either. PowerShell's text is first read as
+# PowerShell reads it (lib/shell-tools.sh): a backtick that ends a line continues
+# it, any other backtick escapes the character after it and is refused for
+# nothing, a backslash is a path separator, so `> ..\out.txt` writes beside the
+# worktree, and a comment is dropped. Its own commands are not read: Set-Location
+# and Push-Location are not followed as cd is, Out-File, Set-Content, New-Item and
+# Copy-Item are not taken for writes, and a drive-letter path (C:\Users\x) is read
+# as a relative one, inside the worktree.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -334,10 +344,12 @@ on_command() {
 if [ "$SHELL_TOOL" -eq 1 ]; then
   COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
   [ -n "$COMMAND" ] || exit 0
-  # A PowerShell line continuation is joined as PowerShell joins it, or the target
-  # on the second line is a command of its own. Any other backtick is read with
-  # bash's grammar and refused for nothing: a `n in a Write-Host string is everyday
-  # PowerShell, and refusing it would stop work that writes nothing.
+  # PowerShell's line continuations, escapes, backslashes and comments are read as
+  # PowerShell reads them (lib/shell-tools.sh), or a target on a continuation line,
+  # behind an escaped quote or after a comment that ends in a code span is a command
+  # of its own, and `..\out.txt` a name inside the worktree. A backtick escape is
+  # refused for nothing: a `n in a Write-Host string is everyday PowerShell, and
+  # refusing it would stop work that writes nothing.
   shell_tool_text "$TOOL_NAME" "$COMMAND"
   COMMAND="$SHELL_TEXT"
 

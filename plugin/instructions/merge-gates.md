@@ -14,7 +14,10 @@ So the review stays. The merge decision, for these paths, belongs to a human.
 
 ## Gated paths
 
-Enforced by `bin/hooks/riprap/claude/block-unreviewed-merge.sh`, which intercepts `gh pr merge`,
+Enforced by `bin/hooks/riprap/claude/block-unreviewed-merge.sh`, which intercepts a merge in
+each of the forms it takes — `gh pr merge`, a `PUT` on the REST endpoint
+`repos/<owner>/<repo>/pulls/<n>/merge` through `gh api` or `curl`, and the GitHub MCP server's
+`merge_pull_request` tool, whether the command runs through Bash, PowerShell or a Monitor —
 reads the PR's changed files, and refuses if any match:
 
 - `bin/hooks/**`, `.claude/hooks/**`, `.githooks/**`, `.husky/**`, `lefthook.yml`,
@@ -26,14 +29,36 @@ reads the PR's changed files, and refuses if any match:
 - Any dependency manifest or lockfile
 
 **It checks the pull request the command merges, not the session's.** A merge is a `gh pr merge`
-that runs: as a command, after `cd`, `&&`, `;`, a pipe, a subshell or a prefix such as `env`. The
-text inside a commit message, a heredoc body, a comment or a grep pattern is not a merge. The pull
-request is the number, URL or branch among its arguments. Its repository is the `--repo` or
-`GH_REPO` the command gives, or else the directory it runs in after any `cd`, and that is where the
-hook asks `gh pr diff`. Anything the hook can't read with certainty is refused, not guessed: a flag
-it doesn't know, `cd` to a variable, a merge run through `timeout`, `xargs` or `sudo`, or a
-shell handed the merge as text (`bash -c`, `eval`, a pipe into `sh`). To merge, run `gh pr merge`
-directly.
+that runs: as a command, after `cd`, `&&`, `;`, a pipe, a subshell, a shell keyword such as `if`
+or `then`, a prefix such as `env`, or inside a command substitution, quoted or not. The text
+inside a commit message, a heredoc body, a single-quoted string, a comment or a grep pattern is
+not a merge, and a redirection such as `2>&1` is not part of one. The pull request is the number,
+URL or branch among its arguments, or, with none, the one an earlier `gh pr checkout` in the same
+command switched to. Its repository is the `--repo` the command gives, before `merge` or after
+it, the `GH_REPO` in front of it or exported earlier in the command, or else the directory it
+runs in after any `cd`, and that is where the hook asks `gh pr diff`. A REST merge's pull request
+is the one its endpoint names, with `{owner}/{repo}` filled in where `gh api` would fill them; an
+MCP merge's is the `owner`, `repo` and `pullNumber` (or `pull_number`) it is given. A `GET` on
+the same endpoint only asks whether the pull request has merged, and is not a merge.
+
+Anything the hook can't read with certainty is refused, not guessed: a flag it doesn't know, `cd`
+to a variable, a pull request number, HTTP method or API host that is a variable, a `GH_REPO`
+assigned without `export`, a merge with no number after a `git checkout` or `git switch` in the
+same command, a merge run through `timeout`, `xargs` or `sudo`, a shell handed the merge as text
+(`bash -c`, `eval`, a pipe or a heredoc into `sh`), or a GraphQL `mergePullRequest` sent through
+`gh api` or `curl`, which names its pull request by node ID. Those refusals say that the merge
+could not be checked and how to write it so that it can be — a `gh pr merge <number>` of its own —
+and do not carry the hold procedure below, which is for a merge that was checked.
+
+**Every spelling is looked up through `gh`, the MCP tools included.** Where `gh` is missing, or
+not signed in for the pull request's host, no merge can be checked, and each one is refused until
+it can.
+
+It reads the command as written. A merge assembled at run time, run from a script file, or sent
+as a GraphQL query kept in a file is not seen, and the gate does not pretend otherwise: it catches
+a slip, and the rule still holds where it cannot look. A PowerShell command is read with the same
+shell grammar as a Bash one, which finds a `gh` or `curl` call, `Set-Location` and
+`$env:GH_REPO`, and nothing else of PowerShell's own.
 
 The hook machinery is on that list deliberately. A change there can disable every other
 control in the repo, and no test suite reliably catches *"the guardrail stopped
@@ -111,7 +136,20 @@ These apply to every PR, gated or not:
 2. **No outstanding change requests.** A requested change must be resolved by the author,
    not merged past.
 3. **CI fully green.** Every check passing. **`--admin` bypass is forbidden** — if the
-   check is wrong, fix the check.
+   check is wrong, fix the check. The hook refuses `gh pr merge --admin` on every pull
+   request, whatever it touches.
+
+**Auto-merge is refused too, because what it merges is not what the hook checked.**
+`gh pr merge --auto`, the MCP `enable_pr_auto_merge` tool, the GraphQL
+`enablePullRequestAutoMerge` mutation through `gh api` or `curl`, and a `PUT` on the
+`pulls/<n>/ccr/auto_merge` route that Claude Code's cloud sessions offer in GraphQL's place all
+merge later, when the requirements are met, with nobody present and on whatever head the branch
+has by then. The hook checks the files a pull request touches at the moment it is asked, so a
+commit pushed after auto-merge is switched on would merge without anything having looked at it.
+Wait for the checks, then merge directly. If the user asked for auto-merge, say that the hook
+refuses it and why: turning it on is theirs to do. Turning auto-merge *off* — `gh pr merge
+--disable-auto`, or a `DELETE` on that route — merges nothing, so the hook lets it through even on
+a gated pull request.
 
 ## A pull request with no comments has not been reviewed
 

@@ -40,11 +40,24 @@ fi
 # treating an unrecognized one as "never matches", that is a stronger claim than this
 # allowlist can verify from a text file, and would need to be confirmed against a real
 # Codex install, not assumed from here.
+#
+# The two anchored mcp__ patterns send the GitHub MCP merge tools to the merge gate. They
+# are regular expressions rather than names, which Claude Code's hooks reference documents
+# for MCP tools, and which is the matcher form Codex is reported to use as well — but that
+# is reported, not confirmed from Codex's own documentation, and Codex is also reported to
+# name some connector tools without any mcp__ prefix. Where either is so, the matcher
+# simply never fires on Codex, the same shape as the Claude-only tools above, and the Bash
+# half of the merge gate still holds there.
+#
+# PowerShell and Monitor are Claude Code's other two tools that run a shell command, added
+# for the merge gate on the same basis: Claude Code names them so, and a Codex install that
+# has no tool by either name never fires the matcher.
 jq -e '
   def events: ["SessionStart", "PreToolUse", "PostToolUse", "PreCompact", "Stop", "SessionEnd"];
   def matchers: ["startup", "resume", "clear", "compact", "fork", "Bash", "Read", "Grep",
                  "Edit", "Write", "ExitPlanMode", "ScheduleWakeup", "CronCreate", "Workflow",
-                 "RemoteTrigger", "Agent", "Task", "NotebookEdit"];
+                 "RemoteTrigger", "Agent", "Task", "NotebookEdit", "PowerShell", "Monitor",
+                 "^mcp__.+__merge_pull_request$", "^mcp__.+__enable_pr_auto_merge$"];
   type == "object" and (.hooks | type == "object") and
   ((.hooks | keys) - events | length == 0) and
   (events - (.hooks | keys) | length == 0) and

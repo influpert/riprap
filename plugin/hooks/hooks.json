@@ -51,7 +51,22 @@
     "SessionStart matches `resume` and `fork` as well. Those are not new features —",
     "they are two of the five documented matcher values, and omitting them meant a",
     "resumed session received no router at all, which is the single moment a handoff",
-    "is most worth surfacing."
+    "is most worth surfacing.",
+    "",
+    "The merge gate is wired twice: under the three tools that run a shell command,",
+    "and under a matcher of its own for the GitHub MCP server's merge_pull_request and",
+    "enable_pr_auto_merge. Registered for Bash alone, a merge through PowerShell (the",
+    "primary shell on Windows), through a Monitor, or through MCP never reached it at",
+    "all. Each of the three shell tools carries its command in tool_input.command, and",
+    "a matcher of exact names is the form the hooks reference documents for them",
+    "(Bash|PowerShell). A gh command reads the same in either shell, so the gate needs",
+    "no PowerShell grammar of its own to find one. The MCP server's name is whatever",
+    "an installation called it, and a plugin-bundled server is named",
+    "mcp__plugin_<plugin>_<server>, so the matcher takes any prefix. A matcher holding",
+    "anything but letters, digits, _, -, spaces, commas and | is a regular expression",
+    "tested unanchored, which is why each alternative carries its own ^ and $: without",
+    "them, any tool whose name merely contained merge_pull_request would be sent here.",
+    "bin/tests/test-plugin-hooks.sh evaluates the matchers by that rule."
   ],
   "hooks": {
     "SessionStart": [
@@ -71,7 +86,18 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook block-destructive-outside-cwd.sh" },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook block-destructive-outside-cwd.sh" }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell|Monitor",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook block-unreviewed-merge.sh" }
+        ]
+      },
+      {
+        "matcher": "^mcp__.+__merge_pull_request$|^mcp__.+__enable_pr_auto_merge$",
+        "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/run-payload-hook block-unreviewed-merge.sh" }
         ]
       },

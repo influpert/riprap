@@ -1,47 +1,92 @@
 #!/usr/bin/env bash
-# PreToolUse hook: block rm / git clean -f* / git reset --hard commands whose
-# target resolves OUTSIDE the current working directory.
+# PreToolUse hook: block a destructive command whose target resolves OUTSIDE the
+# worktree the session is working in — rm and unlink, find -delete and -exec rm, git
+# clean -f and git reset --hard.
 #
-# Why this exists: an agent working in one checkout ran `rm -f` against
-# untracked files in a *different* checkout on the same machine. Destructive
-# commands scoped to the agent's own directory must stay frictionless — the risk
-# is a target silently resolving somewhere else.
+# Why this exists: an agent working in one checkout ran `rm -f` against untracked
+# files in a *different* checkout on the same machine, and untracked files have no
+# history to bring them back. Destructive commands scoped to the agent's own checkout
+# must stay frictionless — the risk is a target silently resolving somewhere else. The
+# rule is in riprap's git.md, under "Never write outside your worktree"; this is the
+# half that does not depend on the model remembering it.
 #
-# Heuristic: "effective cwd" = the hook's `cwd`, adjusted for one leading
-# `cd <dir> &&` / `cd <dir> ;`. Deliberately cd-ing into a directory and
-# operating there is normal and stays unblocked; only silent reach-outs are
-# stopped. `rm` arguments are resolved against the effective cwd and blocked if
-# they land outside it. `git clean -f*` / `git reset --hard` default to the
-# effective cwd's own repo (safe); only an explicit `-C <dir>` / `--git-dir=`
-# override can point elsewhere, and that is checked the same way.
+# The boundary is the worktree that contains the payload's `cwd` — or, outside any
+# git checkout, the `cwd` itself — for the whole command. It is the worktree rather
+# than the directory because Claude Code keeps the shell's directory between calls:
+# one `cd packages/app` earlier leaves the session in a subdirectory, and a boundary
+# at the directory then refused `cd ../.. && rm -rf dist` while passing a plain `git
+# reset --hard`, which resets the whole worktree from anywhere in it. The worktree is
+# also what the write guard holds. The root is found with git and spelled the way the
+# `cwd` spells it; when the two cannot be matched up (a `cwd` reached through a
+# symlink into the middle of a checkout), the `cwd` stays the boundary rather than a
+# guess at a wider one.
 #
-# Limits, by design, because this runs on every Bash call: shell variables are
-# not expanded; exactly one `cd &&` hop is followed. Quoted arguments — including
-# ones containing spaces — are recognised as single tokens by a quote-aware
-# tokenizer (tokenize_words, lib/shell-words.sh), which also handles backslash escapes per shell
-# rules. A literal `--` ends flag parsing for that invocation, so every token
-# after it is treated as a path operand and bounds-checked even if it starts
-# with `-`.
+# A `cd`, `pushd` or `popd` inside the command changes what a relative path means —
+# `cd ../other && rm -rf x` deletes ../other/x — but never moves the boundary. It used
+# to: one leading `cd <dir> &&` carried the boundary with it, which made that cd the
+# first thing an agent reached for once `rm -rf <dir>/x` was refused, and it is the
+# incident's own shape. Moving the session is a `cd` in a call of its own, which the
+# user sees.
 #
-# Fail-closed: if the effective cwd cannot be determined (missing or empty `cwd`
-# in the payload), any destructive command is BLOCKED outright — there is no safe
-# base to resolve targets against. Non-destructive commands still pass, since
-# there is nothing to verify.
+# What is read, through the walk in lib/shell-walk.sh — the worktree-write hook's
+# way of following `cd`, lifted into the library rather than written a third time:
+#   - every simple command, whatever separates it: ; && || | & or a newline, glued or
+#     spaced, and inside a subshell, a $(...) or backtick substitution, a brace group,
+#     or an if / loop body. A heredoc body, a comment, a quoted argument and an input
+#     redirection are not commands or operands, so `git commit -m "remove the rm -rf
+#     step"` is not an rm and `xargs rm < list` has no operand `list`.
+#   - the command behind the prefixes agents write — VAR=value, sudo, env, command,
+#     builtin, exec, nohup, time, nice, timeout, xargs — compared by basename, so
+#     /bin/rm and \rm are rm.
+#   - rm and unlink: every operand. find: its starting points, when it runs -delete
+#     or -exec rm, or pipes its paths into xargs rm. git clean -f and git reset
+#     --hard: the directory git runs in after any cd and -C, and any --work-tree,
+#     --git-dir, GIT_WORK_TREE or GIT_DIR.
+#   - `bash -c TEXT` (and sh, zsh, dash, ksh) and `eval TEXT`: TEXT is walked as a
+#     command of its own, starting where the shell was started. So is a heredoc or
+#     here-string fed to a shell that has no script file to run, which reads its
+#     stdin as the script.
+#
+# Limits, by design, because this runs on every Bash call and is there to catch slips
+# rather than an adversary: a variable other than $HOME, $TMPDIR and $PWD is not
+# expanded, so `rm -rf "$DIR"` is not checked, and neither is a relative path after a
+# `cd` this cannot expand (`cd "$(git rev-parse --show-toplevel)" && rm -rf build`) —
+# refusing those would block ordinary work, and a guardrail that does that gets turned
+# off. Operands xargs reads from stdin are checked only when find produced them and
+# nothing has turned them into names: basename, find's own -printf %f or %P, and an
+# xargs -I template that does not start with the input all hand on names that land
+# wherever the next command runs. A script a command runs, text piped into a shell
+# (`cat <<EOF | bash`, `echo ... | sh`), a "$(...)" inside double quotes, and anything
+# decoded before it reaches a shell are not read.
+#
+# Quoted arguments, spaces and all, are single words, and backslash escapes follow
+# shell rules (lib/shell-words.sh). A literal `--` ends flag parsing for rm, so every
+# token after it is a path operand and bounds-checked even if it starts with `-`.
+#
+# Fail-closed: if the payload carries no `cwd`, any destructive command is BLOCKED
+# outright — there is no boundary to check against. Non-destructive commands still
+# pass, since there is nothing to verify.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# tokenize_words: the quote-aware splitter, shared with block-unreviewed-merge.sh.
+# tokenize_redirects, which the walk reads its words from.
 # shellcheck source=../lib/shell-words.sh
 . "$SCRIPT_DIR/../lib/shell-words.sh"
+# walk_commands, walk_expand, walk_normalize.
+# shellcheck source=../lib/shell-walk.sh
+. "$SCRIPT_DIR/../lib/shell-walk.sh"
+# git_env_isolated, for finding the worktree.
+# shellcheck source=../lib/git-env.sh
+. "$SCRIPT_DIR/../lib/git-env.sh"
 
 # Commands whose every non-flag argument is a path that must stay inside the
-# working directory. Extend this if your project has others (`shred`, `trash`).
+# boundary.
 #
 # Note this list is specifically for PATH-SCOPED destruction. Commands that
 # destroy something not named by a path — `terraform destroy`, `kubectl delete`,
 # `docker system prune` — cannot be bounds-checked and belong in the `deny` or
 # `ask` list in .claude/settings.json instead.
-PATH_DESTRUCTIVE_COMMANDS=(rm)
+PATH_DESTRUCTIVE_COMMANDS=(rm unlink)
 
 # jq is a hard dependency: the tool payload arrives as JSON on stdin and there is
 # no way to read it without one. Absent, this hook would exit 127 — which Claude
@@ -76,51 +121,39 @@ if [ -z "$CWD" ]; then
   CWD_MISSING=1
 fi
 
-# --- path normalization helpers ---------------------------------------------
+# `${CWD:-/}` guards against calling walk_normalize with a genuinely empty string:
+# under `set -u`, `IFS='/' read -ra segs <<<""` can leave `segs` unset in bash 3.2.
+# The "/" is a placeholder only — CWD_MISSING drives the fail-closed behaviour, and
+# the walk starts from an empty directory so nothing resolves against it.
+START_DIR=$(walk_normalize "${CWD:-/}")
+BOUNDARY="$START_DIR"
+[ "$CWD_MISSING" -eq 0 ] || START_DIR=""
 
-# Collapse "." and ".." segments. No filesystem access; the path need not exist.
-normalize_path() {
-  local path="$1"
-  local part
-  local -a segs=()
-  local -a parts=()
-  # Split on "/" with IFS scoped to this one `read` builtin. bash 3.2 (the macOS
-  # default) mis-joins array elements during the `${arr[@]:off:len}` slicing
-  # below if a non-default IFS is left active in the function scope, so IFS must
-  # NOT stay set to '/' past this line.
-  IFS='/' read -ra segs <<<"$path"
-  for part in "${segs[@]}"; do
-    case "$part" in
-      '' | '.') continue ;;
-      '..')
-        if [ "${#parts[@]}" -gt 0 ]; then
-          parts=("${parts[@]:0:$((${#parts[@]} - 1))}")
-        fi
-        ;;
-      *) parts+=("$part") ;;
-    esac
-  done
-  if [ "${#parts[@]}" -eq 0 ]; then
-    printf '/'
-    return
-  fi
-  local joined
-  joined=$(
-    IFS=/
-    echo "${parts[*]}"
-  )
-  printf '/%s' "$joined"
-}
-
-# Resolve a possibly-relative path against a base directory, then normalize.
-resolve_path() {
-  local raw="$1" base="$2"
-  case "$raw" in
-    /*) normalize_path "$raw" ;;
-    "~") normalize_path "$HOME" ;;
-    "~"/*) normalize_path "${HOME}/${raw#\~/}" ;;
-    *) normalize_path "$base/$raw" ;;
-  esac
+# The boundary, widened from the `cwd` to its worktree on first use, so a call with
+# nothing destructive in it never starts git. BOUNDARY_NAME is how the message says it.
+BOUNDARY_NAME="working directory"
+BOUNDARY_RESOLVED=0
+resolve_boundary() {
+  local out top cdup cand cand_phys top_phys
+  [ "$BOUNDARY_RESOLVED" -eq 0 ] || return 0
+  BOUNDARY_RESOLVED=1
+  [ "$CWD_MISSING" -eq 0 ] || return 0
+  # Isolated from git's repository variables: inherited from wherever Claude Code was
+  # started, they would answer for that repository instead of the `cwd`'s.
+  out=$(git_env_isolated git -C "$BOUNDARY" rev-parse --show-toplevel --show-cdup 2>/dev/null) || return 0
+  top="${out%%$'\n'*}"
+  cdup=""
+  case "$out" in *$'\n'*) cdup="${out#*$'\n'}" ;; esac
+  [ -n "$top" ] || return 0
+  # git answers with the physical path. The walk resolves paths as the shell spells
+  # them, from the `cwd`, so the root is the `cwd` climbed by git's own count of
+  # levels — trusted only when that lands on the same directory git named.
+  cand=$(walk_normalize "$BOUNDARY/$cdup")
+  cand_phys=$(cd "$cand" 2>/dev/null && pwd -P) || return 0
+  top_phys=$(cd "$top" 2>/dev/null && pwd -P) || return 0
+  [ "$cand_phys" = "$top_phys" ] || return 0
+  BOUNDARY="$cand"
+  BOUNDARY_NAME="worktree"
 }
 
 # True (exit 0) if normalized path $1 equals base $2, or is nested under it.
@@ -133,163 +166,466 @@ path_is_inside() {
   esac
 }
 
-# `${CWD:-/}` guards against calling normalize_path with a genuinely empty
-# string: under `set -u`, `IFS='/' read -ra segs <<<""` can leave `segs` unset in
-# bash 3.2, which then fails as an unbound variable. The substituted "/" is a
-# placeholder only — CWD_MISSING drives the fail-closed behavior, not this value.
-NORM_CWD=$(normalize_path "${CWD:-/}")
-
-# --- effective cwd after a single leading "cd <dir> && ..." -----------------
-EFFECTIVE_CWD="$NORM_CWD"
-REST="$COMMAND"
-CD_RE='^[[:space:]]*cd[[:space:]]+([^;&|]+)[[:space:]]*(&&|;)[[:space:]]*(.*)$'
-if [[ "$COMMAND" =~ $CD_RE ]]; then
-  CD_TARGET="${BASH_REMATCH[1]}"
-  CD_TARGET="${CD_TARGET%\"}"
-  CD_TARGET="${CD_TARGET#\"}"
-  CD_TARGET="${CD_TARGET%\'}"
-  CD_TARGET="${CD_TARGET#\'}"
-  CD_TARGET="${CD_TARGET% }"
-  REST="${BASH_REMATCH[3]}"
-  EFFECTIVE_CWD=$(resolve_path "$CD_TARGET" "$NORM_CWD")
-fi
-[ -n "$REST" ] || REST="$COMMAND"
-
-# --- tokenize the remainder (quote-aware; see tokenize_words) --------------
-tokenize_words "$REST"
-TOKENS=("${TOKENIZED[@]}")
-N=${#TOKENS[@]}
-
-BLOCK_REASON=""
-
-is_path_destructive() {  # $1 = token
+is_path_destructive() {  # $1 = a word; compared by basename, so /bin/rm is rm
   local c
   for c in "${PATH_DESTRUCTIVE_COMMANDS[@]}"; do
-    [ "$1" = "$c" ] && return 0
+    [ "${1##*/}" = "$c" ] && return 0
   done
   return 1
 }
 
-# --- path-destructive commands: check every non-flag argument --------------
-i=0
-while [ "$i" -lt "$N" ] && [ -z "$BLOCK_REASON" ]; do
-  tok="${TOKENS[$i]}"
-  if is_path_destructive "$tok"; then
-    j=$((i + 1))
-    SEEN_DASH_DASH=0
-    while [ "$j" -lt "$N" ]; do
-      arg="${TOKENS[$j]}"
-      case "$arg" in
-        '&&' | ';' | '|' | '||') break ;;
-        '--')
-          if [ "$SEEN_DASH_DASH" -eq 0 ]; then
-            SEEN_DASH_DASH=1
-            j=$((j + 1))
-            continue
-          fi
-          ;;
-      esac
-      # Before the first `--`, a leading `-` means "flag, not a path" (rm -rf,
-      # rm -i, rm --force). After it, POSIX option parsing has ended: every
-      # remaining token is a literal path operand the real command will act on,
-      # no matter what it looks like, so it must be bounds-checked.
-      if [ "$SEEN_DASH_DASH" -eq 0 ]; then
-        case "$arg" in
-          -*)
-            j=$((j + 1))
-            continue
-            ;;
-        esac
-      fi
-      if [ "$CWD_MISSING" -eq 1 ]; then
-        BLOCK_REASON="$tok target '$arg' cannot be verified: the effective working directory could not be determined (missing/empty cwd), failing closed"
-        break
-      fi
-      RESOLVED=$(resolve_path "$arg" "$EFFECTIVE_CWD")
-      if ! path_is_inside "$RESOLVED" "$EFFECTIVE_CWD"; then
-        BLOCK_REASON="$tok target '$arg' resolves to '$RESOLVED', which is outside the working directory '$EFFECTIVE_CWD'"
-        break
-      fi
-      j=$((j + 1))
-    done
-  fi
-  i=$((i + 1))
-done
+BLOCK_REASON=""
 
-# --- shared helper: find an explicit "-C <dir>" / "--git-dir=<dir>" override ---
-find_dash_c() {
-  local k=0
-  local out=""
-  while [ "$k" -lt "$N" ]; do
-    case "${TOKENS[$k]}" in
-      -C)
-        if [ "$((k + 1))" -lt "$N" ]; then
-          out="${TOKENS[$((k + 1))]}"
-        fi
-        ;;
-      --git-dir=*)
-        out="${TOKENS[$k]#--git-dir=}"
-        ;;
-    esac
-    k=$((k + 1))
-  done
-  printf '%s' "$out"
+# check_target LABEL RAW DIR — record a block if RAW, resolved against DIR, lands
+# outside the boundary. A path that cannot be expanded is not checked, by design.
+check_target() {
+  local label="$1" raw="$2" dir="$3" resolved
+  [ -z "$BLOCK_REASON" ] || return 0
+  if [ "$CWD_MISSING" -eq 1 ]; then
+    BLOCK_REASON="$label '$raw' cannot be verified: the working directory could not be determined (missing/empty cwd), failing closed"
+    return 0
+  fi
+  resolved=$(walk_expand "$raw" "$dir") || return 0
+  resolve_boundary
+  path_is_inside "$resolved" "$BOUNDARY" && return 0
+  BLOCK_REASON="$label '$raw' resolves to '$resolved', which is outside the $BOUNDARY_NAME '$BOUNDARY'"
+  return 0
 }
 
-# --- git clean -f* / git reset --hard: risky only via an explicit -C override ---
-if [ -z "$BLOCK_REASON" ]; then
-  HAS_GIT_CLEAN_F=0
-  HAS_GIT_RESET_HARD=0
-  i=0
-  while [ "$i" -lt "$N" ]; do
-    if [ "${TOKENS[$i]}" = "clean" ]; then
-      j=$((i + 1))
-      while [ "$j" -lt "$N" ]; do
-        t="${TOKENS[$j]}"
-        case "$t" in
-          '&&' | ';' | '|' | '||') break ;;
-          --force) HAS_GIT_CLEAN_F=1 ;;
-          -*f*) HAS_GIT_CLEAN_F=1 ;;
+# --- what each destructive command destroys ----------------------------------
+# These read the words of the command being checked, `w` and `n`, from on_command
+# through bash's dynamic scope: bash 3.2 has no namerefs to pass an array with.
+
+# rm / unlink: every operand. $1 = command, $2 = directory, $3 = first argument index.
+# Under `xargs -I R`, the operands are a template each input line is pasted into: an
+# operand that starts with R is put wherever the input says, so it is not checked
+# here and `takes_input` tells on_command to check the input instead; any other
+# operand names its own place (`./dist/R`) and is checked like a path.
+check_operands() {
+  local cmd="$1" dir="$2" j="$3" seen_dash_dash=0 arg hs word
+  while [ "$j" -lt "$n" ]; do
+    arg="${w[$j]}"
+    # A here-string (`<<< text`, spaced or glued) is stdin, not an operand — except
+    # to xargs, which makes the words of its stdin the operands.
+    case "$arg" in
+      '<<<'*)
+        hs="${arg#<<<}"
+        if [ -z "$hs" ]; then j=$((j + 1)); hs="${w[$j]:-}"; fi
+        if [ "$via_xargs" -eq 1 ] && [ -z "$xargs_repl" ]; then
+          tokenize_words "$hs"
+          for word in ${TOKENIZED[@]+"${TOKENIZED[@]}"}; do
+            check_target "xargs $cmd target" "$word" "$dir"
+          done
+        fi
+        j=$((j + 1))
+        continue
+        ;;
+    esac
+    # Before the first `--`, a leading `-` means "flag, not a path" (rm -rf,
+    # rm -i, rm --force). After it, POSIX option parsing has ended: every
+    # remaining token is a literal path operand the real command will act on,
+    # no matter what it looks like, so it must be bounds-checked.
+    if [ "$seen_dash_dash" -eq 0 ]; then
+      case "$arg" in
+        --) seen_dash_dash=1; j=$((j + 1)); continue ;;
+        -*) j=$((j + 1)); continue ;;
+      esac
+    fi
+    if [ -n "$xargs_repl" ]; then
+      case "$arg" in
+        "$xargs_repl"*) takes_input=1; j=$((j + 1)); continue ;;
+      esac
+    fi
+    check_target "$cmd target" "$arg" "$dir"
+    j=$((j + 1))
+  done
+  return 0
+}
+
+# find: its starting points, when it deletes what it finds. $1 = directory, $2 = the
+# index after `find`. Leaves the starting points in FIND_POINTS either way, for a
+# pipe into xargs rm — and FIND_NAMES=1 when what it prints is not its paths at all:
+# -printf with a format that starts with %f (the name alone) or %P (the path below
+# the starting point). Those land wherever the command reading them runs.
+FIND_POINTS=()
+FIND_NAMES=0
+check_find() {
+  local dir="$1" j="$2" deletes=0
+  FIND_POINTS=()
+  FIND_NAMES=0
+  # Options that come before the starting points.
+  while [ "$j" -lt "$n" ]; do
+    case "${w[$j]}" in
+      -H | -L | -P | -O*) j=$((j + 1)) ;;
+      -D) j=$((j + 2)) ;;
+      *) break ;;
+    esac
+  done
+  # The starting points run up to the first word of the expression.
+  while [ "$j" -lt "$n" ]; do
+    case "${w[$j]}" in -* | '(' | ')' | '!' | ',') break ;; esac
+    FIND_POINTS+=("${w[$j]}")
+    j=$((j + 1))
+  done
+  [ "${#FIND_POINTS[@]}" -gt 0 ] || FIND_POINTS=(.)
+  while [ "$j" -lt "$n" ]; do
+    case "${w[$j]}" in
+      -delete) deletes=1 ;;
+      -exec | -execdir | -ok | -okdir)
+        if is_path_destructive "${w[$((j + 1))]:-}"; then deletes=1; fi
+        ;;
+      -printf)
+        case "${w[$((j + 1))]:-}" in %f* | %P*) FIND_NAMES=1 ;; esac
+        ;;
+    esac
+    j=$((j + 1))
+  done
+  if [ "$deletes" -eq 1 ]; then
+    local p
+    for p in "${FIND_POINTS[@]}"; do check_target "find starting point" "$p" "$dir"; done
+  fi
+  return 0
+}
+
+# git clean -f / git reset --hard: where git runs, and any work tree or git directory
+# it is pointed at. $1 = directory, $2 = the index after `git`; GIT_WORK_TREE and
+# GIT_DIR from the command's assignments arrive in env_work_tree / env_git_dir.
+check_git() {
+  local run="$1" j="$2" a sub="" what="" d c rest
+  local work_tree="$env_work_tree" git_dir="$env_git_dir"
+  # git's own options, before the subcommand. -C is cumulative, each one relative
+  # to the last, exactly as `cd` would be.
+  while [ "$j" -lt "$n" ]; do
+    a="${w[$j]}"
+    case "$a" in
+      -C)
+        d="${w[$((j + 1))]:-}"
+        if [ -n "$d" ]; then run=$(walk_expand "$d" "$run") || run="$WALK_UNKNOWN"; fi
+        j=$((j + 2))
+        ;;
+      -c | --namespace | --super-prefix | --config-env) j=$((j + 2)) ;;
+      --git-dir=*) git_dir="${a#*=}"; j=$((j + 1)) ;;
+      --git-dir) git_dir="${w[$((j + 1))]:-}"; j=$((j + 2)) ;;
+      --work-tree=*) work_tree="${a#*=}"; j=$((j + 1)) ;;
+      --work-tree) work_tree="${w[$((j + 1))]:-}"; j=$((j + 2)) ;;
+      -*) j=$((j + 1)) ;;
+      *) sub="$a"; j=$((j + 1)); break ;;
+    esac
+  done
+
+  case "$sub" in
+    clean)
+      # -f in any short cluster (-fdx, -xdf) or --force. A long option is not a
+      # cluster, so --exclude=foo is not -f; -e takes the rest of its cluster as
+      # its pattern, so -efoo is not -f either.
+      while [ "$j" -lt "$n" ]; do
+        a="${w[$j]}"
+        case "$a" in
+          --) break ;;
+          --force) what="git clean -f" ;;
+          --*) ;;
+          -?*)
+            rest="${a#-}"
+            while [ -n "$rest" ]; do
+              c="${rest:0:1}"; rest="${rest:1}"
+              case "$c" in
+                f) what="git clean -f" ;;
+                e) rest="" ;;
+              esac
+            done
+            ;;
         esac
         j=$((j + 1))
       done
-    fi
-    if [ "${TOKENS[$i]}" = "reset" ] && [ "$((i + 1))" -lt "$N" ] && [ "${TOKENS[$((i + 1))]}" = "--hard" ]; then
-      HAS_GIT_RESET_HARD=1
-    fi
-    i=$((i + 1))
-  done
+      ;;
+    reset)
+      while [ "$j" -lt "$n" ]; do
+        case "${w[$j]}" in
+          --) break ;;
+          --hard) what="git reset --hard" ;;
+        esac
+        j=$((j + 1))
+      done
+      ;;
+  esac
+  [ -n "$what" ] || return 0
+  [ -z "$BLOCK_REASON" ] || return 0
 
-  if [ "$HAS_GIT_CLEAN_F" -eq 1 ] || [ "$HAS_GIT_RESET_HARD" -eq 1 ]; then
-    if [ "$CWD_MISSING" -eq 1 ]; then
-      BLOCK_REASON="git clean -f*/reset --hard cannot be verified: the effective working directory could not be determined (missing/empty cwd), failing closed"
+  if [ "$CWD_MISSING" -eq 1 ]; then
+    BLOCK_REASON="$what cannot be verified: the working directory could not be determined (missing/empty cwd), failing closed"
+    return 0
+  fi
+  # A directory this could not follow (a cd or -C to a variable) is not checked,
+  # by design — the same as a relative rm after it. Anywhere inside the worktree is
+  # fine: what git clean and git reset destroy is that worktree's own.
+  resolve_boundary
+  if [ "$run" != "$WALK_UNKNOWN" ] && ! path_is_inside "$run" "$BOUNDARY"; then
+    BLOCK_REASON="$what would run in '$run', which is outside the $BOUNDARY_NAME '$BOUNDARY'"
+    return 0
+  fi
+  if [ -n "$work_tree" ]; then check_target "$what work tree" "$work_tree" "$run"; fi
+  if [ -n "$git_dir" ]; then check_target "$what git directory" "$git_dir" "$run"; fi
+  return 0
+}
+
+# bash -c TEXT and friends: walk TEXT where the shell starts. $1 = directory, $2 =
+# the index after the shell's name. A shell given a script file is not read.
+#
+# Without -c, a shell runs its first operand as a script — or, with no operand or
+# with -s, reads the script from stdin. Then a heredoc's body (in `stdin_bodies`, from
+# on_command) or a here-string's word is the script, and is walked like TEXT. A
+# heredoc fed to `bash -c` or to a script is that command's data, and is not.
+check_shell_c() {
+  local dir="$1" j="$2" a takes_c=0 reads_stdin=0 h
+  while [ "$j" -lt "$n" ]; do
+    a="${w[$j]}"
+    case "$a" in
+      -o | +o | -O | +O) j=$((j + 2)) ;;   # bash -o pipefail -c ...
+      --) j=$((j + 1)); break ;;
+      --*) j=$((j + 1)) ;;                 # --norc, --login
+      -*)
+        case "$a" in *c*) takes_c=1 ;; esac   # -c, -lc, -ec
+        case "$a" in *s*) reads_stdin=1 ;; esac
+        j=$((j + 1))
+        ;;
+      +*) j=$((j + 1)) ;;
+      *) break ;;
+    esac
+  done
+  if [ "$takes_c" -eq 1 ]; then
+    if [ "$j" -lt "$n" ]; then walk_commands "${w[$j]}" "$dir" on_command; fi
+    return 0
+  fi
+  # A here-string is a word like any other until here, so `bash <<< 'cmd'` stops the
+  # option loop on `<<<` — which is stdin, not a script.
+  if [ "$reads_stdin" -eq 0 ] && [ "$j" -lt "$n" ]; then
+    case "${w[$j]}" in
+      '<<<'*) ;;
+      *) return 0 ;;
+    esac
+  fi
+  for h in ${stdin_bodies[@]+"${stdin_bodies[@]}"}; do
+    walk_commands "$h" "$dir" on_command
+  done
+  while [ "$j" -lt "$n" ]; do
+    case "${w[$j]}" in
+      '<<<')
+        if [ "$((j + 1))" -lt "$n" ]; then walk_commands "${w[$((j + 1))]}" "$dir" on_command; fi
+        j=$((j + 1))
+        ;;
+      '<<<'*) walk_commands "${w[$j]#<<<}" "$dir" on_command ;;
+    esac
+    j=$((j + 1))
+  done
+  return 0
+}
+
+# --- one simple command ------------------------------------------------------
+
+_is_one_of() {  # $1 = word, $2 = a whitespace-separated list
+  local o
+  # Unquoted on purpose: splitting the list into its words is the point.
+  # shellcheck disable=SC2086
+  for o in $2; do
+    if [ "$1" = "$o" ]; then return 0; fi
+  done
+  return 1
+}
+
+# skip_options TAKES_VALUE [MOVES_DIR] — step `k` past a prefix command's own
+# options, to the command it runs. TAKES_VALUE lists the options whose value is the
+# next word; MOVES_DIR the ones that run the command somewhere else (`env -C dir`),
+# which move `dir` with them. Reads and writes on_command's locals.
+skip_options() {
+  local a d
+  while [ "$k" -lt "$n" ]; do
+    a="${w[$k]}"
+    case "$a" in
+      --) k=$((k + 1)); return 0 ;;
+      -*) ;;
+      *) return 0 ;;
+    esac
+    if _is_one_of "${a%%=*}" "${2:-}"; then
+      case "$a" in
+        *=*) d="${a#*=}"; k=$((k + 1)) ;;
+        *) d="${w[$((k + 1))]:-}"; k=$((k + 2)) ;;
+      esac
+      dir=$(walk_expand "$d" "$dir") || dir="$WALK_UNKNOWN"
+    elif _is_one_of "$a" "$1"; then
+      k=$((k + 2))
     else
-      DASH_C=$(find_dash_c)
-      if [ -n "$DASH_C" ]; then
-        RESOLVED=$(resolve_path "$DASH_C" "$NORM_CWD")
-        if ! path_is_inside "$RESOLVED" "$EFFECTIVE_CWD"; then
-          BLOCK_REASON="git -C target '$DASH_C' resolves to '$RESOLVED', which is outside the working directory '$EFFECTIVE_CWD'"
+      k=$((k + 1))
+    fi
+  done
+  return 0
+}
+
+# skip_xargs_options — skip_options for xargs, which also has to remember the
+# replace string -I, -i or --replace names (xargs_repl): with one, the words after
+# the command are a template each input line is pasted into, not its operands.
+# Reads and writes on_command's locals.
+skip_xargs_options() {
+  local a
+  while [ "$k" -lt "$n" ]; do
+    a="${w[$k]}"
+    case "$a" in
+      -I) xargs_repl="${w[$((k + 1))]:-}"; k=$((k + 2)) ;;
+      -I?*) xargs_repl="${a#-I}"; k=$((k + 1)) ;;
+      -i | --replace) xargs_repl="{}"; k=$((k + 1)) ;;
+      -i?*) xargs_repl="${a#-i}"; k=$((k + 1)) ;;
+      --replace=*) xargs_repl="${a#*=}"; k=$((k + 1)) ;;
+      -L | -n | -P | -s | -d | -E | -a | --arg-file | --delimiter | --max-args | --max-procs \
+        | --max-chars | --process-slot-var) k=$((k + 2)) ;;
+      --) k=$((k + 1)); return 0 ;;
+      -*) k=$((k + 1)) ;;
+      *) return 0 ;;
+    esac
+  done
+  return 0
+}
+
+# find's starting points while its output is still flowing down a pipeline, so the
+# xargs rm at the end of `find <dir> ... | xargs rm` is checked against them.
+PIPED_FIND=()
+PIPED_FIND_DIR=""
+
+# The walk's callback: check one simple command (see lib/shell-walk.sh).
+on_command() {
+  local dir="$WALK_DIR" prev="$WALK_PREV_OP" next="$WALK_NEXT_OP"
+  local -a w=(${WALK_WORDS[@]+"${WALK_WORDS[@]}"})
+  local -a stdin_bodies=(${WALK_HEREDOCS[@]+"${WALK_HEREDOCS[@]}"})
+  local n=${#w[@]} k=0 a argv0 via_xargs=0 env_work_tree="" env_git_dir=""
+  local xargs_repl="" takes_input=0
+  local -a piped=()
+  local piped_dir=""
+  # What find, earlier in this pipeline, is feeding in — taken before anything
+  # below can replace it.
+  if [ "$prev" = "|" ] && [ "${#PIPED_FIND[@]}" -gt 0 ]; then
+    piped=("${PIPED_FIND[@]}")
+    piped_dir="$PIPED_FIND_DIR"
+  fi
+  PIPED_FIND=()
+  PIPED_FIND_DIR=""
+  [ -z "$BLOCK_REASON" ] || return 0
+  [ "$n" -gt 0 ] || return 0
+
+  # The prefixes that run the rest of the words as the command, each with the
+  # options that take a value of their own, so `nice -n 10 rm` and `timeout -s KILL
+  # 30 rm` both arrive at rm. The second list is the options that move the
+  # directory the command runs in.
+  while [ "$k" -lt "$n" ]; do
+    a="${w[$k]}"
+    case "$a" in
+      GIT_WORK_TREE=*) env_work_tree="${a#*=}"; k=$((k + 1)); continue ;;
+      GIT_DIR=*) env_git_dir="${a#*=}"; k=$((k + 1)); continue ;;
+      [A-Za-z_]*=*) k=$((k + 1)); continue ;;
+    esac
+    k=$((k + 1))
+    case "${a##*/}" in
+      sudo | doas) skip_options "-u -g -p -C -r -t -U -T --user --group --prompt --close-from
+        --role --type --other-user --command-timeout" "-D --chdir" ;;
+      env) skip_options "-u --unset" "-C --chdir" ;;
+      command)
+        case "${w[$k]:-}" in -v | -V) return 0 ;; esac   # asks where a command is; runs nothing
+        skip_options ""
+        ;;
+      builtin | nohup | noglob) ;;
+      exec) skip_options "-a" ;;
+      time) skip_options "-f -o --format --output" ;;
+      nice) skip_options "-n --adjustment" ;;
+      timeout) skip_options "-s -k --signal --kill-after"; k=$((k + 1)) ;;   # then the duration
+      xargs) via_xargs=1; skip_xargs_options ;;
+      *) k=$((k - 1)); break ;;
+    esac
+  done
+  [ "$k" -lt "$n" ] || return 0
+  argv0="${w[$k]##*/}"
+
+  case "$argv0" in
+    find)
+      check_find "$dir" $((k + 1))
+      if [ "$next" = "|" ] && [ "$FIND_NAMES" -eq 0 ]; then
+        PIPED_FIND=("${FIND_POINTS[@]}")
+        PIPED_FIND_DIR="$dir"
+      fi
+      ;;
+    git) check_git "$dir" $((k + 1)) ;;
+    bash | sh | zsh | dash | ksh) check_shell_c "$dir" $((k + 1)) ;;
+    eval)
+      if [ "$((k + 1))" -lt "$n" ]; then
+        walk_commands "${w[*]:$((k + 1))}" "$dir" on_command
+      fi
+      ;;
+    *)
+      if is_path_destructive "$argv0"; then
+        check_operands "$argv0" "$dir" $((k + 1))
+        # The rest of xargs' operands come down the pipe. When find wrote that
+        # list, its starting points bound everything on it — unless an -I template
+        # puts each line somewhere of its own choosing (`./dist/{}`), in which case
+        # the template was what check_operands just checked.
+        if [ "$via_xargs" -eq 1 ] && [ "${#piped[@]}" -gt 0 ] \
+            && { [ -z "$xargs_repl" ] || [ "$takes_input" -eq 1 ]; }; then
+          local p
+          for p in "${piped[@]}"; do
+            check_target "xargs $argv0, fed by find from" "$p" "$piped_dir"
+          done
         fi
       fi
-    fi
+      ;;
+  esac
+
+  # A filter between find and xargs (sort, grep, head, tr) only narrows or reshapes
+  # find's list, so the list's bounds pass through it. basename does not: it strips
+  # each path to a name, and a name lands wherever the command reading it runs.
+  if [ "$next" = "|" ] && [ "${#PIPED_FIND[@]}" -eq 0 ] && [ "${#piped[@]}" -gt 0 ] \
+      && [ "$argv0" != basename ]; then
+    PIPED_FIND=("${piped[@]}")
+    PIPED_FIND_DIR="$piped_dir"
   fi
-fi
+  return 0
+}
 
-if [ -n "$BLOCK_REASON" ]; then
-  {
-    echo "Blocked: destructive command targets a path outside the current working directory."
-    echo ""
-    echo "Command: $COMMAND"
-    echo "cwd: $CWD"
-    echo "Reason: $BLOCK_REASON"
-    echo ""
-    echo "riprap lets rm, git clean -f and git reset --hard run only when their target"
-    echo "stays inside the working directory. Do not rephrase the command to get past"
-    echo "this check (for example as cd <dir> && rm ...). If the deletion is genuinely"
-    echo "wanted, tell the user what you meant to run and why, and let them run it at"
-    echo "their own terminal; this hook governs agent tool calls, not what a person types."
-  } >&2
-  exit 2
-fi
+walk_commands "$COMMAND" "$START_DIR" on_command
 
-exit 0
+[ -n "$BLOCK_REASON" ] || exit 0
+
+{
+  if [ "$CWD_MISSING" -eq 1 ]; then
+    echo "❌ Blocked: a destructive command, with no working directory to check it against."
+  else
+    echo "❌ Blocked: this destroys something outside the $BOUNDARY_NAME you are working in."
+  fi
+  echo ""
+  echo "Command: $COMMAND"
+  echo "cwd: $CWD"
+  echo "Reason: $BLOCK_REASON"
+  echo ""
+  # Every sentence here has to be true of a tool cache and of /tmp as well as of a
+  # sibling checkout: all three are refused, and a reason that only fits one of them
+  # reads as a mistake to an agent clearing the other two.
+  echo "rm, unlink, find -delete, git clean -f and git reset --hard run unprompted only"
+  echo "on what is inside the $BOUNDARY_NAME. Everything outside it is in scope,"
+  echo "caches and /tmp included: from a path alone, another checkout, another session's"
+  echo "scratch and a cache every project on this machine shares look the same, none of"
+  echo "them is this task's to remove, and an untracked file deleted there has no"
+  echo "history to restore it from."
+  echo ""
+  echo "Do NOT rephrase the command to get past this check: not with a cd first, in"
+  echo "this command or a call of its own, nor with a subshell, sh -c, a heredoc into a"
+  echo "shell, a different tool, or a path held in a variable. The rule does not depend"
+  echo "on the spelling. Moving into another worktree to work there is fine; moving only"
+  echo "so this deletion passes is the rephrasing. If the deletion is genuinely needed,"
+  echo "show the user the exact command and ask them to"
+  echo "run it themselves at a terminal: this hook governs agent tool calls, not"
+  echo "commands a person types."
+  echo ""
+  echo "If this command deletes nothing, the check misread quoted text — a commit"
+  echo "message or a pull request body that quotes a command. Write the text to a file"
+  echo "under tmp/ and pass the file instead: git commit -F <file>, or"
+  echo "gh pr create --body-file <file>."
+  echo ""
+  echo "The rule is in riprap's git.md, \"Never write outside your worktree\", in the"
+  echo "paragraph on deleting:"
+  echo "https://github.com/influpert/riprap/blob/main/plugin/instructions/git.md"
+} >&2
+exit 2

@@ -20,6 +20,13 @@ MERGE='{"tool_name":"Bash","tool_input":{"command":"gh pr merge 42 --squash"}}'
 export RIPRAP_TEST=1
 with_files() { export RIPRAP_TEST_PR_FILES="printf %s\\n $*"; }
 
+# An MCP merge is asked about on the host the session points at: GH_HOST, and the
+# remotes gh is signed in to. A developer's own would change the repository every
+# MCP case below is asked about, and an inherited GIT_DIR, from a git hook that
+# runs this suite, would point the fixtures' git init at the repository it runs in.
+unset GH_HOST
+for _v in $(git rev-parse --local-env-vars 2>/dev/null); do unset "$_v"; done
+
 echo "--- Commands this hook does not care about ---"
 unset RIPRAP_TEST_PR_FILES 2>/dev/null || true
 export RIPRAP_TEST_PR_FILES="printf src/app.ts\\n"
@@ -117,6 +124,10 @@ with_files "src/auth/login.ts"
 SCRATCH=$(mktemp -d)
 trap 'rm -rf "$SCRATCH"' EXIT
 A="$SCRATCH/a"; B="$SCRATCH/b"; mkdir -p "$A" "$B"
+# gh's own list of the hosts it is signed in to, in place of the developer's.
+export GH_CONFIG_DIR="$SCRATCH/gh"
+mkdir -p "$GH_CONFIG_DIR"
+printf 'github.com:\n    user: someone\nghe.example.com:\n    user: someone\n' >"$GH_CONFIG_DIR/hosts.yml"
 # bash_at DIR COMMAND — a Bash payload whose command starts in DIR.
 bash_at() { jq -cn --arg d "$1" --arg c "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}'; }
 NL=$'\n'
@@ -251,6 +262,11 @@ check "a curl merge handed to bash -c, written -sX -> block" 2 \
   "$(bash_at "$A" "bash -c 'curl -sX PUT https://api.github.com/repos/o/r/pulls/5/merge'")"
 check "a merge handed to a shell behind timeout -> block" 2 "$(bash_at "$A" 'timeout 60 bash -c "gh pr merge 5"')"
 check "a merge fed to bash through a heredoc -> block" 2 "$(bash_at "$A" "bash <<'EOF'${NL}gh pr merge 5${NL}EOF")"
+# A here-string is the stdin of the command it is on, and so part of what that
+# command pipes on to a shell, glued to its word or not.
+check "a merge in a here-string, piped into sh -> block" 2 "$(bash_at "$A" 'cat <<<"gh pr merge 5" | sh')"
+check "the same with the here-string spaced -> block" 2 "$(bash_at "$A" 'cat <<< "gh pr merge 5" | sh')"
+check "a merge in a here-string handed to bash -> block" 2 "$(bash_at "$A" 'bash <<<"gh pr merge 5"')"
 # GH_REPO assigned without export reaches gh only if the session already exported
 # it, which this gate cannot see, so the repository is a guess either way.
 check "GH_REPO set but not exported -> block" 2 "$(bash_at "$A" 'GH_REPO=o/r; gh pr merge 5')"
@@ -263,6 +279,22 @@ check "git checkout, then a merge with no number -> block" 2 \
 check "git switch, then a merge with no number -> block" 2 "$(bash_at "$A" 'git switch feature/auth-fix; gh pr merge')"
 check "an unknown flag between pr and merge -> block" 2 "$(bash_at "$A" 'gh pr --yolo merge 5')"
 check "two different repositories for one merge -> block" 2 "$(bash_at "$A" 'gh -R o/r pr merge 5 -R x/y')"
+# A merge is looked for past the command word only behind a command that runs the
+# words after it, so that echo and man, which do not, are not taken for a way round
+# the gate. Every one of these runs the merge, and is still refused unread.
+check "through sudo -> block" 2 "$(bash_at "$A" 'sudo gh pr merge 5')"
+check "through nice -n -> block" 2 "$(bash_at "$A" 'nice -n 10 gh pr merge 5')"
+check "through watch -> block" 2 "$(bash_at "$A" 'watch -n 30 gh pr merge 5')"
+check "through find -exec -> block" 2 "$(bash_at "$A" 'find . -maxdepth 0 -exec gh pr merge 5 \;')"
+check "through op run -> block" 2 "$(bash_at "$A" 'op run -- gh pr merge 5')"
+check "as a coprocess -> block" 2 "$(bash_at "$A" 'coproc gh pr merge 5')"
+check "through env with an option -> block" 2 "$(bash_at "$A" 'env -i gh pr merge 5')"
+check "through env -, its -i -> block" 2 "$(bash_at "$A" 'env - gh pr merge 5')"
+check "through time with an option -> block" 2 "$(bash_at "$A" 'time -p gh pr merge 5')"
+check "through env by its full path -> block" 2 "$(bash_at "$A" '/usr/bin/env gh pr merge 5')"
+check "a curl merge through sudo -u -> block" 2 \
+  "$(bash_at "$A" 'sudo -u ci curl -X PUT https://api.github.com/repos/o/r/pulls/5/merge')"
+check "a merge handed to a shell behind xargs -> block" 2 "$(bash_at "$A" "echo 5 | xargs -I{} sh -c 'gh pr merge {}'")"
 
 echo
 echo "--- --admin and auto-merge are refused on every pull request ---"
@@ -362,6 +394,15 @@ check "a GraphQL read, then a search for the mutation -> allow" 0 \
   "$(bash_at "$A" "gh api graphql -f query='query { viewer { login } }' && rg -n enablePullRequestAutoMerge .")"
 check "a sourced file, a GraphQL read and a commit naming the mutation -> allow" 0 \
   "$(bash_at "$A" ". ./scripts/env.sh && gh api graphql -f query='query { viewer { login } }' > me.json && git commit -m \"Record the GraphQL mergePullRequest payload shape\"")"
+# The words after a command that does not run them are its arguments, not a
+# command. The gate looked past every command word for a gh or a curl, so each of
+# these was refused as a merge "run through echo", or through man.
+check "echo gh pr merge -> allow" 0 "$(bash_at "$A" 'echo gh pr merge 5')"
+check "printf gh pr merge -> allow" 0 "$(bash_at "$A" "printf '%s\n' gh pr merge 5")"
+check "man gh pr merge -> allow" 0 "$(bash_at "$A" 'man gh pr merge')"
+check "echo an API merge -> allow" 0 "$(bash_at "$A" 'echo gh api -X PUT repos/o/r/pulls/5/merge')"
+check "echo a curl merge -> allow" 0 "$(bash_at "$A" 'echo curl -X PUT https://api.github.com/repos/o/r/pulls/5/merge')"
+check "echo a shell handed a merge -> allow" 0 "$(bash_at "$A" 'echo bash -c "gh pr merge 5"')"
 
 echo
 echo "--- Redirections and shell keywords are not part of the merge ---"
@@ -375,6 +416,14 @@ check ">/dev/null 2>&1 && echo -> allow" 0 "$(bash_at "$A" 'gh pr merge 5 --squa
 check "2>&1 | tail -> allow" 0 "$(bash_at "$A" 'gh pr merge 5 --squash 2>&1 | tail -5')"
 check "--delete-branch 2>&1 -> allow" 0 "$(bash_at "$A" 'gh pr merge 5 --squash --delete-branch 2>&1')"
 check "&>/dev/null -> allow" 0 "$(bash_at "$A" 'gh pr merge 5 --squash &>/dev/null')"
+# A here-string glued to a quoted word came back as one word, quoted, and so not a
+# redirection: a second pull request named "<<<Merged after review".
+check "a here-string glued to its quoted word -> allow" 0 \
+  "$(bash_at "$A" 'gh pr merge 5 --squash --body-file - <<<"Merged after review"')"
+check "the same here-string, spaced -> allow" 0 \
+  "$(bash_at "$A" 'gh pr merge 5 --squash --body-file - <<< "Merged after review"')"
+check "stdin duplicated from a descriptor -> allow" 0 "$(bash_at "$A" 'gh pr merge 5 --squash 0<&3')"
+check "stdin closed -> allow" 0 "$(bash_at "$A" 'gh pr merge 5 --squash <&-')"
 check "if ...; then echo; fi -> allow" 0 "$(bash_at "$A" 'if gh pr merge 5 --squash; then echo merged; fi')"
 check "an API merge after then -> allow" 0 \
   "$(bash_at "$A" 'if gh pr checks 5; then gh api -X PUT repos/o/r/pulls/5/merge -f merge_method=squash; fi')"
@@ -395,6 +444,10 @@ echo "--- Every spelling of the same merge reaches the same lookup ---"
 export RIPRAP_TEST_PR_FILES="$SCRATCH/seam"
 asks "2>&1 still checks the pull request" "$A||5" 'gh pr merge 5 --squash 2>&1'
 asks "a redirection before the number" "$A||5" 'gh pr merge 2>/dev/null 5 --squash'
+asks "a glued here-string still checks the pull request" "$A||5" \
+  'gh pr merge 5 --squash --body-file - <<<"Merged after review"'
+asks "a spaced one too" "$A||5" 'gh pr merge 5 --squash --body-file - <<< "Merged after review"'
+asks "stdin duplicated from a descriptor" "$A||5" 'gh pr merge 5 --squash 0<&3'
 asks "a merge after then" "$A||5" 'if gh pr checks 5; then gh pr merge 5 --squash; fi'
 asks "a merge in braces" "$A||5" '{ gh pr merge 5; }'
 asks "ssh earlier, then an API merge" "$A|o/r|5" \
@@ -426,6 +479,18 @@ asks "export GH_REPO, then placeholders" "$A|o/r|5" 'export GH_REPO=o/r; gh api 
 asks "assigned, then exported" "$A|o/r|5" 'GH_REPO=o/r; export GH_REPO; gh pr merge 5'
 asks "--repo still beats an exported GH_REPO" "$A|x/y|5" 'export GH_REPO=o/r && gh pr merge 5 --repo x/y'
 asks "unset GH_REPO, then merge -> where it runs" "$A||5" 'export GH_REPO=o/r; unset GH_REPO; gh pr merge 5'
+# An assignment in front of export is the value it exports: bash leaves
+# `GH_REPO=x/y export GH_REPO` with x/y exported. Read as an export of nothing, the
+# gate asked about the session's repository while gh merged in x/y.
+asks "GH_REPO=x/y export GH_REPO, then merge" "$A|x/y|5" 'GH_REPO=x/y export GH_REPO; gh pr merge 5'
+asks "the same through declare -x" "$A|x/y|5" 'GH_REPO=x/y declare -x GH_REPO && gh pr merge 5'
+asks "the same over a value assigned earlier" "$A|x/y|5" 'GH_REPO=o/r; GH_REPO=x/y export GH_REPO; gh pr merge 5'
+EXPECT="$A||5" check "... so the session's repository is not the one asked" 0 \
+  "$(bash_at "$A" 'GH_REPO=x/y export GH_REPO; gh pr merge 5')"
+asks "in front of an export of something else, it does not stay" "$A||5" 'GH_REPO=x/y export FOO; gh pr merge 5'
+asks "in front of declare without -x, it is not exported" "$A||5" 'GH_REPO=x/y declare GH_REPO; gh pr merge 5'
+asks "given to env, which runs no export of the shell's, it changes nothing" "$A||5" \
+  'env GH_REPO=x/y export GH_REPO; gh pr merge 5'
 EXPECT="$A|o/r|5" check "an export inside a subshell does not leak out" 0 \
   "$(bash_at "$A" '(export GH_REPO=o/r); gh pr merge 5')"
 # With no number, gh merges the pull request of the branch checked out when it runs.
@@ -485,6 +550,60 @@ EXPECT="$PWD|o/r|5" check "with no cwd -> looked up from where the hook runs" 2 
   '{"tool_name":"mcp__github__merge_pull_request","tool_input":{"owner":"o","repo":"r","pullNumber":5}}'
 
 echo
+echo "--- An MCP merge is looked up on the server the session points at ---"
+# The MCP tools name an owner and a repository but no server, and gh, given
+# owner/repo, looks on github.com. A GitHub MCP server for GitHub Enterprise merges
+# on that server, so every merge through one was refused, or checked against a
+# namesake on github.com. gh is signed in to github.com and ghe.example.com here.
+# checkout DIR URL... — a git checkout at DIR with these remotes, origin first.
+checkout() {
+  local d="$1" i=0 u; shift
+  git init -q "$d"
+  for u in "$@"; do
+    if [ "$i" -eq 0 ]; then git -C "$d" remote add origin "$u"; else git -C "$d" remote add "r$i" "$u"; fi
+    i=$((i + 1))
+  done
+}
+GHE="$SCRATCH/ghe"; checkout "$GHE" https://ghe.example.com/o/r.git
+DOTCOM="$SCRATCH/dotcom"; checkout "$DOTCOM" git@github.com:o/r.git
+PROXY="$SCRATCH/proxy"; checkout "$PROXY" http://proxy@localhost:9/git/o/r
+MIRROR="$SCRATCH/mirror"; checkout "$MIRROR" https://github.com/o/r.git https://gitlab.com/o/r.git
+SIBLING="$SCRATCH/sibling"; checkout "$SIBLING" ssh://git@ghe.example.com/o/app.git
+SPLIT="$SCRATCH/split"; checkout "$SPLIT" https://github.com/o/r.git https://ghe.example.com/o/app.git
+BOTH="$SCRATCH/both"; checkout "$BOTH" https://github.com/o/r.git https://GHE.example.com/O/R
+MCP5='{"owner":"o","repo":"r","pullNumber":5}'
+MERGE_TOOL=mcp__github__merge_pull_request
+EXPECT="$GHE|ghe.example.com/o/r|5" check "a checkout on GitHub Enterprise -> that host's repository" 2 \
+  "$(mcp_at "$GHE" "$MERGE_TOOL" "$MCP5")"
+EXPECT="$GHE|o/r|5" check "... and not github.com's" 0 "$(mcp_at "$GHE" "$MERGE_TOOL" "$MCP5")"
+EXPECT="$SIBLING|ghe.example.com/o/r|5" check "a checkout of another repository on that host -> that host" 2 \
+  "$(mcp_at "$SIBLING" "$MERGE_TOOL" "$MCP5")"
+GH_HOST=ghe.example.com EXPECT="$A|ghe.example.com/o/r|5" check "GH_HOST, outside any checkout -> that host" 2 \
+  "$(mcp_at "$A" "$MERGE_TOOL" "$MCP5")"
+GH_HOST=ghe.example.com EXPECT="$GHE|ghe.example.com/o/r|5" check "GH_HOST and a checkout that agree -> that host" 2 \
+  "$(mcp_at "$GHE" "$MERGE_TOOL" "$MCP5")"
+# github.com is gh's default, named or not, and a remote gh is not signed in to is
+# not a GitHub server: Claude Code's cloud proxy, or a mirror on another forge.
+# Taken for one, each would refuse every MCP merge in the checkout.
+EXPECT="$DOTCOM|o/r|5" check "a checkout on github.com -> no host in front" 2 "$(mcp_at "$DOTCOM" "$MERGE_TOOL" "$MCP5")"
+GH_HOST=github.com EXPECT="$DOTCOM|o/r|5" check "... and GH_HOST=github.com agrees with it" 2 \
+  "$(mcp_at "$DOTCOM" "$MERGE_TOOL" "$MCP5")"
+EXPECT="$PROXY|o/r|5" check "a remote through a local proxy is not a host" 2 "$(mcp_at "$PROXY" "$MERGE_TOOL" "$MCP5")"
+EXPECT="$MIRROR|o/r|5" check "a mirror on another forge is not a host" 2 "$(mcp_at "$MIRROR" "$MERGE_TOOL" "$MCP5")"
+EXPECT="$SPLIT|o/r|5" check "remotes on two hosts, one of them this repository's -> that one" 2 \
+  "$(mcp_at "$SPLIT" "$MERGE_TOOL" "$MCP5")"
+# Two hosts the repository could be on, and nothing says which one the MCP server
+# merges on: refused, even with the seam saying every pull request is harmless.
+EXPECT="nothing" check "the repository on two hosts -> block" 2 "$(mcp_at "$BOTH" "$MERGE_TOOL" "$MCP5")"
+EXPECT="nothing" GH_HOST=ghe.example.com check "GH_HOST and a checkout that disagree -> block" 2 \
+  "$(mcp_at "$DOTCOM" "$MERGE_TOOL" "$MCP5")"
+EXPECT="nothing" check_contains "... and names the hosts it could be" "github.com and ghe.example.com" \
+  "$(mcp_at "$BOTH" "$MERGE_TOOL" "$MCP5")"
+EXPECT="nothing" check_contains "... and how to name the host" "--repo <host>/o/r" \
+  "$(mcp_at "$BOTH" "$MERGE_TOOL" "$MCP5")"
+EXPECT="nothing" check_lacks "... without the hold procedure" "hold comment" "$(mcp_at "$BOTH" "$MERGE_TOOL" "$MCP5")"
+
+echo
 echo "--- The refusal has to be actionable ---"
 with_files "bin/hooks/riprap/claude/lint-secrets.sh"
 check_contains "names the gated file" "lint-secrets.sh" "$MERGE"
@@ -505,17 +624,10 @@ check_contains "the MCP auto-merge tool is named in its refusal" "mcp__github__e
 check_contains "a GraphQL merge is refused as unverifiable" "Cannot verify" \
   "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \\\"PR_x\\\"}) { clientMutationId } }'\"}}"
 
-# check_lacks DESCRIPTION NEEDLE JSON — the refusal must NOT say NEEDLE. A refusal
+# check_lacks, from test-support.sh: the refusal must NOT say NEEDLE. A refusal
 # that gives two opposite ways forward, or claims a check it never made, is as
-# misleading as one that gives none.
-check_lacks() {
-  local out
-  out=$(printf '%s' "$3" | "$HOOK" 2>&1 >/dev/null || true)
-  case "$out" in
-    *"$2"*) FAIL=$((FAIL + 1)); printf 'FAIL: %s (stderr contained %s)\n' "$1" "$2" ;;
-    *) PASS=$((PASS + 1)); printf 'PASS: %s\n' "$1" ;;
-  esac
-}
+# misleading as one that gives none. It asserts the refusal first: a copy here
+# that did not passed every one of these whenever the hook let the call through.
 # A merge this gate could not read was refused with the hold procedure for gated
 # paths: a claim that the pull request touched security-sensitive paths, which
 # nothing had checked, then "Run gh pr merge directly" and "Stop. Do not merge."

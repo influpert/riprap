@@ -14,8 +14,9 @@
 # `&&`, `;`, a pipe, a subshell, a shell keyword such as `if` or `then`, a prefix
 # such as `env`, or inside a command substitution, quoted or not. The text "gh pr
 # merge" inside a commit message, a heredoc, a single-quoted string or a grep
-# pattern is not a merge. Its PR is the number, URL or branch among its
-# arguments, or else whatever `gh pr checkout` switched to earlier in the
+# pattern is not a merge, and nor are the words after a command that does not
+# run them, as in `echo gh pr merge 5`. Its PR is the number, URL or branch among
+# its arguments, or else whatever `gh pr checkout` switched to earlier in the
 # command. Its repository is the `--repo` or GH_REPO it gives, an exported
 # GH_REPO earlier in the command, or else the directory it runs in after any
 # `cd`. That is where `gh pr diff` is asked. A gate that asked the session's own
@@ -25,7 +26,8 @@
 # Anything this cannot read with certainty is refused, not guessed: a flag it
 # does not know, `cd` to a variable, a merge run through `timeout`, `xargs`,
 # `sudo`, or a shell given the command as text, a GH_REPO set but not exported, a
-# merge with no number after a `git checkout`. Those refusals say the merge could
+# merge with no number after a `git checkout`, an MCP merge whose repository the
+# session places on more than one host. Those refusals say the merge could
 # not be checked and how to write it so it can be; the hold procedure is for a
 # merge that was checked and touches gated paths, and is kept for that.
 #
@@ -191,6 +193,83 @@ auto-merge is on would merge on a head this gate never saw." \
   turning it on is theirs to do."
 }
 
+# --- which server an MCP merge is on ---------------------------------------------
+# The MCP merge tools name an owner and a repository but no server, and a GitHub
+# MCP server for GitHub Enterprise merges on its own host. gh, given owner/repo,
+# looks on github.com or GH_HOST, so for such a server this gate asked github.com
+# about every merge: refused it, or, with gh signed in to both, checked a namesake
+# there. The host is read from what the session says instead: GH_HOST, and the
+# hosts of this checkout's remotes for that repository, or of all its remotes when
+# none is one. A remote counts only on a host gh is signed in to, as gh counts
+# them, so Claude Code's cloud proxy and a mirror on another forge are not taken
+# for a GitHub server; github.com, gh's default, always counts. One host other than
+# github.com goes in front of the repository, where gh pr diff --repo takes it.
+# More than one, and which server the MCP tool merges on is a guess.
+
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+norm_host() {  # $1 = a host; prints it lower-cased, with github.com's aliases folded in
+  local h
+  h=$(lower "$1")
+  case "$h" in www.github.com | api.github.com | ssh.github.com) h=github.com ;; esac
+  printf '%s' "$h"
+}
+
+# remote_host_path URL — sets RH_HOST and RH_PATH (owner/repo, lower-cased, no
+# .git) for a URL git fetches over the network, as https://, ssh:// or the scp-like
+# git@host:owner/repo; returns 1 for a local path, which has no host.
+URL_RE='^[A-Za-z][A-Za-z0-9+.-]*://([^/@]*@)?([^/:]+)(:[0-9]*)?(/.*)?$'
+SCP_RE='^([^/@:]*@)?([^/:]+):(.*)$'
+remote_host_path() {
+  if [[ "$1" =~ $URL_RE ]]; then RH_HOST="${BASH_REMATCH[2]}"; RH_PATH="${BASH_REMATCH[4]}"
+  elif [[ "$1" != *://* && "$1" =~ $SCP_RE ]]; then RH_HOST="${BASH_REMATCH[2]}"; RH_PATH="${BASH_REMATCH[3]}"
+  else return 1
+  fi
+  RH_HOST=$(norm_host "$RH_HOST")
+  RH_PATH=$(lower "$RH_PATH"); RH_PATH="${RH_PATH#/}"; RH_PATH="${RH_PATH%/}"; RH_PATH="${RH_PATH%.git}"
+}
+
+# mcp_host OWNER REPO PULL — sets MCP_HOST to the host the MCP merge of PULL in
+# OWNER/REPO is asked about on, empty for github.com; refuses when it is a guess.
+mcp_host() {
+  local want line url remotes h seen="" cfg known=" github.com "
+  local -a matched=() all=() hosts=()
+  want=$(lower "$1/$2")
+  # gh's hosts.yml has one top-level key per host it is signed in to.
+  cfg="${GH_CONFIG_DIR:-${XDG_CONFIG_HOME:-${HOME:-}/.config}/gh}"
+  if [ -r "$cfg/hosts.yml" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      case "$line" in "" | [[:space:]]* | "#"* | -*) ;; *:*) known+="$(norm_host "${line%%:*}") " ;; esac
+    done <"$cfg/hosts.yml"
+  fi
+  remotes=$(git -C "$START_DIR" remote -v 2>/dev/null) || remotes=""
+  while IFS= read -r line; do
+    case "$line" in *" (fetch)") ;; *) continue ;; esac
+    url="${line#*$'\t'}"; url="${url% (fetch)}"
+    remote_host_path "$url" || continue
+    case "$known" in *" $RH_HOST "*) ;; *) continue ;; esac
+    all+=("$RH_HOST")
+    [ "$RH_PATH" != "$want" ] || matched+=("$RH_HOST")
+  done <<<"$remotes"
+  if [ "${#matched[@]}" -gt 0 ]; then hosts=("${matched[@]}")
+  elif [ "${#all[@]}" -gt 0 ]; then hosts=("${all[@]}")
+  fi
+  [ -z "${GH_HOST:-}" ] || hosts+=("$(norm_host "$GH_HOST")")
+  for h in ${hosts[@]+"${hosts[@]}"}; do
+    case " $seen " in *" $h "*) ;; *) seen+="${seen:+ }$h" ;; esac
+  done
+  case "$seen" in
+    "" | github.com) MCP_HOST="" ;;
+    *" "*)
+      unverifiable "$TOOL_NAME names $1/$2 but not the server it is on, and this session points at more than one: ${seen// / and }. Which of them the MCP server merges on is a guess." \
+"  Merge with gh pr merge $3 --repo <host>/$1/$2, which names the server.
+  Or run the MCP tool again from a checkout of $1/$2 on that one host, with
+  GH_HOST unset or naming it."
+      ;;
+    *) MCP_HOST="$seen" ;;
+  esac
+}
+
 # --- which tool, and what it names --------------------------------------------
 # The GitHub MCP server's tools, under whatever server name this installation gave
 # it: `mcp__github__…` for a plain server, `mcp__plugin_<plugin>_<server>__…` for
@@ -217,7 +296,8 @@ case "$TOOL_NAME" in
       unverifiable "$TOOL_NAME does not name its pull request as an owner, a repo and a numeric pullNumber." \
 "  Call it with owner, repo and pullNumber set to the pull request's own values."
     fi
-    TARGETS=("$START_DIR"$'\t'"$owner/$repo"$'\t'"$pull")
+    mcp_host "$owner" "$repo" "$pull"
+    TARGETS=("$START_DIR"$'\t'"${MCP_HOST:+$MCP_HOST/}$owner/$repo"$'\t'"$pull")
     ;;
   *) exit 0 ;;
 esac
@@ -295,6 +375,35 @@ is_shell() { case "$1" in bash | sh | zsh | dash | ksh | fish) return 0 ;; *) re
 is_plain_prefix() {
   case "$1" in
     command | builtin | exec | nohup | time | noglob) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# runs_its_arguments WORD — whether the command word WORD runs a command made of
+# the words after it, so that a merge among them is run, and refused as one this
+# gate cannot see past. Wrappers that change how, as whom or how often it runs;
+# those that run it per input (xargs, find -exec); and the runners that start it
+# inside an environment of their own (op run, docker exec, bundle exec, npx). An
+# option is here too, `-` included: it is one of a prefix skipped above (env -i,
+# env -, time -p), and what follows it is not read. Any other command does not
+# run its words: `echo gh pr merge 5` prints a merge and `man gh pr merge`
+# documents one, and each was refused as a merge run through echo or man. A name
+# missing from here lets a merge behind it through unchecked, so the list leans
+# long: an extra name costs at most the refusal of a command whose words spell
+# out a merge anyway.
+runs_its_arguments() {
+  case "$1" in
+    -*) return 0 ;;
+    coproc | timeout | gtimeout | nice | ionice | chrt | taskset | stdbuf | setsid | unbuffer | \
+      nohup | time | arch | perf | screen | tmux | env | command | sudo | doas | su | runuser | \
+      pkexec | chroot | unshare | nsenter | firejail | flock | caffeinate | systemd-run | \
+      systemd-inhibit | xargs | parallel | find | fd | watch | entr | retry | chronic | strace | \
+      ltrace | gdb | valgrind | faketime | proxychains | proxychains4 | torsocks | tsocks | script | \
+      ssh | dotenv | direnv | op | doppler | aws-vault | infisical | envchain | chamber | docker | \
+      podman | kubectl | npx | bunx | bun | npm | pnpm | yarn | uv | uvx | poetry | pipenv | pdm | \
+      hatch | rye | conda | pixi | bundle | mise | rtx | asdf | nix | devbox)
+      return 0
+      ;;
     *) return 1 ;;
   esac
 }
@@ -905,6 +1014,9 @@ simple_command() {
         exported=0
         for a in "${w[@]:$((k + 1))}"; do [[ ! "$a" =~ ^-[A-Za-z]*x ]] || exported=1; done
       fi
+      # Behind env the shell's own export never runs: env runs a program of that
+      # name, and the shell's variables stay as they were.
+      for a in "${w[@]:0:$k}"; do [ "$a" != env ] || return 0; done
       for a in "${w[@]:$((k + 1))}"; do
         case "$a" in
           GH_REPO=*)
@@ -912,9 +1024,16 @@ simple_command() {
             else set_gh_repo "u:${a#GH_REPO=}" "$prev" "$next"; fi
             ;;
           GH_REPO)
-            case "${GHREPOS[$top]}" in
-              u:*) [ "$exported" -eq 0 ] || set_gh_repo "=${GHREPOS[$top]#u:}" "$prev" "$next" ;;
-            esac
+            # Bare, it exports the value GH_REPO already has: the one assigned in
+            # front of this very command when there is one, since bash leaves
+            # `GH_REPO=x/y export GH_REPO` with x/y exported. Read as an export of
+            # nothing, it had this gate asking the session's repository while gh
+            # merged in x/y. Otherwise, one assigned earlier in the command.
+            if [ "$exported" -eq 0 ]; then :
+            elif [ "$have_gh_repo" -eq 1 ]; then set_gh_repo "=$gh_repo" "$prev" "$next"
+            else
+              case "${GHREPOS[$top]}" in u:*) set_gh_repo "=${GHREPOS[$top]#u:}" "$prev" "$next" ;; esac
+            fi
             ;;
         esac
       done
@@ -935,9 +1054,10 @@ simple_command() {
 
   # A shell or evaluator: as the command, or a shell given -c behind a prefix the
   # merge would otherwise be hidden by (timeout 60 bash -c "...", xargs sh -c).
+  # Behind a command that only prints it, `echo bash -c "..."`, it runs nothing.
   if is_evaluator "$argv0"; then
     check_evaluator "$k"
-  else
+  elif runs_its_arguments "$argv0"; then
     j=$((k + 1))
     while [ "$j" -lt "$n" ]; do
       if is_shell "${w[$j]##*/}" && [[ "${w[$((j + 1))]:-}" =~ ^-[A-Za-z]*c[A-Za-z]*$ ]]; then
@@ -949,12 +1069,15 @@ simple_command() {
 
   # Where in this command, if anywhere, a merge sits: `gh pr merge`, or a gh api
   # or curl call that parse_api or parse_curl reads as one. Looked for past the
-  # command word as well, so that one run through `timeout` or `xargs` is found
-  # and refused rather than missed; a gh api or curl call that only reads is
-  # passed over wherever it sits.
-  local m=-1
+  # command word when that command runs the words after it, so that a merge run
+  # through `timeout` or `xargs` is found and refused rather than missed; behind
+  # any other command, echo or man, the words are text and the search stops at
+  # the command word. A gh api or curl call that only reads is passed over
+  # wherever it sits.
+  local m=-1 end=$((k + 1))
+  if runs_its_arguments "$argv0"; then end=$n; fi
   j=$k
-  while [ "$j" -lt "$n" ]; do
+  while [ "$j" -lt "$end" ]; do
     case "${w[$j]##*/}" in
       gh)
         gh_route "$j"
@@ -1021,18 +1144,21 @@ simple_command() {
 # whole command, and again for each double-quoted substitution in it.
 #
 # Redirections are dropped from a command's words before it is read: `2>&1` was a
-# second pull request to parse_merge. The tokenizer splits off `>`, `>>` and `>|`
-# with their descriptor; `&` is still an operator, so `2>&1` arrives as `2>`, `&`,
-# `1` and `&>file` as `&`, `>`, `file`, and both are put back together here. `<`
-# arrives with its target attached or as a word of its own.
-REDIR_RE='^[0-9]*(>|>>|>\||<|<>|<<<)$'
-REDIR_GLUED_RE='^[0-9]*(<|<<<)[^<>]'
+# second pull request to parse_merge. The tokenizer's reads mode splits off every
+# redirection operator, unquoted, as a word of its own with its descriptor: `>`,
+# `>>`, `>|`, `<`, `<>`, `<&` and the here-string's `<<<`. `&` is still an
+# operator after `>`, so `2>&1` arrives as `2>`, `&`, `1` and `&>file` as `&`,
+# `>`, `file`, and both are put back together here. Redirects mode, which this
+# read once, kept `<<<` glued to its word, and a glued word with quotes in it,
+# <<<"Merged after review", came back quoted and so not a redirection: a second
+# pull request.
+REDIR_RE='^[0-9]*(>|>>|>\||<|<>|<&|<<<)$'
 DUP_RE='^([0-9]+-?|-)$'
 walk() {
   local saved="$CUR_TEXT" base=${#DIRS[@]} lifted="$1"
   CUR_TEXT="$1"
   case "$1" in *'$('* | *'`'*) _shscan "$1" 0 1; lifted="$_SS_OUT" ;; esac
-  tokenize_redirects "$lifted"
+  tokenize_reads "$lifted"
   local -a toks=() ops=() quo=() cmd=()
   if [ "${#TOKENIZED[@]}" -gt 0 ]; then
     toks=("${TOKENIZED[@]}"); ops=("${TOKEN_OP[@]}"); quo=("${TOKEN_QUOTED[@]}")
@@ -1068,8 +1194,6 @@ walk() {
         i=$((i + 1))
       fi
       continue
-    elif [ "${quo[$i]}" -eq 0 ] && [[ "$tok" =~ $REDIR_GLUED_RE ]]; then
-      :
     else
       cmd+=("$tok")
     fi

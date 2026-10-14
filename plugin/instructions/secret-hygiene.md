@@ -44,7 +44,9 @@ what they are for. Keep them current so nobody has a reason to open the real one
 | Reading `.env` to see what is configured | Read `.env.example`, which lists the variable names |
 | Printing a value to check it is set | `test -n "$MY_VAR" && echo set` — presence without disclosure |
 | `grep -r PATTERN .` from the repo root | Scope it: `grep -r PATTERN src/ lib/`, or leave them out: `grep -r --exclude='.env*' PATTERN .` |
+| `find . -type f -exec grep …` | Prune them first: `find . \( -name '.env*' -o -name secrets \) -prune -o \( -type f -exec grep … \)` |
 | A Grep whose glob could name a secret file | Narrow its `path`, or add a negated glob: `*.json !settings.local.json` |
+| Keeping a copy of `.env` | Give it a name that is still secret-bearing — `cp .env .env.bak` — or copy it into a directory, which keeps the name |
 | Editing `.env` yourself | Edit `.env.example`; ask the human to fill in the real one |
 | Pasting a key into a config file | Reference the variable name and let the runtime supply it |
 
@@ -60,23 +62,42 @@ prose alone does not survive a busy afternoon.
    Edit and Write. It refuses:
    - **Read or Grep on a secret-bearing path**, and a Grep pointed at `secrets/` or
      `config/credentials/` itself.
-   - **A Bash command that names one** in an argument or a `<` redirect. Any command counts
-     except a short list that only acts on a name — `ls`, `test`, `rm`, `mv`, `chmod`,
-     `ln`, `echo`, `git add`, `git rm`, `git check-ignore` and a few like them. A list of
-     *readers* is always one short, because the programs that can print a file have no end,
-     and the one it lacks is the one tried after `cat` is refused. `git show <rev>:<path>`
-     reads the path it names; `git log -- .env` does not, until `-p` asks for the patch.
-     Inside a command, substitutions (`"$(cat .env)"`) and `bash -c '…'` scripts are read
-     too; comments, heredoc bodies and quoted prose are not.
-   - **A search that reaches one without naming it**: `grep -r`, `find … -exec`, and
-     ripgrep or the Grep tool once a glob, `--no-ignore` or `-u` takes them past
-     `.gitignore` — a glob that names a file overrides `.gitignore` for it. This fires only
-     when such a file is really there and git does not track it, and the search's own
-     `--exclude`, `--include`, `--exclude-dir` and negated globs are honoured. The message
-     lists the files and the exclusion that leaves them out.
+   - **A Bash command that names one** in an argument or a `<` redirect (`cat<.env`
+     included). Any command counts except a short list that only acts on a name — `ls`,
+     `test`, `rm`, `mv`, `chmod`, `ln`, `echo`, `tee`, `export`, `git add`, `git rm`,
+     `git check-ignore` and a few like them. A list of *readers* is always one short,
+     because the programs that can print a file have no end, and the one it lacks is the
+     one tried after `cat` is refused. `git show <rev>:<path>` reads the path it names;
+     `git log -- .env` does not, until `-p` asks for the patch.
+   - **The same command, however it is dressed.** A wrapper is looked through, options and
+     all — `timeout 30`, `sudo -u deploy`, `nice -n 10`, `xargs`, `stdbuf -oL`. A
+     substitution (`"$(cat .env)"`), a `bash -c '…'` script and its `$1` are read as
+     commands. Globs and brace expansion are expanded as the shell would (`cat .env*`,
+     `cat .env{,.local}`). A `cd` is followed, by path or by `$CLAUDE_PROJECT_DIR`, `$PWD`,
+     `~` or `$(git rev-parse --show-toplevel)`, so `cd secrets && cat api.json` reads
+     `secrets/api.json`. A literal path put in a variable, or walked by a `for` loop, is
+     followed into the commands after it. Comments, heredoc bodies and quoted prose are not
+     read as commands — the backticks in a commit message are text.
+   - **A copy to a name the patterns do not recognise**, such as `cp .env /tmp/env-copy`:
+     the next read of the copy would go through.
+   - **A file handed to a program that then prints it**: `--env-file .env` with a container
+     whose command is `env`, with `node -e`, or with `compose config`.
+   - **A search that reaches one without naming it**: `grep -r` (a glob root such as `*`
+     included), a `find` whose `-exec` runs a command that reads — `-exec grep`, not
+     `-exec wc -l` — or whose list is handed to one (`find … | xargs grep`,
+     `grep KEY $(find …)`), and ripgrep or the Grep tool once a glob, `--no-ignore` or `-u`
+     takes them past `.gitignore`, or once they are given a directory `.gitignore`
+     excludes, which ripgrep searches anyway. A glob that names a file overrides
+     `.gitignore` for it. This fires only when such a file is really there and git does not
+     track it. The search's own `--exclude`, `--include`, `--exclude-dir` and negated globs
+     are honoured, and `find`'s expression is evaluated as `find` evaluates it, so a
+     `-prune` and an earlier `-o` branch leave files out, and a `-name` that belongs to the
+     pruning branch does not. The message lists the files and the exclusions that clear
+     them all.
    - **Edit or Write content containing a token value.**
 
-   Every refusal names the path it matched and the way forward.
+   Every refusal names the path it matched and a way forward that works: the tests run
+   each suggested search back through the hook.
 2. **A pre-commit hook** — `bin/hooks/git/pre-commit` refuses a staged secret-bearing file
    and scans staged additions for token values.
 3. **Permission rules, if you add them.** riprap ships `permissions.suggested.json`, whose
@@ -102,26 +123,61 @@ Two properties of that library are deliberate and worth not "fixing":
 
 ### What the hook allows on purpose
 
+Each of these is ordinary work that puts nothing secret into the session. A guardrail that
+refuses them is one people switch off.
+
 - **A file handed to a program, not printed.** `--env-file .env` (docker, compose, node,
-  bun, deno, uv), `ssh -i key.pem`, and an output option (`--output`, `-out`) pass. Any
-  other program that names a secret file is presumed to read it — `dotenv -e .env`,
+  bun, deno, uv), `ssh -i key.pem` and `ssh -o …`, a volume (`docker run -v`), an output
+  file (`--output`, `-out`, `curl -o`, `wget -O`, `mkcert -key-file`), and certificates
+  inspected with `openssl x509`, `req` or `verify`, which are public. Any other program
+  that names a secret file is presumed to read it — `dotenv -e .env`,
   `vercel env pull .env.local`. If one of yours only loads the file, a human adds the
   command to `SECRET_NONREADING_COMMANDS` in `bin/hooks/lib/secret-patterns.local.sh`.
+  That list is consulted before any command's own parser, so it works for `sed` or `cp`
+  too.
+- **A copy that stays secret-bearing.** `cp .env .env.bak`, `cp .env ../worktree/` and
+  `cp ../main/.env .env` keep a name the patterns recognise, and are how a worktree gets
+  its configuration.
+- **A name that leaves the file out.** `--exclude=.env`, `zip -x .env`, a git pathspec
+  such as `':!*.pem'`, and `git diff --name-only` or `--stat`, which print which files
+  changed and never what is in them.
+- **An argument that is not a path**: a URL, a `jq` filter (`jq '.env' app.json`), an `fd`
+  pattern, a `kubectl` resource or a `gh api` route that happens to say `secrets/`, and
+  prose with spaces in it that is not a file on disk — a pull request title ending in
+  `server.pem` names nothing.
 - **A tracked file reached by a search.** A committed secret is already in every clone and
   needs rotating, not guarding; counting committed fixtures (`test/fixtures/server.pem`, a
   checked-in `.env.development`) would refuse every search from the root. Naming one still
   counts.
-- **A Grep, or plain `rg`, with `.gitignore` in force.** They leave an ignored `.env`
-  alone, so the hook does not walk the tree on every search to second-guess them. A secret
-  file that `.gitignore` does not cover is within their reach: keep every one of them
-  ignored.
+- **A dependency directory reached by a search** — `node_modules`, `.venv`,
+  `site-packages`, `vendor` and the like. certifi's `cacert.pem` is a public CA bundle in
+  every Python virtualenv; a key in a package's test fixtures is nobody's credential.
+- **A directory called `secrets` that is source.** A Go package at `internal/secrets/`, or
+  a Rails `config/credentials/` with its tracked `.yml.enc`: when git tracks files in it,
+  only what `.gitignore` keeps out of it is treated as a secret. A directory git tracks
+  nothing in is a store of secrets, and so is one that does not exist.
+- **A Grep, or plain `rg`, with `.gitignore` in force and no ignored path given.** They
+  leave an ignored `.env` alone, so the hook does not walk the tree on every search to
+  second-guess them. A secret file that `.gitignore` does not cover is within their reach:
+  keep every one of them ignored.
 
 ### What it does not catch
 
-It catches an honest slip and the obvious retry after a block. It does not follow a path in
-a variable (`cat "$ENV_FILE"`), a script or program that opens the file itself, a command
-fed to a shell on stdin or through `xargs`, or a recursive `git grep --untracked`, `ag` or
-`ack`. Those are the cases the rule above is for.
+It catches an honest slip and the obvious retry after a block. It does not follow:
+
+- a path computed at runtime (`F=$(ls .env*)`), or a script or program that opens the file
+  itself (`python -c 'open(".env")'`), or a command fed to a shell on stdin;
+- a `cd` to a place it cannot work out — a variable other than `$HOME`, `$PWD` or
+  `$CLAUDE_PROJECT_DIR`, `cd -`, `cd "$(dirname …)"`. A search or a relative glob after
+  one is not checked;
+- a `find` list passed on through anything but a plain filter (`sort`, `head`, `grep`)
+  before `xargs`; an `fd -x` beyond a literal name; a recursive `git grep --untracked`,
+  `ag` or `ack`;
+- a program handed an env file that prints it in a way of its own
+  (`uv run --env-file .env python -c 'print(…)'`), or one that loads `.env` without being
+  told to, as `docker compose config` does.
+
+Those are the cases the rule above is for.
 
 ## The escape hatch
 

@@ -17,6 +17,13 @@
 # advances the marker, so dispatches made on retry accumulate rather than resetting the
 # count to zero on every attempt.
 #
+# A plan re-presented after only a minor adjustment needs less. Once this transcript has a
+# passing check behind it, a single dispatch whose prompt or description names a "minor
+# revision" is enough — the one critic that rule asks for, whose brief includes checking
+# that the change really is minor. The hook cannot judge that; it only demands that the
+# claim be made out loud, in a dispatch, where the transcript keeps it. With no prior pass
+# the reduced floor never applies: there is nothing for the revision to be minor against.
+#
 # Every failure mode below is treated as "cannot verify compliance", not as "compliant by
 # default": a missing dependency, a missing lib file, or a marker that could not be written
 # all BLOCK rather than silently let the call through. The alternative — failing open on
@@ -64,6 +71,15 @@ refuse() {  # $1 = the specific reason
     echo "(five recommended). See interaction-preferences.md, \"Always stress-test a plan before"
     echo "presenting it.\" This is a repo-wide policy taking effect on this call, not"
     echo "something specific to this plan."
+    if [ "${PRIOR_PASS:-0}" = 1 ]; then
+      echo ""
+      echo "This plan already passed once in this session. If what changed since is only a"
+      echo "minor adjustment — not a new approach, scope, dependency, migration or"
+      echo "verification story — $STRESS_TEST_MINOR_REVISION_MIN_DISPATCHES dispatch(es) naming"
+      echo "\"minor revision\" in the prompt or description is enough instead. Give that critic"
+      echo "the last fully stress-tested plan and this one, and ask it first whether the"
+      echo "change really is minor; if it is not, run the full roster."
+    fi
     echo ""
     echo "What to do:"
     echo "  1. Dispatch the remaining sub-agents now, in parallel — one per angle."
@@ -92,8 +108,9 @@ refuse() {  # $1 = the specific reason
 # Sourcing the lib below overrides this with its own value (still 3, unless a project's
 # .local.sh raises or lowers it).
 STRESS_TEST_MIN_DISPATCHES=3
+STRESS_TEST_MINOR_REVISION_MIN_DISPATCHES=1
 
-# The lib file holds only STRESS_TEST_MIN_DISPATCHES now (see its own header for why
+# The lib file holds only the two dispatch floors now (see its own header for why
 # QUALIFYING_TOOL_NAMES moved out of it). A missing or unreadable lib file would otherwise
 # make `source` abort the script with bash's own exit 1 — which Claude Code treats as
 # non-blocking, the exact fail-open failure mode the jq check above exists to prevent, just
@@ -111,7 +128,7 @@ source "$LIB"
 # interactive session and a separate headless `claude -p` run). "Task" is included
 # defensively for CLI-family harnesses where this tool has historically carried that name.
 # This is riprap's own unresolved fact about the runtime, not a per-repository preference,
-# so — unlike STRESS_TEST_MIN_DISPATCHES in stress-test-patterns.sh — it is a plain
+# so — unlike the floors in stress-test-patterns.sh — it is a plain
 # constant here rather than something a project's .local.sh can override: an adopter whose
 # harness uses a third name has found a real gap, not a reason to configure around it.
 QUALIFYING_TOOL_NAMES=(Agent Task)
@@ -148,11 +165,15 @@ fi
 MARKER="$MARKER_DIR/$(basename "$TRANSCRIPT")"
 
 BOUNDARY=0
+PRIOR_PASS=0
 if [ -f "$MARKER" ]; then
   MARKER_BYTES=$(sed -n '1p' "$MARKER" 2>/dev/null || true)
   MARKER_PATH=$(sed -n '2p' "$MARKER" 2>/dev/null || true)
   case "$MARKER_BYTES" in ''|*[!0-9]*) MARKER_BYTES=0 ;; esac
-  [ "$MARKER_PATH" = "$TRANSCRIPT" ] && BOUNDARY="$MARKER_BYTES"
+  if [ "$MARKER_PATH" = "$TRANSCRIPT" ]; then
+    BOUNDARY="$MARKER_BYTES"
+    [ "$BOUNDARY" -gt 0 ] && PRIOR_PASS=1
+  fi
 fi
 
 TOTAL_BYTES=$(wc -c < "$TRANSCRIPT" 2>/dev/null || echo 0)
@@ -202,7 +223,22 @@ if [ -n "$QUALIFYING" ] && printf '%s\n' "$QUALIFYING" | grep -qiE "devil('|’)
   ADVOCATE=1
 fi
 
+# The reduced floor for a plan re-presented after a minor adjustment — see the header. Only
+# dispatches that name the claim count toward it, so an unrelated sub-agent run between two
+# presentations does not quietly stand in for the minor-revision check.
+MINOR=0
+if [ "$PRIOR_PASS" = 1 ] && [ -n "$QUALIFYING" ]; then
+  MINOR=$(printf '%s\n' "$QUALIFYING" | grep -ciE "minor[ -]revision" || true)
+fi
+
+PASSED=0
 if [ "$COUNT" -ge "$STRESS_TEST_MIN_DISPATCHES" ] && [ "$ADVOCATE" = 1 ]; then
+  PASSED=1
+elif [ "$PRIOR_PASS" = 1 ] && [ "$MINOR" -ge "$STRESS_TEST_MINOR_REVISION_MIN_DISPATCHES" ]; then
+  PASSED=1
+fi
+
+if [ "$PASSED" = 1 ]; then
   # Write via a temp file and atomic rename, never a direct `>` truncate: two concurrent
   # passing calls for the same transcript (a retry racing an in-flight one) would otherwise
   # risk one writer's partial content being overwritten mid-write rather than replaced

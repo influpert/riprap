@@ -18,9 +18,18 @@
 # shellcheck disable=SC2034  # consumed by require-plan-stress-test.sh
 STRESS_TEST_MIN_DISPATCHES=3
 
+# The reduced floor for re-presenting a plan that already passed in this session, after only
+# a minor adjustment: this many dispatches naming "minor revision". One, because the
+# adjustment is small and the full roster already reviewed everything around it; not zero,
+# because "this change is minor" is the author's verdict about their own work — the same
+# self-exemption the full rule refuses — and one critic is the cheapest way to have someone
+# else check it. Material revisions still need the full floor above.
+# shellcheck disable=SC2034  # consumed by require-plan-stress-test.sh
+STRESS_TEST_MINOR_REVISION_MIN_DISPATCHES=1
+
 # --- project extension point ------------------------------------------------
 # riprap owns this file and overwrites it on every update, so a value changed here is
-# gone the next time. To raise or lower STRESS_TEST_MIN_DISPATCHES for this project, set
+# gone the next time. To raise or lower either floor for this project, set
 # it in bin/hooks/lib/stress-test-patterns.local.sh instead; riprap sources it if present
 # and never overwrites it.
 _riprap_local="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../lib/stress-test-patterns.local.sh"

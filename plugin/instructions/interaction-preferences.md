@@ -145,6 +145,23 @@ Material means the approach changed, a subsystem entered or left scope, a new de
 migration appeared, or the verification story changed. Reordered steps and reworded
 sentences do not.
 
+**A minor adjustment to a plan that was already stress-tested needs one critic, not the
+roster.** That critic gets the last fully stress-tested version and the adjusted one, and
+answers two questions in order: is this change really minor by the definition above, and
+does it break anything the earlier critics cleared? If the first answer is no, that is a
+BLOCKER, and the full roster runs on the revision. Name the dispatch a *minor revision* so
+the transcript records the claim being made. No devil's advocate: whether the plan should
+happen at all was argued last round, and a tweak that leaves the approach alone cannot
+reopen that.
+
+**Why one and not none:** "this change is minor" is the author grading their own work — the
+same self-exemption the rule above refuses for "this plan is trivial". One critic is enough
+to take that verdict out of the author's hands; five would repeat a review of a plan that has
+not moved. **Why against the last fully stress-tested version, not the previous one:**
+minor adjustments chain, and a run of them can add up to a material change with no single
+step that looked like one. Comparing each against what the roster actually reviewed is what
+catches the drift.
+
 **This applies to a plan that has already been presented, and it caps at one further
 round.** Without both bounds it does not terminate: a critic's finding is itself review
 feedback, and acting on a BLOCKER almost always changes the approach or the verification
@@ -172,11 +189,16 @@ classify as above.
 
 A `PreToolUse` hook — `bin/hooks/riprap/claude/require-plan-stress-test.sh` — blocks
 `ExitPlanMode` until at least three qualifying sub-agent dispatches have happened since the last
-passing check, one of them with a prompt or description that names the devil's advocate. It
+passing check, one of them with a prompt or description that names the devil's advocate. Once
+a session has a passing check behind it, one dispatch naming a *minor revision* also clears it
+— the floor for the minor-adjustment case above. The hook cannot tell a minor adjustment from a
+material one, or the same plan from a new one; it takes the dispatch's word for it, and the
+critic's first question is what is supposed to catch a wrong claim. It
 enforces the floor, not the recommendation of five: a hook cannot tell a plan that needed four
 angles from one that needed two, so the extra critics are a judgement left to whoever writes
 the plan. The floor itself lives in `bin/hooks/riprap/lib/stress-test-patterns.sh`,
-project-configurable through its `.local.sh` extension point. The tool names a dispatch is
+together with the minor-revision floor, both project-configurable through its `.local.sh`
+extension point. The tool names a dispatch is
 recorded under do not: that is a fact about the runtime, not a project preference, so it is a
 plain constant in the hook script itself, corrected upstream rather than configured around.
 

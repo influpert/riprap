@@ -207,6 +207,37 @@ printf 'not-a-number\ngarbage-second-line\n' > "$STATE_DIR/$(basename "$T")"
 check "corrupted marker (non-numeric) -> treated as no marker, counts from start, allow" 0 "$(payload "$T")"
 
 echo
+echo "--- Minor revision: reduced floor after a prior pass ---"
+
+MINOR_CHECK=(
+  "$(dispatch "minor revision check" "compare against the last stress-tested plan; is this really minor?")"
+)
+
+T=$(new_transcript "${MINOR_CHECK[@]}")
+check "minor-revision dispatch with no prior pass -> block (nothing to be minor against)" 2 "$(payload "$T")"
+
+T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")
+check "full roster -> allow (sets the prior pass)" 0 "$(payload "$T")"
+printf '%s\n' "$(dispatch "correctness critic" "check edge cases")" >>"$T"
+check "after a pass, one dispatch NOT naming a minor revision -> block" 2 "$(payload "$T" "a tweaked plan")"
+case "$ERR" in
+  *"minor revision"*) ok "block message after a prior pass offers the minor-revision route" ;;
+  *) bad "block message after a prior pass did not mention the minor-revision route: $ERR" ;;
+esac
+printf '%s\n' "${MINOR_CHECK[@]}" >>"$T"
+check "after a pass, one minor-revision dispatch -> allow" 0 "$(payload "$T" "a tweaked plan")"
+check "minor-revision dispatch is consumed by the pass -> next re-call blocks" 2 "$(payload "$T" "tweaked again")"
+printf '%s\n' "$(dispatch "critic" "Minor-Revision: diff only")" >>"$T"
+check "chained minor revision, case/hyphen variant -> allow" 0 "$(payload "$T" "tweaked again")"
+
+T=$(new_transcript "${MINOR_CHECK[@]}")
+check "fresh transcript: no pass yet -> block" 2 "$(payload "$T")"
+case "$ERR" in
+  *"already passed once"*) bad "block message offered the minor route with no prior pass: $ERR" ;;
+  *) ok "block message with no prior pass does not offer the minor-revision route" ;;
+esac
+
+echo
 echo "--- Fault tolerance: malformed trailing line ---"
 
 T=$(new_transcript "${FIVE_PLAIN[@]}" "${ADVOCATE[@]}")

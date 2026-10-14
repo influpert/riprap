@@ -127,8 +127,10 @@ the table anyway; otherwise the deferrals have no destination until the handover
 Four ways this ends, and only one of them is quiet.
 
 **Clean.** The verdict is `merge`, with nothing outstanding at BLOCKER or MAJOR in
-`interaction-preferences.md`'s scheme, and the intended number of cycles has run. Go to the
-handover.
+`interaction-preferences.md`'s scheme. Go to the handover. This can come before the declared
+count, because the count is a limit and not a quota: a clean review with no fix pushed since
+the review before it — the first review, always — leaves nothing for another cycle to
+confirm, and a further cycle would only post a second review restating it.
 
 **Not converging.** A finding raised in three separate cycles is not being fixed — either the
 remediation keeps missing it, or the reviewer and the author disagree about what it is. Stop
@@ -163,9 +165,16 @@ and no more:
   worthless and, worse, looks current.
 - **What each cycle changed** — one line per cycle, naming the findings fixed. This is the
   part a reviewer cannot reconstruct and would otherwise have to take on trust. **A cycle
-  that changed nothing says so, and says which nothing it was**: no finding blocked, or
-  remediation ran and failed. Those are opposite states — one is a clean change, the other is
-  a stuck one — and "2 cycles, verdict merge" reads like work landed in both.
+  that changed nothing says so, and says which nothing it was**: no finding blocked,
+  remediation ran and failed, or it was the last declared cycle, which ends at its review and
+  fixes nothing by design. Those are three different states — a clean change, a stuck one,
+  and one the count stopped short of clean — and "2 cycles, verdict merge" reads like work
+  landed in both.
+- **What still blocks, when the declared count ran out first** — each BLOCKER and MAJOR in
+  `interaction-preferences.md`'s scheme that the last review left, by its slug, marked
+  outstanding and not fixed. The last cycle did not touch them on purpose, so they are a
+  person's to decide on; folding them in with the deferred findings below would file a
+  blocker as something that could wait.
 - **What was deferred, and where it now lives** — each MINOR on its own line, so the session
   that launched the loop can offer them to the user (`interaction-preferences.md`'s
   "fix, then offer").
@@ -197,5 +206,5 @@ the history later depends on.
   not see.
 - **The cycle count is decided before the first pass, and it is a hard stop** — never
   extended to reach a nicer answer, and never overrun by one more round of fixes. The last
-  cycle ends at its review, so every fix the loop makes is one a later review read.
+  cycle ends at its review, so the loop never fixes anything after its last review.
 - **Never merge.** The loop hands over; a person decides.

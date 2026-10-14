@@ -39,14 +39,20 @@ export const meta = {
 //
 // Optional: `cycles`, the declared count (default 2), and `maxCycles`, a ceiling
 // on that count (default 4). A count over the ceiling is clamped to it, and the
-// result says so. The ceiling is never a licence to run past the declared count.
+// result says so. maxCycles can lower the skill's ceiling of four and never raise
+// it, and no ceiling is a licence to run past the declared count.
 // bin/tests/test-vet-workflow.mjs executes this loop with stubbed agents.
+
+// The skill's ceiling. Beyond four cycles a loop is grinding rather than
+// converging, and a raised maxCycles is that grinding asked for by argument
+// instead of by "one more round", so it is clamped like an over-long count.
+const SKILL_CEILING = 4
 
 const PR = args?.pr
 const REPO = args?.repo
 const BRANCH = args?.branch
 const ASKED = Number(args?.cycles ?? 2)
-const MAX_CYCLES = Number(args?.maxCycles ?? 4)
+const ASKED_MAX = Number(args?.maxCycles ?? SKILL_CEILING)
 
 if (!PR || !REPO || !BRANCH) {
   return {
@@ -58,19 +64,26 @@ if (!PR || !REPO || !BRANCH) {
 // Refused rather than coerced, because the declared count is the loop's bound. A
 // count of zero would run no review at all and still write a handover, which is a
 // confident report on a change nobody read.
-if (![ASKED, MAX_CYCLES].every((n) => Number.isInteger(n) && n >= 1)) {
+if (![ASKED, ASKED_MAX].every((n) => Number.isInteger(n) && n >= 1)) {
   return {
     aborted: true,
     reason: `cycles and maxCycles must be whole numbers of at least 1. Got cycles=${args?.cycles} maxCycles=${args?.maxCycles}`,
   }
 }
 
+const MAX_CYCLES = Math.min(ASKED_MAX, SKILL_CEILING)
 const CYCLES = Math.min(ASKED, MAX_CYCLES)
 // Reported in every result, because the caller asked for a count it did not get
 // and the result is the only place it will find that out.
-const CLAMPED = ASKED > MAX_CYCLES
-  ? `Asked for ${ASKED} cycles, over the maxCycles ceiling of ${MAX_CYCLES}, so ${CYCLES} were declared.`
+const CLAMPED = ASKED > CYCLES
+  ? `Asked for ${ASKED} cycles, over the ceiling of ${MAX_CYCLES}${
+    ASKED_MAX > SKILL_CEILING ? ` (maxCycles=${ASKED_MAX} cannot raise it past the skill's ${SKILL_CEILING})` : ''
+  }, so ${CYCLES} were declared.`
   : null
+// `handedOver` in a result means the run ended short of a clean verdict and a
+// person has to pick it up. It does not mean a handover comment was posted: only a
+// run that reaches the Handover phase posts one, and the early exits return to the
+// session that launched the loop instead.
 const result = (r) => (CLAMPED ? { ...r, clamped: CLAMPED } : r)
 if (CLAMPED) log(CLAMPED)
 
@@ -263,8 +276,13 @@ Return the structured result the schema asks for. Reuse a previous cycle's slug 
 defect — a slug that drifts cannot detect recurrence, which is the only thing it is for.`,
     { label: `consolidate ${cycle}`, phase: 'Cycle', schema: CYCLE_RESULT })
 
+  // No handover from here: there is no verdict for the head this review was meant
+  // to judge, and a handover would quote the previous one against a stale head. When
+  // a remediation ran before it, the reason says so, because that fix was pushed for
+  // this review to read and would otherwise pass for a vetted one.
   if (!review) {
-    return result({ handedOver: true, reason: `Cycle ${cycle}: review returned nothing.`, history })
+    const unreviewed = remediated ? ` The fixes pushed in cycle ${cycle - 1} have not been reviewed.` : ''
+    return result({ handedOver: true, reason: `Cycle ${cycle}: review returned nothing.${unreviewed}`, history })
   }
 
   last = review

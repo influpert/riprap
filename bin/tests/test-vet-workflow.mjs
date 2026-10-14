@@ -92,6 +92,12 @@ console.log('--- the declared count is a hard stop ---')
   check('it hands over with the declared-count reason', r.result?.handedOver === true && /declared cycle count \(2\) reached/i.test(r.result?.reason ?? ''), r)
   check('the result carries the outstanding findings', JSON.stringify(r.result?.outstanding) === '["defect-2"]', r)
   check('the handover runs, and is told what is outstanding', r.handovers === 1 && r.prompt('handover').includes('defect-2'), r)
+  // With the remediation turn skipped, this instruction is the only thing keeping the
+  // last turn of a blocked run from fixing what it was handed. Whitespace is folded
+  // because the prompt wraps wherever the source line happens to end.
+  const handover = r.prompt('handover').replace(/\s+/g, ' ')
+  check('and is told not to fix them, commit, push, or start another cycle',
+    /do not fix them/i.test(handover) && /do not edit, commit or push/i.test(handover) && /do not start another cycle/i.test(handover), r)
   check('no clamp is reported when the count is within the ceiling', r.result?.clamped === undefined, r)
 }
 {
@@ -116,8 +122,24 @@ console.log('--- maxCycles is a ceiling on the declared count ---')
   check('cycles=3 with maxCycles=2 runs 2 reviews and 1 remediation', r.reviews === 2 && r.remediations === 1 && r.result?.clamped !== undefined, r)
 }
 {
+  // The skill sets four as the ceiling, because beyond four a loop is grinding. A caller
+  // who raises maxCycles has asked for exactly that, so it can lower the ceiling and
+  // never raise it.
+  const r = await run({ cycles: 8, maxCycles: 10 }, (c) => blocks(c, [`defect-${c}`]))
+  check('maxCycles=10 cannot raise the ceiling past the skill\'s four', r.reviews === 4 && r.remediations === 3 && /declared cycle count \(4\) reached/i.test(r.result?.reason ?? ''), r)
+  check('and the clamp says maxCycles was the reason', /maxCycles/.test(r.result?.clamped ?? '') && /\b4\b/.test(r.result?.clamped ?? ''), r)
+}
+{
+  const r = await run({ cycles: 3, maxCycles: 10 }, (c) => blocks(c, [`defect-${c}`]))
+  check('a count within four runs as declared, whatever maxCycles says', r.reviews === 3 && r.remediations === 2 && r.result?.clamped === undefined, r)
+}
+{
   const r = await run({ cycles: 5 }, (c) => blocks(c, ['same-defect']))
-  check('the clamp is reported on an early exit too', /not converging/i.test(r.result?.reason ?? '') && r.result?.clamped !== undefined, r)
+  check('the clamp is reported on the non-convergence exit too', /not converging/i.test(r.result?.reason ?? '') && r.result?.clamped !== undefined, r)
+}
+{
+  const r = await run({ cycles: 5 }, () => null)
+  check('and on the exit for a review that returned nothing', /returned nothing/.test(r.result?.reason ?? '') && r.result?.clamped !== undefined, r)
 }
 for (const bad of [{ cycles: 0 }, { cycles: -1 }, { cycles: 2.5 }, { cycles: 'two' }, { maxCycles: 0 }]) {
   const r = await run(bad, (c) => blocks(c, [`defect-${c}`]))
@@ -156,8 +178,20 @@ console.log('--- every other exit still fires ---')
     r.prompt('consolidate 2').includes('pinned to aaa111') && r.prompt('consolidate 2').includes('a head still reading aaa111 means nothing'), r)
 }
 {
+  // There is no verdict for the head that review was meant to judge, and a handover would
+  // have to quote the previous one against a stale head. So the run goes back to the
+  // session that launched it, with no handover comment posted.
   const r = await run({}, () => null)
-  check('a review that returns nothing still hands over', r.result?.handedOver === true && /returned nothing/.test(r.result?.reason ?? ''), r)
+  check('a review that returns nothing hands the run back, posting no handover',
+    r.result?.handedOver === true && /returned nothing/.test(r.result?.reason ?? '') && r.handovers === 0, r)
+  check('and on a first cycle claims no unreviewed fixes, since none were made', !/not been reviewed/.test(r.result?.reason ?? ''), r)
+}
+{
+  // The fix from cycle 1 was pushed for cycle 2's review to read, and that review never
+  // came back. The caller has to be told, or the pushed fix passes for a vetted one.
+  const r = await run({ cycles: 2 }, (c) => (c === 1 ? blocks(c, ['defect-1']) : null))
+  check('a review that returns nothing after a fix says that fix was not reviewed',
+    r.remediations === 1 && /cycle 1 have not been reviewed/i.test(r.result?.reason ?? ''), r)
 }
 
 console.log(`\n${PASS} passed, ${FAIL} failed`)

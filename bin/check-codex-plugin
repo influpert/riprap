@@ -48,11 +48,15 @@ fi
 # name some connector tools without any mcp__ prefix. Where either is so, the matcher
 # simply never fires on Codex, the same shape as the Claude-only tools above, and the Bash
 # half of the merge gate still holds there.
+#
+# PowerShell and Monitor are Claude Code's other two tools that run a shell command, added
+# for the merge gate on the same basis: Claude Code names them so, and a Codex install that
+# has no tool by either name never fires the matcher.
 jq -e '
   def events: ["SessionStart", "PreToolUse", "PostToolUse", "PreCompact", "Stop", "SessionEnd"];
   def matchers: ["startup", "resume", "clear", "compact", "fork", "Bash", "Read", "Grep",
                  "Edit", "Write", "ExitPlanMode", "ScheduleWakeup", "CronCreate", "Workflow",
-                 "RemoteTrigger", "Agent", "Task", "NotebookEdit",
+                 "RemoteTrigger", "Agent", "Task", "NotebookEdit", "PowerShell", "Monitor",
                  "^mcp__.+__merge_pull_request$", "^mcp__.+__enable_pr_auto_merge$"];
   type == "object" and (.hooks | type == "object") and
   ((.hooks | keys) - events | length == 0) and

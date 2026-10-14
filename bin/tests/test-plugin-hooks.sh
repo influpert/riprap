@@ -233,11 +233,16 @@ routes() {  # $1 = tool name, $2 = hook script; true when a PreToolUse matcher s
   return 1
 }
 gate=block-unreviewed-merge.sh
-for tool in Bash mcp__github__merge_pull_request mcp__github__enable_pr_auto_merge \
+# PowerShell and Monitor run shell commands as Bash does, and arrive with the same
+# tool_input.command, but a matcher of "Bash" names neither: a merge run through
+# either never reached the gate. Claude Code's tools reference says to match
+# Bash|PowerShell in a hook that inspects shell commands, and Monitor runs under
+# Bash's own permission rules.
+for tool in Bash PowerShell Monitor mcp__github__merge_pull_request mcp__github__enable_pr_auto_merge \
             mcp__plugin_gh_github__merge_pull_request; do
   routes "$tool" "$gate" && ok "$tool reaches the merge gate" || bad "$tool never reaches the merge gate"
 done
-for tool in Read mcp__github__pull_request_read mcp__github__disable_pr_auto_merge \
+for tool in Read BashOutput mcp__github__pull_request_read mcp__github__disable_pr_auto_merge \
             mcp__github__merge_pull_request_status; do
   routes "$tool" "$gate" && bad "$tool is sent to the merge gate, which has nothing to check in it" \
     || ok "$tool is not sent to the merge gate"

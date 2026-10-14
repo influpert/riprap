@@ -27,7 +27,7 @@ format what you just wrote, keep the handoff current, and mark the end of a sess
 | session start | startup, resume, clear, compact, fork | Injects the router — the rules and the task-to-document map, plus the path of the current handoff. On `resume` and `fork` the context already holds it, so those get a pointer instead | no |
 | secret hygiene | Bash, Read, Grep, Edit, Write | Refuses a call whose content matches a credential pattern | **yes** |
 | destructive-command blocker | Bash | Refuses a destructive command resolving outside the project directory | **yes** |
-| merge gate | Bash, and the GitHub MCP server's merge and auto-merge tools | Refuses an autonomous merge of a security-sensitive change, whether through `gh pr merge`, a REST call or MCP — and refuses `--admin` and auto-merge on every pull request | **yes** |
+| merge gate | Bash, PowerShell, Monitor, and the GitHub MCP server's merge and auto-merge tools | Refuses an autonomous merge of a security-sensitive change, whether through `gh pr merge`, a REST call or MCP — and refuses `--admin` and auto-merge on every pull request | **yes** |
 | worktree boundary | Bash, Edit, Write, NotebookEdit | Refuses a write whose target lands outside the worktree — a file nothing will clean up | **yes** |
 | tech footprint | Write | Refuses a file whose language or toolchain nothing in the repository already uses | **yes** |
 | plan stress test | ExitPlanMode | Refuses to exit plan mode below a minimum floor of dispatched critic sub-agents | **yes** |
@@ -77,7 +77,9 @@ them; riprap does not rewrite global Codex configuration to bypass that decision
 gate's second matcher, for the GitHub MCP merge tools, is a regular expression over
 `mcp__<server>__<tool>` names as Claude Code documents them. Nobody has confirmed that Codex
 names and matches MCP tools the same way, so on Codex only the merge gate's Bash half is known
-to hold.
+to hold. Its first matcher names `PowerShell` and `Monitor` beside `Bash`: Claude Code's other
+two tools that run a shell command, which have no confirmed Codex equivalent and never fire
+there.
 
 Those are the paths for a rule *you* write. riprap's own live one level down, under
 `bin/hooks/riprap/`, which is replaced wholesale on every install — so nothing you write
@@ -102,9 +104,10 @@ case: wrong tool, wrong file type, exempt path, empty content.
 
 Where a hook cannot verify something, it blocks. The destructive-command blocker refuses
 when it cannot determine the working directory; the merge gate refuses when it cannot
-determine which pull request a merge names, or which files that pull request touches. An
-unverifiable action is indistinguishable from an unsafe one, and treating them differently is
-how a guardrail becomes decorative.
+determine which pull request a merge names, or which files that pull request touches. It looks
+every merge up through `gh`, an MCP merge included, so where `gh` is missing or not signed in
+for the pull request's host it refuses them all. An unverifiable action is indistinguishable
+from an unsafe one, and treating them differently is how a guardrail becomes decorative.
 
 The same reasoning covers a missing dependency. Without `jq`, the six rule-enforcing
 blockers — secret hygiene, the destructive-command blocker, the worktree boundary, the merge

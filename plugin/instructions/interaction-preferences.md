@@ -299,13 +299,19 @@ already answered that: code-review.md and testing.md both require the blocking t
 "which of these shall I fix?" spends a round trip to be told what the rules already say, and
 leaves the work idle for exactly as long as the user takes to reply.
 
-**While that work is under way, offer the rest.** Put the MINOR and NON-ISSUE findings to the
-user through the structured choice UI as a multi-select — each finding, or each group where
-there are more than the UI holds, with your recommendation first and "none — record them as
-they stand" as an option. Ask once the blocking fixes have started, never before: the offer must
-not hold them up, so where the harness can carry the fixes in a background sub-agent, hand them
-there and ask; otherwise make the first fix, then ask. An accepted NON-ISSUE becomes a MINOR,
-because a finding that gets fixed was not a non-issue.
+**While that work is under way, offer the MINORs.** Put them to the user through the
+structured choice UI as a multi-select, your recommendation first and "none — defer them" as an
+option. The UI sets the arithmetic: `AskUserQuestion` takes four options a question and four
+questions a call, so with "none" in each question one call carries twelve findings; split across
+questions before grouping, and group by file or theme only past that. **The NON-ISSUEs are
+reported, not offered** — the class means considered and dismissed, and offering to fix one
+says the dismissal was not meant. If the user asks for one anyway, it becomes a MINOR.
+
+**The offer must not hold the blocking fixes up, and a question blocks the turn that asks it.**
+So where the harness can carry the fixes in a background sub-agent, hand them there and ask
+while it works. Where it cannot — or on Codex, where `request_user_input` exists only in Plan
+mode and Plan mode stops edits — finish the blocking fixes first and make the offer then.
+That is a later offer, not a pause before the work: the blocking fixes still never wait for it.
 
 **This does not break "ask before the work".** That beat is about direction, and the
 direction of a blocking fix is set by the finding. The offer is about scope that the blocking
@@ -319,11 +325,6 @@ work does not depend on, so an answer that arrives mid-fix changes nothing alrea
   ask, because every fix made before the answer is built on the thing in dispute.
 - **The user overrules a blocking finding.** Stop that fix, and record the overrule where the
   calling workflow records dispositions.
-
-**On Codex the offer waits for the next stop.** `request_user_input` exists only in Plan mode,
-and Plan mode stops edits, so asking mid-fix would stall the very work the offer must not
-hold up. Make the blocking fixes in Code mode, commit them, and then ask for the mode switch
-and make the offer — the earliest point at which asking costs the fixes nothing.
 
 **With no answer — nobody there, or a sub-agent with no route to the user — this is the
 default, and it is the only one:** proceed on the blocking fixes, fix a MINOR only where it

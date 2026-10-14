@@ -287,9 +287,9 @@ nonsense on a branch with no implementation:
 | blockers outstanding | change the tests first — that is testing.md's bar, and implementing against tests you know are incomplete converts a finding into a regression inside the artifact everyone will later cite as proof |
 | do not merge | the tests and the plan disagree. That is step 1's question again, not a test bug — go back to it. |
 
-Then the checkpoint below. **At gate 1 the blocking fixes are never optional:** "proceed with
-blocking findings outstanding" is not offered, because testing.md forbids exactly that. The user
-can still overrule, and then it is an explicit disagreement with that document, recorded as one.
+Then the checkpoint below. **At gate 1 the blocking fixes start regardless**, because testing.md
+forbids implementing with any outstanding. The user can still overrule one, and then it is an
+explicit disagreement with that document, recorded as one.
 
 **Test fixes from this gate are committed on their own too**, before step 5 — amend the
 tests-only commit or add a second one, and watch each changed assertion fail again for the reason
@@ -456,16 +456,16 @@ landed, and *offer* `/riprap:prune` rather than running it.
 **Each gate: present, start, then offer** — interaction-preferences.md's "fix, then offer".
 Present the findings grouped by the classes that document defines, each carrying your proposed
 disposition, and **start on everything at the blocking tier in the same turn**, without asking
-which to fix. Once those fixes are under way, put the lesser findings to the user through the
-structured choice UI as a multi-select, recommended first, with "none" among the options. Name
-what each would add to the diff, because that is the cost the user is choosing.
+which to fix, then offer the MINORs as that section describes. The one thing this skill adds to
+the offer: name what each finding would add to the diff, because that is the cost the user is
+choosing.
 
 The checkpoint is still a stop **after** the fixes: present what changed, and wait for the
 signal to move to the next step. And where the verdict says the plan itself is wrong — gate 1's
 *do not merge*, or a finding that the approach is wrong — there is nothing to start: stop and
 ask, with the options proceed · stop, this needs a different plan.
 
-**"Unless the user decides otherwise", precisely.** The user may overrule any *finding*. Where
+**Overruling a finding.** The user may overrule any *finding*. Where
 they overrule one at the blocking tier, interaction-preferences.md's disagreement rule applies:
 ask once more, explicitly, then **record it** — in the decisions record and later in the body's
 disposition column, as dismissed by the user, with the reason. A finding dropped in silence is

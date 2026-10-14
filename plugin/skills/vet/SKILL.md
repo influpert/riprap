@@ -85,7 +85,7 @@ A separate turn, with the review's findings as input.
   result; burying it costs the next reader the reasoning.
   Start on them without asking which to fix — `interaction-preferences.md`'s "fix, then
   offer".
-- **MINOR and NON-ISSUE** in the same scheme: **offer them while the blocking fixes run**, per
+- **MINOR** in the same scheme: **offer them while the blocking fixes run**, per
   that same section, and fix what the user accepts. With no answer, that section's no-answer
   default applies — fixes to code near the change are how a separable pull request stops being
   separable. **Under the payload workflow the remediation turns are sub-agents with no route to

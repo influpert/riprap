@@ -27,7 +27,7 @@ interchangeable and cover different problems, and the file you want when CI is r
 named after CI in most repositories. Guessing from filenames costs more than reading a map.
 
 The router also carries a line count next to each entry. Those are there so the *model* can
-budget context — two 80-line files usually beat one 215-line file when either would answer
+budget context — two 80-line files usually beat one 220-line file when either would answer
 the question — and they are left off this page, because a human reader gets nothing from
 them and they would rot on every edit of every document.
 

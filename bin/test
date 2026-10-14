@@ -67,6 +67,13 @@ bin/check-skills --self-test
 bin/check-skills
 
 echo
+echo "--- The router's line counts match the files they describe ---"
+# Same pairing as check-skills: the self-test proves the check can fail before the
+# real run is allowed to report a pass.
+bin/check-router-sizes --self-test
+bin/check-router-sizes
+
+echo
 echo "--- Native Codex package and shared plugin surface ---"
 bin/check-codex-plugin
 

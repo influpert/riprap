@@ -153,7 +153,7 @@ the host suggests: nothing cleans up a file the diff cannot see. → [git.md](gi
 ## Which file covers what
 
 Organised by task, not by filename. Line counts let you budget: two 80-line files usually
-beat one 215-line file when either would answer the question.
+beat one 220-line file when either would answer the question.
 
 **Starting work**
 

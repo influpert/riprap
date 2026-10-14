@@ -271,9 +271,9 @@ after one does, and closes with an explicit merge verdict against a named commit
 reports: it never edits the branch, never merges, and never writes anything shaped like an
 approval. The failure it is written against is a review that lists findings and stops —
 leaving the reader to work out whether the thing ships, which is the one question they
-asked and the only part that needed the reviewer's context. It dispatches at least six
-reviewers in parallel — correctness, simplicity, maintainability and dependency creep among
-them, plus the devil's advocate that can come back with *don't* — and posts inline comments
+asked and the only part that needed the reviewer's context. It dispatches at least three
+reviewers in parallel, five recommended — correctness and dependency creep always among them,
+plus the devil's advocate that can come back with *don't* — and posts inline comments
 on the lines they concern beside a summary giving every finding a class and a recommended fix.
 
 **It owns the review procedure, and the guardrail document points at it.** The angles, the

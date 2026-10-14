@@ -93,9 +93,9 @@ echo "--- Payload workflows parse ---"
 # body in an async function, so top-level `return` is legal there and illegal in
 # a bare ES module. Checking without the wrapper rejects every correct workflow.
 #
-# Last in the file, and for a reason worth keeping: node is the only tool this
-# suite needs that riprap is not otherwise written in, so it is the likeliest to
-# be missing. `set -e` means whatever sits after a failure never runs, and a
+# Last in the file but for the test that runs one of them, and for a reason worth
+# keeping: node is the only tool this suite needs that riprap is not otherwise
+# written in, so it is the likeliest to be missing. `set -e` means whatever sits after a failure never runs, and a
 # missing interpreter must not stand between a reader and every other check —
 # the same argument that put check-skills near the end.
 for wf in plugin/payload/.claude/workflows/*.js; do
@@ -105,6 +105,17 @@ for wf in plugin/payload/.claude/workflows/*.js; do
     || { echo "❌ $wf does not parse under the workflow runtime's wrapping" >&2; exit 1; }
   echo "✅ $(basename "$wf") parses"
 done
+
+echo
+echo "--- The vet workflow stops at its declared cycle count ---"
+# Parsing proves the file loads, not that its loop stops where the skill says,
+# and the loop bound is the one thing that file enforces which the skill's prose
+# cannot. This runs the loop with every agent stubbed and checks which turns
+# actually ran; its header says what reading the loop once missed.
+#
+# After the parse check, so a syntax error is reported as one rather than as a
+# harness failure, and node-only like it, so it sits at the end for the same reason.
+node bin/tests/test-vet-workflow.mjs
 
 echo
 echo "✅ bin/test passed"

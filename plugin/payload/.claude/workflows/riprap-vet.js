@@ -18,22 +18,35 @@ export const meta = {
 // interaction-preferences.md instead of listing them.
 //
 // What a script adds over prose is the part a model cannot be relied on to hold
-// across a long turn: the cycle count is a loop bound rather than an intention,
-// the recurrence test is arithmetic over slugs rather than recall, and review
-// and remediation land in genuinely separate contexts rather than in one turn
-// that means to keep them apart. Codex has no workflow runtime today, so it runs
-// the skill directly and carries those three properties by discipline. When it
-// gains one, this file is the thing to port.
+// across a long turn: the declared cycle count is a hard loop bound rather than
+// an intention, the recurrence test is arithmetic over slugs rather than recall,
+// and review and remediation land in genuinely separate contexts rather than in
+// one turn that means to keep them apart. Codex has no workflow runtime today, so
+// it runs the skill directly and carries those three properties by discipline.
+// When it gains one, this file is the thing to port.
+//
+// The bound is on fixes as well as reviews. A cycle remediates only when another
+// review will follow it inside the declared count, so the last declared cycle
+// ends at its review; if that review still blocks, the loop hands over with the
+// findings outstanding rather than fixing them. A fix after the last review is
+// a change nobody reviewed, which is the thing vet exists to prevent. The first
+// version used the count only to end a CLEAN run, and a run still blocking at its
+// last declared review went on fixing up to maxCycles.
 //
 // Usage:
 //   Workflow({ name: 'riprap-vet',
 //              args: { pr: 412, repo: '/abs/path/to/worktree', branch: 'feat/thing' } })
+//
+// Optional: `cycles`, the declared count (default 2), and `maxCycles`, a ceiling
+// on that count (default 4). A count over the ceiling is clamped to it, and the
+// result says so. The ceiling is never a licence to run past the declared count.
+// bin/tests/test-vet-workflow.mjs executes this loop with stubbed agents.
 
 const PR = args?.pr
 const REPO = args?.repo
 const BRANCH = args?.branch
-const CYCLES = args?.cycles ?? 2
-const MAX_CYCLES = args?.maxCycles ?? 4
+const ASKED = Number(args?.cycles ?? 2)
+const MAX_CYCLES = Number(args?.maxCycles ?? 4)
 
 if (!PR || !REPO || !BRANCH) {
   return {
@@ -41,6 +54,25 @@ if (!PR || !REPO || !BRANCH) {
     reason: `Needs { pr, repo, branch }. Got pr=${PR} repo=${REPO} branch=${BRANCH}`,
   }
 }
+
+// Refused rather than coerced, because the declared count is the loop's bound. A
+// count of zero would run no review at all and still write a handover, which is a
+// confident report on a change nobody read.
+if (![ASKED, MAX_CYCLES].every((n) => Number.isInteger(n) && n >= 1)) {
+  return {
+    aborted: true,
+    reason: `cycles and maxCycles must be whole numbers of at least 1. Got cycles=${args?.cycles} maxCycles=${args?.maxCycles}`,
+  }
+}
+
+const CYCLES = Math.min(ASKED, MAX_CYCLES)
+// Reported in every result, because the caller asked for a count it did not get
+// and the result is the only place it will find that out.
+const CLAMPED = ASKED > MAX_CYCLES
+  ? `Asked for ${ASKED} cycles, over the maxCycles ceiling of ${MAX_CYCLES}, so ${CYCLES} were declared.`
+  : null
+const result = (r) => (CLAMPED ? { ...r, clamped: CLAMPED } : r)
+if (CLAMPED) log(CLAMPED)
 
 const WHERE = `
 WORKING DIRECTORY: ${REPO}, branch ${BRANCH}, pull request #${PR}.
@@ -151,8 +183,10 @@ let headBefore = null
 // "clean, and something was pushed to confirm" from "clean, and nothing moved" —
 // two states that look identical in a verdict and want opposite responses.
 let remediated = false
+// Set when the last declared review still blocks. Null on a clean run.
+let stopped = null
 
-for (let cycle = 1; cycle <= MAX_CYCLES; cycle++) {
+for (let cycle = 1; cycle <= CYCLES; cycle++) {
   phase('Cycle')
 
   const angleReports = await parallel(
@@ -230,7 +264,7 @@ defect — a slug that drifts cannot detect recurrence, which is the only thing 
     { label: `consolidate ${cycle}`, phase: 'Cycle', schema: CYCLE_RESULT })
 
   if (!review) {
-    return { handedOver: true, reason: `Cycle ${cycle}: review returned nothing.`, history }
+    return result({ handedOver: true, reason: `Cycle ${cycle}: review returned nothing.`, history })
   }
 
   last = review
@@ -245,11 +279,11 @@ defect — a slug that drifts cannot detect recurrence, which is the only thing 
   const stuck = [...seen.entries()].filter(([, n]) => n >= 3).map(([k]) => k)
   if (stuck.length > 0) {
     log(`not converging: ${stuck.join(', ')}`)
-    return {
+    return result({
       handedOver: true,
       reason: `Not converging — ${stuck.join(', ')} raised in three separate cycles. Two parties disagreeing needs a person, not a fourth round.`,
       history,
-    }
+    })
   }
 
   headBefore = review.headSha ?? headBefore
@@ -287,12 +321,14 @@ ${review.summary}
     continue
   }
 
-  if (cycle === MAX_CYCLES) {
-    return {
-      handedOver: true,
-      reason: `Cycle cap (${MAX_CYCLES}) reached with ${review.blocking} blocking finding(s) outstanding.`,
-      history,
-    }
+  // The last declared cycle ends here, at its review. Remediating now would push
+  // fixes that no review will read, and the handover would then describe a change
+  // nobody reviewed as though the loop had vetted it. What still blocks goes to
+  // the handover as outstanding; more cycles are a fresh run, never this one.
+  if (cycle === CYCLES) {
+    stopped = `Declared cycle count (${CYCLES}) reached with ${review.blocking} blocking finding(s) outstanding.`
+    log(stopped)
+    break
   }
 
   await agent(`${WHERE}
@@ -322,7 +358,16 @@ comment on #${PR}. That section lists what it must contain; follow it rather tha
 restated here.
 
 Cycles run: ${history.length}. Final review: ${last?.verdict} — ${last?.blocking} blocking.
+${stopped ? `
+${stopped} The last declared cycle ends at its review, so these were NOT fixed:
+${[...new Set(last.findingKeys)].map((k) => `  - ${k}`).join('\n')}
+List each as outstanding, from the final review below. Do not fix them, do not edit, commit
+or push, and do not start another cycle: a fix after the last review is one nobody reviewed.
 
+=== FINAL REVIEW ===
+${last.summary}
+=== END FINAL REVIEW ===
+` : ''}
 Never merge. If a changed path is one merge-gates.md gates, run that document's hold sequence,
 which includes requesting the owner's review formally, and say in the handover that you did.
 Otherwise do not request a platform review. Never write anything shaped like an approval;
@@ -332,4 +377,11 @@ the pull request's state and stop.
 Return what you posted and the pull request's current state.`,
   { label: 'handover', phase: 'Handover' })
 
-return { pr: PR, cycles: history, verdict: last?.verdict, handover, merged: false }
+return result({
+  pr: PR,
+  cycles: history,
+  verdict: last?.verdict,
+  handover,
+  merged: false,
+  ...(stopped && { handedOver: true, reason: stopped, outstanding: [...new Set(last.findingKeys)] }),
+})

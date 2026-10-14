@@ -41,10 +41,14 @@ human picks it up.
 
 ## Before starting
 
-**Say how many cycles you intend to run, and stop at that number.** Two is the useful
-default: one pass to find, one to confirm the fixes landed and to catch what the fixes
-introduced. Beyond four, a loop is no longer converging on quality — it is grinding, and the
-tell is in the next section.
+**Say how many cycles you intend to run, and stop at that number. It is a hard stop, on
+fixes as well as reviews.** Two is the useful default: one pass to find, one to confirm the
+fixes landed and to catch what the fixes introduced. A cycle remediates only when another
+review will follow it inside the declared count, so the last cycle ends at its review and
+fixes nothing — a fix made after the last review is a change nobody reviewed, which is the
+thing this skill exists to prevent. Four is the ceiling: asked for more, declare four and say
+so. Beyond four, a loop is no longer converging on quality — it is grinding, and the tell is
+under **Stopping**.
 
 **Confirm there is something to review.** Check that the branch differs from its base —
 `git diff --stat "$(git merge-base origin/<base> HEAD)"..HEAD` prints something, or the pull
@@ -63,7 +67,8 @@ this loop pushes, and pushing a branch that has no pull request is the user's ca
 Each cycle is two turns, in this order, and they must not be collapsed into one. A turn here is
 a separate context, not a pause for the user: the workflow gives each its own agent, and without
 it, dispatch the remediation to its own sub-agent, or at least post the review before editing
-anything. Do not end your turn and wait between them.
+anything. Do not end your turn and wait between them. The last declared cycle stops after its
+review and remediates nothing; **Before starting** says why.
 
 ### 1. Review
 
@@ -102,7 +107,7 @@ A separate turn, with the review's findings as input.
   the user**, so they always take that default, and the handover lists each deferred MINOR
   (`interaction-preferences.md`'s class). Once the workflow returns, the session that launched it
   offers them to the user, and any accepted become a fresh `/riprap:vet` run — never an extra
-  cycle of this one, which would raise the cap and leave its fixes unreviewed.
+  cycle of this one, which would fix past its declared count and leave those fixes unreviewed.
 - **Commit and push before the next cycle.** This is the step that quietly breaks the loop
   when it is skipped: the next review reads the pull request, so an unpushed fix is invisible
   to it, the finding reappears unchanged, and the loop reports non-convergence on a defect
@@ -137,9 +142,12 @@ wording** — `stale-session-redirect`, not "the session is stale on line 70". W
 drifts between passes; a slug that drifts cannot detect recurrence, which is the one thing it
 is for.
 
-**Cycle cap reached with findings outstanding.** Report what remains and stop. Do not raise
-the cap to reach a clean verdict — a loop that runs until it approves is a loop whose verdict
-means nothing.
+**Declared cycle count reached with findings outstanding.** The last declared cycle's review
+still blocks. Stop at that review: do not remediate it, because nothing would review those
+fixes, and do not raise the count to reach a clean verdict — a loop that runs until it
+approves is a loop whose verdict means nothing. List what still blocks in the handover as
+outstanding, left for a person to decide on. Fixing it is a fresh run with its own declared
+count.
 
 **The head has not moved.** A cycle whose review reports the same head SHA as the last one
 had nothing pushed to it, whatever the remediation turn believed. Say that rather than
@@ -183,9 +191,11 @@ the history later depends on.
 
 ## Guidelines
 
-- **Two turns per cycle, always.** Reviewing and fixing in one turn produces findings that
-  are indistinguishable from the changes made in response to them.
+- **Review and fix in separate turns, always.** Reviewing and fixing in one turn produces
+  findings that are indistinguishable from the changes made in response to them.
 - **Push between cycles**, or the loop is comparing a review against code the review could
   not see.
-- **The cycle count is decided before the first pass**, not extended to reach a nicer answer.
+- **The cycle count is decided before the first pass, and it is a hard stop** — never
+  extended to reach a nicer answer, and never overrun by one more round of fixes. The last
+  cycle ends at its review, so every fix the loop makes is one a later review read.
 - **Never merge.** The loop hands over; a person decides.

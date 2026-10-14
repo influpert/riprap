@@ -141,15 +141,15 @@ the diff cannot see. → [git.md](git.md)
 ## Which file covers what
 
 Organised by task, not by filename. Line counts let you budget: two 80-line files usually
-beat one 215-line file when either would answer the question.
+beat one 220-line file when either would answer the question.
 
 **Starting work**
 
-- First session in a repo? → [project-standards.md](project-standards.md) (~175)
+- First session in a repo? → [project-standards.md](project-standards.md) (~180)
 - Handed a request that could be read more than one way? Proposing a plan, an approach, or
-  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~260)
+  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~395)
 - Writing anything a person reads — a reply, a plan, a task, a commit message, a pull request
-  body? → [writing-style.md](writing-style.md) (~110). Checking a finished document against the
+  body? → [writing-style.md](writing-style.md) (~115). Checking a finished document against the
   full standard? → `/riprap:write`
 - How long should this reply be, and does it need bullets? → [communication-preferences.md](communication-preferences.md) (~60)
 - Planning anything a user will see? Mock it up first, in the project's design system, and get
@@ -159,39 +159,39 @@ beat one 215-line file when either would answer the question.
 - Handed a requirement, and the plan has to be built by somebody who was not here? →
   `/riprap:architect`. Handed an approved plan and building it? → `/riprap:implement`, which
   runs the tests, the reviews and the pull request in one loop.
-- Picking up from a previous session, or ending one? → [handoffs.md](handoffs.md) (~105)
+- Picking up from a previous session, or ending one? → [handoffs.md](handoffs.md) (~150)
 
 **Writing code**
 
-- Choosing between two designs, or wondering whether an abstraction is worth it? → [design-principles.md](design-principles.md) (~115)
-- Naming things, sizing functions, writing comments? → [code-style.md](code-style.md) (~110)
+- Choosing between two designs, or wondering whether an abstraction is worth it? → [design-principles.md](design-principles.md) (~120)
+- Naming things, sizing functions, writing comments? → [code-style.md](code-style.md) (~115)
 - Catching, raising, suppressing, or logging an error? → [error-handling.md](error-handling.md) (~80)
 - Fixing a bug and wondering how far the pattern spreads? → [development-workflow.md](development-workflow.md) (~110)
-- Reaching for a new language, framework, database, or build tool? → [tech-footprint.md](tech-footprint.md) (~130)
-- Reaching for an external tool or integration? → [mcp-servers.md](mcp-servers.md) (~90)
+- Reaching for a new language, framework, database, or build tool? → [tech-footprint.md](tech-footprint.md) (~155)
+- Reaching for an external tool or integration? → [mcp-servers.md](mcp-servers.md) (~95)
 
 **Testing**
 
 - About to implement, and the plan is approved? Staring at a failing test and deciding
-  whether the code or the test is wrong? → [testing.md](testing.md) (~215)
+  whether the code or the test is wrong? → [testing.md](testing.md) (~220)
 
 **Committing and merging**
 
-- Branching, worktrees, writing outside one, when to commit, opening a pull request? → [git.md](git.md) (~250)
-- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~155)
-- A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~125)
-- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~155)
+- Branching, worktrees, writing outside one, when to commit, opening a pull request? → [git.md](git.md) (~255)
+- About to open a pull request, or watching one you opened? → [code-review.md](code-review.md) (~160)
+- A hook blocked you, or you need to install or bypass one? → [git-hooks.md](git-hooks.md) (~135)
+- About to merge, or touching hooks/permissions/auth/payments/a lockfile? → [merge-gates.md](merge-gates.md) (~165)
 - CI is red, or needs re-running? → [ci-hygiene.md](ci-hygiene.md) (~60)
 
 **Security**
 
 - Handling a credential, a token, or a key? → [secret-hygiene.md](secret-hygiene.md) (~85)
-- Wondering what the allow/deny lists actually stop? → [permissions.md](permissions.md) (~55)
+- Wondering what the allow/deny lists actually stop? → [permissions.md](permissions.md) (~50)
 
 **Extending the guardrails**
 
-- Turning a fixed inconsistency into a rule that holds? → [guardrail-template.md](guardrail-template.md) (~85)
-- Adding a doc, a hook, or a stack command? → [project-standards.md](project-standards.md) (~175)
+- Turning a fixed inconsistency into a rule that holds? → [guardrail-template.md](guardrail-template.md) (~90)
+- Adding a doc, a hook, or a stack command? → [project-standards.md](project-standards.md) (~180)
 
 **Check this map before opening anything.** Guessing from filenames costs more than
 reading one list: `git.md` and `git-hooks.md` cover different problems, `design.md` is what

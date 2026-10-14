@@ -13,6 +13,11 @@
 #   TOKEN_QUOTED parallel to TOKENIZED: 1 for a word any part of which was quoted
 #                or backslash-escaped, else 0. Stripping the quotes makes `'>'`
 #                and `>` the same word; this is what still tells them apart.
+#   TOKEN_SUBST  parallel to TOKENIZED, filled in redirects mode only: the command
+#                text of each command substitution, `$(...)` or a backtick pair,
+#                that sat inside double quotes in that word, separated by \x1f;
+#                empty for none. The word itself still carries the substitution
+#                as literal text, as it always has.
 
 # tokenize_words TEXT — split TEXT into words, like `read -ra` but with quoting.
 #
@@ -47,6 +52,13 @@ tokenize_command() { tokenize_shell "$1" command; }
 # `>` is never one. `&` stays the operator it is in command mode, so `&>` arrives
 # as `&` then `>`, and `>&2` as `>` then `&` then `2`.
 #
+# Inside double quotes a command substitution still runs, but command mode reads
+# it as text: `"$(touch /x)"` is one word. Redirects mode records the command
+# text of each such substitution in TOKEN_SUBST, for the caller to read as a
+# command line of its own, and reads the substitution as a unit, so a `"` inside
+# it (`"$(echo "a b")"`) does not end the quoted run around it. Unquoted, `$(`
+# and backticks are operators already, and what they hold is tokenized in line.
+#
 # A mode of its own rather than part of tokenize_command, because a hook that
 # reads commands without caring about redirections should not have its words
 # re-split under it.
@@ -61,13 +73,14 @@ tokenize_redirects() { tokenize_shell "$1" redirects; }
 tokenize_shell() {  # $1 = text, $2 = words | command | redirects
   local s="$1" mode="$2" cmd=0
   local i=0 len=${#s}
-  local ch nxt cur="" cur_q=0 in_word=0 state="none"
-  local BSLASH=$'\\' NL=$'\n' TAB=$'\t'
+  local ch nxt cur="" cur_q=0 cur_subst="" in_word=0 state="none"
+  local BSLASH=$'\\' NL=$'\n' TAB=$'\t' US=$'\037'
   local -a heredocs=()
   local d strip line rest
   TOKENIZED=()
   TOKEN_OP=()
   TOKEN_QUOTED=()
+  TOKEN_SUBST=()
   # Everything command mode does, redirects mode does too.
   [ "$mode" = words ] || cmd=1
   while [ "$i" -lt "$len" ]; do
@@ -82,10 +95,15 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
           case "$nxt" in
             '"' | "$BSLASH") cur+="$nxt"; i=$((i + 1)) ;;
             "$NL") i=$((i + 1)) ;;
+            # Kept as written, but consumed here so that an escaped `$(` or
+            # backtick is never read as a substitution.
+            '$' | '`') cur+="$ch$nxt"; i=$((i + 1)) ;;
             *) cur+="$ch" ;;
           esac
         elif [ "$ch" = '"' ]; then
           state="none"
+        elif [ "$mode" = redirects ] && { [ "$ch" = '`' ] || { [ "$ch" = '$' ] && [ "${s:$((i + 1)):1}" = "(" ]; }; }; then
+          _tw_subst
         else
           cur+="$ch"
         fi
@@ -159,7 +177,7 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
           case "${s:$((i + 1)):1}" in
             ">" | "|") nxt+="${s:$((i + 1)):1}"; i=$((i + 1)) ;;
           esac
-          TOKENIZED+=("$nxt"); TOKEN_OP+=(0); TOKEN_QUOTED+=(0)
+          TOKENIZED+=("$nxt"); TOKEN_OP+=(0); TOKEN_QUOTED+=(0); TOKEN_SUBST+=("")
         else
           case "$ch" in
             "'") state="single"; in_word=1; cur_q=1 ;;
@@ -191,8 +209,52 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects
 # dynamic scope.
 _tw_flush() {
   if [ "$in_word" -eq 1 ]; then
-    TOKENIZED+=("$cur"); TOKEN_OP+=(0); TOKEN_QUOTED+=("$cur_q")
-    cur=""; cur_q=0; in_word=0
+    TOKENIZED+=("$cur"); TOKEN_OP+=(0); TOKEN_QUOTED+=("$cur_q"); TOKEN_SUBST+=("$cur_subst")
+    cur=""; cur_q=0; cur_subst=""; in_word=0
   fi
 }
-_tw_op() { TOKENIZED+=("$1"); TOKEN_OP+=(1); TOKEN_QUOTED+=(0); }
+_tw_op() { TOKENIZED+=("$1"); TOKEN_OP+=(1); TOKEN_QUOTED+=(0); TOKEN_SUBST+=(""); }
+
+# _tw_subst — at s[i], inside double quotes, a `$(` or a backtick opens a command
+# substitution. Append it to the word as written, record the command it runs in
+# cur_subst, and leave i on its last character. A `$((` is arithmetic and runs no
+# command. The end is found by counting parentheses and skipping single-quoted
+# runs, which is close enough for a guard that reads and never runs: a `)` inside
+# a double-quoted string or a `case` pattern ends it early. Unterminated, it runs
+# to the end of the text.
+_tw_subst() {
+  local j depth c k inner=""
+  if [ "${s:$i:1}" = '`' ]; then
+    # Inside backticks a backslash escapes `, $ and \ (and " within the double
+    # quotes around them); anything else keeps its backslash.
+    j=$((i + 1))
+    while [ "$j" -lt "$len" ]; do
+      c="${s:$j:1}"
+      if [ "$c" = "$BSLASH" ]; then
+        k="${s:$((j + 1)):1}"
+        case "$k" in '`' | '$' | '"' | "$BSLASH") inner+="$k" ;; *) inner+="$c$k" ;; esac
+        j=$((j + 2))
+        continue
+      fi
+      [ "$c" != '`' ] || break
+      inner+="$c"
+      j=$((j + 1))
+    done
+  else
+    j=$((i + 2)); depth=1
+    while [ "$j" -lt "$len" ]; do
+      case "${s:$j:1}" in
+        "$BSLASH") j=$((j + 1)) ;;
+        "'") j=$((j + 1)); while [ "$j" -lt "$len" ] && [ "${s:$j:1}" != "'" ]; do j=$((j + 1)); done ;;
+        "(") depth=$((depth + 1)) ;;
+        ")") depth=$((depth - 1)); [ "$depth" -gt 0 ] || break ;;
+      esac
+      j=$((j + 1))
+    done
+    inner="${s:$((i + 2)):$((j - i - 2))}"
+    case "$inner" in "("*) inner="" ;; esac
+  fi
+  cur+="${s:$i:$((j - i + 1))}"
+  [ -z "$inner" ] || cur_subst+="${cur_subst:+$US}$inner"
+  i=$j
+}

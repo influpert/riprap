@@ -15,6 +15,9 @@
 #     before them or not, and the operands of tee,
 #     touch, mkdir, and the destination of cp / mv / install / ln. A bare `mktemp`
 #     writes to the system temporary directory, so it is a write outside too.
+#   - A command substitution inside double quotes, `"$(cmd)"` or "`cmd`", runs although
+#     the quotes make it one word; its command is checked as a command line of its
+#     own, from the directory the word is in.
 #   - A process substitution, `>(cmd)` or `<(cmd)`, is a command of its own and is
 #     checked like any other. To the command around it, it is one operand that is not
 #     a file, so `tee >(wc -l) /tmp/x` still has /tmp/x as an operand.
@@ -278,11 +281,41 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   TOKS=("${TOKENIZED[@]+"${TOKENIZED[@]}"}")
   OPS=("${TOKEN_OP[@]+"${TOKEN_OP[@]}"}")
   QUOTED=("${TOKEN_QUOTED[@]+"${TOKEN_QUOTED[@]}"}")
+  SUBSTS=("${TOKEN_SUBST[@]+"${TOKEN_SUBST[@]}"}")
   N=${#TOKS[@]}
 
   # The directory relative targets resolve against, a stack for subshells, and one
-  # for pushd.
+  # for pushd. A nested check (see check_substs) can be told its directory is one
+  # the enclosing command could not follow; the host never sends that field.
   EFF="$CWD"
+  if [ "$(printf '%s' "$INPUT" | jq -r '._riprap_cwd_unknown // empty')" = true ]; then
+    EFF="$UNKNOWN_DIR"
+  fi
+
+  # check_substs K — run this hook again on each command substitution recorded for
+  # word K (TOKEN_SUBST), from the directory in effect here, and refuse with its
+  # message if it refuses. A second process rather than a recursive call, because
+  # the reading below lives in globals that a nested reading would overwrite; the
+  # text is shorter at every level, so the recursion ends.
+  check_substs() {
+    local rest="${SUBSTS[$1]}" inner payload out rc unknown=false cwd="$EFF"
+    local US=$'\037'
+    [ -n "$rest" ] || return 0
+    if [ "$EFF" = "$UNKNOWN_DIR" ]; then unknown=true; cwd="$CWD"; fi
+    while :; do
+      inner="${rest%%"$US"*}"
+      payload=$(jq -n --arg c "$inner" --arg d "$cwd" --argjson u "$unknown" \
+        '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}, _riprap_cwd_unknown: $u}')
+      rc=0
+      out=$(printf '%s' "$payload" | bash "$SCRIPT_DIR/${BASH_SOURCE[0]##*/}" 2>&1 >/dev/null) || rc=$?
+      if [ "$rc" -eq 2 ]; then
+        printf '%s\n' "$out" >&2
+        exit 2
+      fi
+      [ "$rest" != "$inner" ] || break
+      rest="${rest#*"$US"}"
+    done
+  }
   STACK=()
   PUSHED=()
   SEG=()
@@ -342,6 +375,8 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   i=0
   while [ "$i" -le "$N" ]; do
     if [ "$i" -lt "$N" ]; then t="${TOKS[$i]}"; op="${OPS[$i]}"; else t=";"; op=1; fi
+
+    if [ "$op" -eq 0 ]; then check_substs "$i"; fi
 
     # A process substitution opens: set the enclosing command aside, unfinished,
     # and read what is inside as commands of their own, in a subshell's directory.
@@ -421,6 +456,8 @@ if [ "$TOOL_NAME" = "Bash" ]; then
         PROC_IS_REDIR=1
         i=$((i + 1))
       elif [ "$((i + 1))" -lt "$N" ] && [ "${OPS[$((i + 1))]}" -eq 0 ]; then
+        # A target such as "$(mktemp)" is not expanded, but the command in it runs.
+        check_substs "$((i + 1))"
         check_target "${TOKS[$((i + 1))]}" "$EFF"
         i=$((i + 2))
       elif [ "$((i + 1))" -lt "$N" ] && [ "${TOKS[$((i + 1))]}" = "&" ]; then

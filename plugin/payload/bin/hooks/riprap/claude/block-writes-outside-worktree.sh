@@ -11,12 +11,13 @@
 #
 # What counts as a write:
 #   - Write, Edit, NotebookEdit: the file_path / notebook_path.
-#   - Bash: output redirections (`>`, `>>`, `>|`, `N>`, `&>`) and read-write ones
-#     (`N<>`, which creates its file as `>` does), glued to the word before them or
-#     not, and the operands of tee, touch, mkdir, and the destination of cp / mv /
-#     install / ln. A bare `mktemp` writes to the system temporary directory, so it
-#     is a write outside too. An input redirection (`<`, `0<`) only reads, and
-#     neither it nor its source is an operand: `cp a OUT <in` copies to OUT.
+#   - A shell command, run through Bash, PowerShell or a Monitor: output
+#     redirections (`>`, `>>`, `>|`, `N>`, `&>`) and read-write ones (`N<>`, which
+#     creates its file as `>` does), glued to the word before them or not, and the
+#     operands of tee, touch, mkdir, and the destination of cp / mv / install / ln.
+#     A bare `mktemp` writes to the system temporary directory, so it is a write
+#     outside too. An input redirection (`<`, `0<`) only reads, and neither it nor
+#     its source is an operand: `cp a OUT <in` copies to OUT.
 #
 # The simple commands, and the directory each one runs in, come from the walk in
 # lib/shell-walk.sh, the same walk the destructive guard reads, so a command one
@@ -45,7 +46,7 @@
 #   - Whatever the project adds to WORKTREE_WRITE_ALLOWED_PREFIXES in
 #     bin/hooks/lib/worktree-write-patterns.local.sh, which riprap never writes.
 #
-# Limits, by design, because this runs on every Bash call: in a write target, a
+# Limits, by design, because this runs on every shell command: in a write target, a
 # variable other than $HOME and $TMPDIR is not expanded, and neither is `~user`, so
 # `> "$OUT"` is not checked; a command that writes through its own flags (`git
 # worktree add`, `curl -o`, a compiler's output directory) is not parsed. `cd <dir>`
@@ -63,9 +64,9 @@
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
 # refused, since there is nothing to resolve it against.
 #
-# PowerShell and Monitor run shell commands too, and what is said of Bash above
-# holds for a command run through either. PowerShell's text is first read as
-# PowerShell reads it (lib/shell-tools.sh): a backtick that ends a line continues
+# PowerShell and Monitor run shell commands as Bash does, and what is said above of
+# a shell command holds for one run through either. PowerShell's text is first read
+# as PowerShell reads it (lib/shell-tools.sh): a backtick that ends a line continues
 # it, any other backtick escapes the character after it and is refused for
 # nothing, a backslash is a path separator, so `> ..\out.txt` writes beside the
 # worktree, and a comment is dropped. Its own commands are not read: Set-Location
@@ -255,7 +256,7 @@ if [ "$SHELL_TOOL" -eq 0 ]; then
   check_target "$FILE_PATH" "$CWD"
 fi
 
-# --- Bash ---------------------------------------------------------------------
+# --- shell commands -----------------------------------------------------------
 
 # The walk's callback (lib/shell-walk.sh): check one simple command — the files its
 # redirections write, then the operands of a command that writes. WALK_DIR is the

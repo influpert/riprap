@@ -147,7 +147,7 @@ beat one 220-line file when either would answer the question.
 
 - First session in a repo? → [project-standards.md](project-standards.md) (~180)
 - Handed a request that could be read more than one way? Proposing a plan, an approach, or
-  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~395)
+  an alternative? → [interaction-preferences.md](interaction-preferences.md) (~445)
 - Writing anything a person reads — a reply, a plan, a task, a commit message, a pull request
   body? → [writing-style.md](writing-style.md) (~115). Checking a finished document against the
   full standard? → `/riprap:write`

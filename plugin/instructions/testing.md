@@ -24,6 +24,12 @@ asserts what the code does rather than what the plan said it should do, so it pa
 the day it is written and can never catch the gap between the two — which is the only gap
 worth catching. What you end up with is a suite that documents the bug.
 
+**Commit the failing tests; do not push them.** A tests-only commit is a coherent boundary
+([git.md](git.md)), and it is meant to fail. Committing it is not claiming it is done. Pushing
+it is a different matter: `pre-push` runs `bin/test` and refuses. That refusal is the hook
+working as intended, not something to get around with `--no-verify`. Push once the
+implementation makes the suite pass.
+
 ### Then have the tests critiqued before you implement
 
 **Dispatch sub-agents against the tests, in parallel, before any implementation code

@@ -338,8 +338,8 @@ handoff_write_capture() {
 # fails without a sound: Claude Code validates a hook's JSON against the event that ran it,
 # and an object it does not accept for that event is rejected WHOLE, so the message is
 # dropped and the hook looks exactly like one that had nothing to say. That is how the Stop
-# reminder shipped: as hookSpecificOutput, which current Claude Code accepts for Stop and
-# older releases reject outright. riprap cannot choose which release an adopter runs, so
+# reminder shipped: as hookSpecificOutput, which Claude Code accepts for Stop from 2.1.163 and
+# every earlier release rejects outright. riprap cannot choose which release an adopter runs, so
 # each emitter below uses the form old and current releases both accept for its event.
 #
 # jq builds every one rather than a printf template, because the text contains paths and
@@ -358,9 +358,17 @@ handoff_emit_context() {  # $1 = hook event name, $2 = the text
 #
 # decision "block" with a reason is the long-standing Stop contract, accepted by old and
 # current Claude Code releases alike, so it reaches the model wherever riprap is installed.
-# JSON on exit 0 rather than exit 2, which would also hold the turn but is reported to the
-# user as a hook error, and this is the hook working as designed. The caller owns the loop
-# guard (stop_hook_active): this only says what to send.
+#
+# It is not quiet, and nothing here should be read as saying it is: Claude Code shows the
+# user every Stop block as a "Stop hook error", and exit 2 with the reason on stderr would be
+# shown exactly the same way. handoff-stop.sh says why that label is the price it pays. JSON
+# on exit 0 is chosen over exit 2 for this family's sake, not the user's: every handoff
+# emitter speaks jq-built JSON on exit 0, and exit 2 stays the mark of a guardrail refusing a
+# tool call. The caller owns the loop guard (stop_hook_active): this only says what to send.
+#
+# Exactly these two keys. `continue: false` beside them would take precedence over the
+# decision and end the turn before the model read the reason, and the test suite pins the
+# key set so that cannot slip in.
 handoff_emit_block() {  # $1 = the reason, which the model receives as its next instruction
   jq -cn --arg r "$1" '{decision: "block", reason: $r}'
 }
@@ -369,7 +377,9 @@ handoff_emit_block() {  # $1 = the reason, which the model receives as its next 
 #
 # For advice only the user can take — /compact is a command the model cannot run, so
 # holding a turn open to have the model relay it costs a turn and achieves nothing. Accepted
-# by Stop; PreCompact and SessionEnd discard it, so neither hook uses it.
+# by Stop; PreCompact and SessionEnd discard it, so neither hook uses it. Exactly this one
+# key: `continue: false` beside it would end the turn over the top of every other plugin's
+# Stop hook, and the test suite pins the key set for the same reason as the block's.
 handoff_emit_notice() {  # $1 = the text
   jq -cn --arg m "$1" '{systemMessage: $m}'
 }

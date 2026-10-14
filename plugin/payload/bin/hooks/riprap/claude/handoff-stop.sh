@@ -11,6 +11,22 @@
 #   hookSpecificOutput instead, which older releases reject whole — so it was
 #   dropped without a sound, and a reminder nobody receives is the same as none.
 #
+#   The price of that choice is a label, and it is paid knowingly. Claude Code
+#   shows every Stop block to the user as a "Stop hook error", whether it came as
+#   this JSON or as exit 2. From 2.1.163 it also accepts the old hookSpecificOutput
+#   form at Stop, holds the turn just the same, and labels it feedback instead —
+#   but every release before that drops it whole, and nothing in the Stop payload
+#   says which release is running. Guessing wrong is the silent drop this hook
+#   shipped with; guessing right saves a label. So it sends the form every release
+#   delivers, and earns the label only on a turn that ends with the handoff stale.
+#
+#   It never blocks in plan mode. The harness forbids the model every edit there
+#   but the plan file, and says that overrides any other instruction, so a block
+#   would demand the one thing the model may not do: the condition could not
+#   clear, every planning turn would end in a forced turn spent refusing, and the
+#   plan the user stopped to read would be buried under it. The next turn that
+#   ends outside plan mode asks instead.
+#
 #   High context usage on a current handoff is the user's to act on, because only
 #   the user can run /compact. That goes out as a systemMessage, shown in the
 #   terminal and holding nothing open: blocking the model to have it relay advice
@@ -74,6 +90,12 @@ ACTIVE=$(printf '%s' "$INPUT" \
   | jq -r 'if type == "object" and (.stop_hook_active | type) == "boolean"
            then .stop_hook_active else empty end' 2>/dev/null) || ACTIVE=""
 
+# The permission mode, or empty when the payload carries none. It can only ever rule a
+# block out — "plan" does, see above — so a release that predates the field, or a value
+# this hook has never heard of, leaves the decision to stop_hook_active alone.
+MODE=$(printf '%s' "$INPUT" \
+  | jq -r 'if type == "object" then (.permission_mode | strings) else empty end' 2>/dev/null) || MODE=""
+
 handoff_resolve_project "$INPUT"
 PROJECT="$HANDOFF_PROJECT"
 cd "$PROJECT" 2>/dev/null || exit 0
@@ -95,6 +117,23 @@ if [ -n "$CHANGED" ]; then
   # Already continued, or cannot tell: let the turn end. Whatever is stale now is still
   # stale at the next Stop, which will ask again — once.
   [ "$ACTIVE" = "false" ] || exit 0
+  # In plan mode the model may not make the edit this would demand. See above.
+  [ "$MODE" != "plan" ] || exit 0
+
+  # A full rewrite is exactly when the marker line gets dropped, and without it the
+  # handoff is found only while it is the sole one in the directory: once another task's
+  # exists beside it, this hook falls silent for good and the unattended gate starts
+  # refusing calls. So the instruction spells the line out, as that gate's message does.
+  # Detached, there is no branch to name, and a marker naming none would be wrong — so
+  # it only points at the template.
+  BRANCH=$(handoff_branch)
+  if [ -n "$BRANCH" ]; then
+    MARKER="It must carry the line \`${HANDOFF_MARKER_OPEN}${BRANCH} -->\` — keep it, or add it if
+it is missing, because that line is how riprap's hooks tell this handoff from another task's.
+/riprap:handoff has the template."
+  else
+    MARKER="/riprap:handoff has the template."
+  fi
 
   # The reason arrives where the model expects the user's next instruction, so it says
   # whose it is: unsigned, it reads as the user asking, and the model answers the user
@@ -108,8 +147,12 @@ longer describes where this work actually stopped.
 
 Rewrite ${REL} in place now: what has landed since (with the evidence), what the next action is,
 and anything now decided that was open. If the work is genuinely complete, say so in the
-document rather than leaving it describing a middle. Then stop. Do not start anything else; this
-hook holds a turn open once and will not ask again this turn."
+document rather than leaving it describing a middle.
+
+${MARKER}
+
+Then stop. Do not start anything else; this hook holds a turn open once and will not ask again
+this turn."
   exit 0
 fi
 

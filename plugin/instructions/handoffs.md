@@ -123,14 +123,22 @@ Two rules follow, and both are cheap:
 If a turn ends while the handoff for this branch is older than the work — a file changed, or a
 commit landed, after it was written — the Stop hook holds the turn open once. The extra turn
 carries one instruction, signed as riprap's hook rather than the user: rewrite that handoff in
-place, then stop. Do exactly that. It is not a new request from the user, and it is not leave to
-pick up whatever else looked unfinished.
+place, keeping its `<!-- riprap:handoff branch=… -->` line, then stop. Do exactly that. It is not
+a new request from the user, and it is not leave to pick up whatever else looked unfinished.
+Claude Code labels the extra turn a Stop hook error, as it labels every Stop hook block; it is
+the hook working, not a failure to investigate.
+
+The marker line is the part a full rewrite loses. Without it the handoff is found only while it
+is the only one in the directory; once another task's exists beside it, nothing recognises this
+one, the reminder stops for good, and the unattended-stretch gate refuses as though none had been
+written.
 
 It holds a turn open once, never twice in a row: a turn some Stop hook has already continued is
 let go, so a handoff left stale is raised again at the end of the next turn rather than in a
-loop. It never asks for a *first* handoff, only for one that exists and has fallen behind — a
-hook that fired on every two-line fix without one would be switched off, taking the cases that
-mattered with it.
+loop. It never holds a turn in plan mode, where the edit it would ask for is not allowed; the
+next turn that ends outside plan mode asks instead. It never asks for a *first* handoff, only for
+one that exists and has fallen behind — a hook that fired on every two-line fix without one would
+be switched off, taking the cases that mattered with it.
 
 ## Compacting proactively, once the handoff already covers it
 

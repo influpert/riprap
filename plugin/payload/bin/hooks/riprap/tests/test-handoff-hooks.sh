@@ -111,6 +111,20 @@ notice_of() {
   printf '%s' "$OUT" | jq -r '.systemMessage // empty' 2>/dev/null
 }
 
+# Exactly one JSON object on stdout, with exactly these keys and no others ($2 is a jq
+# array literal, sorted, because jq's `keys` sorts).
+#
+# The key set is pinned rather than a few keys being ruled out, because every common field
+# the harness accepts changes what it does with the rest. `continue: false` takes precedence
+# over any decision, so a block that grew one would end the turn before the model ever read
+# the reason — the same silent drop this hook's shape exists to avoid — and a notice that grew
+# one would end the turn over the top of every other plugin's Stop hook. Ruling out only the
+# keys someone had already thought of left both of those green.
+has_exactly_keys() {  # $1 = jq array of keys, e.g. '["decision","reason"]'
+  printf '%s' "$OUT" | jq -se --argjson want "$1" \
+    'length == 1 and (.[0] | type == "object" and (keys == $want))' >/dev/null 2>&1
+}
+
 # The stale-handoff reminder: exit 0 with decision "block" on stdout, so the model gets
 # one more turn with the reason as its instruction. Exit 0, not 2, because the JSON is only
 # read on a clean exit. And nothing under hookSpecificOutput: a harness that does not accept
@@ -123,6 +137,8 @@ assert_holds_turn() {  # $1 = label, $2 = needle the reason must contain
   elif [ -z "$r" ]; then bad "$1 — no decision:block with a reason in output: ${OUT:-<empty>}"
   elif printf '%s' "$OUT" | jq -e 'has("hookSpecificOutput")' >/dev/null 2>&1; then
     bad "$1 — carries hookSpecificOutput, which a Stop hook must not: $OUT"
+  elif ! has_exactly_keys '["decision","reason"]'; then
+    bad "$1 — a block must be one object holding decision and reason and nothing else: $OUT"
   else case "$r" in
     *"$2"*) ok "$1" ;;
     *) bad "$1 — reason did not mention '$2': $r" ;;
@@ -138,6 +154,8 @@ assert_notice_says() {  # $1 = label, $2 = needle
   elif [ -z "$n" ]; then bad "$1 — no systemMessage in output: ${OUT:-<empty>}"
   elif printf '%s' "$OUT" | jq -e 'has("decision") or has("hookSpecificOutput")' >/dev/null 2>&1; then
     bad "$1 — a notice for the user must not hold the turn open or address the model: $OUT"
+  elif ! has_exactly_keys '["systemMessage"]'; then
+    bad "$1 — a notice must be one object holding systemMessage and nothing else: $OUT"
   else case "$n" in
     *"$2"*) ok "$1" ;;
     *) bad "$1 — notice did not mention '$2': $n" ;;
@@ -337,6 +355,16 @@ assert_silent "stale, but no payload arrived"
 run_hook handoff-stop.sh "$P" '[false]'
 assert_silent "stale, but the payload is not an object"
 
+# Still stale, and the payload is a real one in every respect — except that the session is
+# in plan mode, where the harness forbids the model every edit but the plan file and says
+# that overrides any other instruction. A block there demands the one thing the model may
+# not do, so the condition cannot clear: every turn that ends in plan mode would spend a
+# forced extra turn refusing, and bury the plan the user stopped to read under it.
+run_hook handoff-stop.sh "$P" "$(jq -cn --arg c "$P" \
+  '{session_id:"s", transcript_path:"/nonexistent.jsonl", cwd:$c, permission_mode:"plan",
+    hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"Here is the plan."}')"
+assert_silent "stale, but the session is in plan mode, where the model may not edit the handoff"
+
 # A handoff belonging to another unit of work must not be adopted. Before the
 # branch marker existed this was the worst failure in the feature: the hook named
 # a finished document from another task and said "rewrite it in place".
@@ -390,6 +418,20 @@ assert_holds_turn "says exactly which file to rewrite" "Rewrite tmp/handoff/$WOR
 # And it ends. Without an explicit stop, the extra turn becomes an invitation to carry on
 # with whatever looked unfinished, which is not what anyone asked for.
 assert_holds_turn "says to stop once the handoff is rewritten" "Then stop"
+# A full rewrite is exactly when the marker line gets dropped, and without it no hook can
+# find this handoff once another task's exists beside it: this hook falls silent for good and
+# the unattended gate starts refusing calls. So the instruction says to keep it, word for
+# word, and where the template is — as the unattended gate's own message already does.
+assert_holds_turn "says to keep the marker line, exactly" "<!-- riprap:handoff branch=$B -->"
+assert_holds_turn "points at the template" "/riprap:handoff"
+
+# The plan-mode exemption is narrow: a real payload in any mode that may edit still blocks.
+for mode in default acceptEdits auto bypassPermissions; do
+  run_hook handoff-stop.sh "$P" "$(jq -cn --arg c "$P" --arg m "$mode" \
+    '{session_id:"s", transcript_path:"/nonexistent.jsonl", cwd:$c, permission_mode:$m,
+      hook_event_name:"Stop", stop_hook_active:false, last_assistant_message:"Done."}')"
+  assert_holds_turn "a full payload in $mode mode still holds the turn" "Rewrite tmp/handoff/$WORK"
+done
 
 # THE CASE THE HOOK SHIPPED WITHOUT: work finished and committed. A clean tree
 # made both change lists empty, so the hook fell silent at exactly the moment
@@ -710,6 +752,16 @@ write_handoff "$P" "$WORK" "" >/dev/null
 printf 'x\n' >>"$P/tracked.txt"; touch -t "$NEW" "$P/tracked.txt"
 run_hook handoff-stop.sh "$P" "$STOP"
 assert_holds_turn "a lone unmarked handoff still counts" "tmp/handoff/$WORK"
+# Detached, there is no branch to name, and a marker reading `branch= -->` claims a branch
+# called nothing. Better no marker line at all than one that teaches the model a broken one.
+git -C "$P" checkout -q --detach >/dev/null 2>&1
+run_hook handoff-stop.sh "$P" "$STOP"
+assert_holds_turn "a detached HEAD still holds the turn for a lone handoff" "/riprap:handoff"
+case "$(reason_of)" in
+  *"branch= -->"*|*"branch=-->"*) bad "a detached HEAD asks for a marker naming no branch: $(reason_of)" ;;
+  *) ok "a detached HEAD asks for no marker naming no branch" ;;
+esac
+git -C "$P" checkout -q - >/dev/null 2>&1
 write_handoff "$P" "$OTHER" "" >/dev/null
 run_hook handoff-stop.sh "$P" "$STOP"
 assert_silent "two unmarked handoffs are ambiguous, so neither is claimed"

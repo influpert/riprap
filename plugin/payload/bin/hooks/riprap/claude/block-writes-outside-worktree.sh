@@ -11,7 +11,8 @@
 #
 # What counts as a write:
 #   - Write, Edit, NotebookEdit: the file_path / notebook_path.
-#   - Bash: output redirections (`>`, `>>`, `N>`, `&>`), and the operands of tee,
+#   - Bash: output redirections (`>`, `>>`, `>|`, `N>`, `&>`), glued to the word
+#     before them or not, and the operands of tee,
 #     touch, mkdir, and the destination of cp / mv / install / ln. A bare `mktemp`
 #     writes to the system temporary directory, so it is a write outside too.
 #
@@ -31,12 +32,12 @@
 # Limits, by design, because this runs on every Bash call: a variable other than
 # $HOME and $TMPDIR is not expanded, so `> "$OUT"` is not checked; a command that
 # writes through its own flags (`git worktree add`, `curl -o`, a compiler's output
-# directory) is not parsed. `cd <dir>` is followed through a command line, and a
-# parenthesised subshell restores the directory it started in; a `cd` the hook cannot
-# expand leaves relative targets after it unchecked. A redirection glued to the word
-# before it (`echo hi>/tmp/x`), `>|`, and `pushd` are not recognised, and a quoted
-# `>` argument (`grep '>' f`) is read as a redirection, because the shared tokenizer
-# does not record which words were quoted.
+# directory) is not parsed. `cd <dir>` and `pushd <dir>` are followed through a
+# command line, `popd` returns to where the matching `pushd` started, and a
+# parenthesised subshell restores the directory it started in; a `cd` or `pushd` the
+# hook cannot expand, and any other form of `pushd` or `popd`, leaves relative targets
+# after it unchecked. A quoted or escaped `>` (`grep '>' f`) is an argument, not a
+# redirection, and is not checked.
 #
 # Fail-closed: a relative write target with no usable `cwd` in the payload is
 # refused, since there is nothing to resolve it against.
@@ -268,47 +269,66 @@ if [ "$TOOL_NAME" = "Bash" ]; then
   COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
   [ -n "$COMMAND" ] || exit 0
 
-  tokenize_command "$COMMAND"
+  # Redirections come back as words of their own, so `echo hi>/tmp/x` is read the
+  # way the shell reads it; see tokenize_redirects.
+  tokenize_redirects "$COMMAND"
   TOKS=("${TOKENIZED[@]+"${TOKENIZED[@]}"}")
   OPS=("${TOKEN_OP[@]+"${TOKEN_OP[@]}"}")
+  QUOTED=("${TOKEN_QUOTED[@]+"${TOKEN_QUOTED[@]}"}")
   N=${#TOKS[@]}
 
-  # The directory relative targets resolve against, and a stack for subshells.
+  # The directory relative targets resolve against, a stack for subshells, and one
+  # for pushd.
   EFF="$CWD"
   STACK=()
+  PUSHED=()
   SEG=()
-  # Kept in variables: a regex written inline after =~ is quoted differently across
+
+  # follow_cd DEST — move EFF the way `cd DEST` would. Relative to an unknown or
+  # missing directory, the result is still that. Otherwise expand it, and a
+  # destination that cannot be expanded (`-`, a variable, a substitution) makes the
+  # directory unknown — or, with no cwd in the payload at all, leaves it empty so
+  # relative targets still fail closed.
+  follow_cd() {
+    case "$1" in
+      /* | "~"* | '$'*) EFF=$(absolute_target "$1" "") ;;
+      -) EFF="" ;;
+      *) [ -z "$EFF" ] || [ "$EFF" = "$UNKNOWN_DIR" ] || EFF=$(absolute_target "$1" "$EFF") ;;
+    esac
+    [ -n "$EFF" ] || [ -z "$CWD" ] || EFF="$UNKNOWN_DIR"
+  }
+
+  # Kept in a variable: a regex written inline after =~ is quoted differently across
   # bash versions, and a `\>` that reaches regcomp is a word boundary, not a `>`.
-  REDIR_BARE_RE='^[0-9]*>>?$'
-  REDIR_RE='^([0-9]*|&)>>?(.*)$'
+  REDIR_RE='^[0-9]*>[>|]?$'
   i=0
   while [ "$i" -le "$N" ]; do
     if [ "$i" -lt "$N" ]; then t="${TOKS[$i]}"; op="${OPS[$i]}"; else t=";"; op=1; fi
 
     if [ "$op" -eq 1 ]; then
-      # `&` straight after a redirection is a descriptor duplication (`2>&1`,
-      # `>&2`), not a separator: swallow it and the descriptor that follows.
-      if [ "$t" = "&" ] && [ "${#SEG[@]}" -gt 0 ] && [[ "${SEG[$((${#SEG[@]} - 1))]}" =~ $REDIR_BARE_RE ]]; then
-        unset 'SEG[${#SEG[@]}-1]'
-        i=$((i + 2))
-        continue
-      fi
-      # End of a simple command: follow a `cd`, or check its writes.
+      # End of a simple command: follow a directory change, or check its writes.
       if [ "${#SEG[@]}" -gt 0 ]; then
-        if [ "${SEG[0]}" = "cd" ]; then
-          dest="${SEG[1]:-${HOME:-}}"
-          # Relative to an unknown or missing directory, the result is still that.
-          # Otherwise expand it, and a destination that cannot be expanded (`-`, a
-          # variable, a substitution) makes the directory unknown.
-          case "$dest" in
-            /* | "~"* | '$'*) EFF=$(absolute_target "$dest" "") ;;
-            -) EFF="" ;;
-            *) [ -z "$EFF" ] || [ "$EFF" = "$UNKNOWN_DIR" ] || EFF=$(absolute_target "$dest" "$EFF") ;;
-          esac
-          [ -n "$EFF" ] || [ -z "$CWD" ] || EFF="$UNKNOWN_DIR"
-        else
-          check_simple_command "$EFF"
-        fi
+        case "${SEG[0]}" in
+          cd) follow_cd "${SEG[1]:-${HOME:-}}" ;;
+          pushd)
+            PUSHED+=("$EFF")
+            # Bare `pushd` swaps the top two entries and `pushd +N` rotates the
+            # stack; neither is followed, so the directory becomes unknown.
+            case "${SEG[1]:-}" in
+              '' | [-+]*) follow_cd - ;;
+              *) follow_cd "${SEG[1]}" ;;
+            esac
+            ;;
+          popd)
+            if [ "${#SEG[@]}" -eq 1 ] && [ "${#PUSHED[@]}" -gt 0 ]; then
+              EFF="${PUSHED[$((${#PUSHED[@]} - 1))]}"
+              unset 'PUSHED[${#PUSHED[@]}-1]'
+            else
+              follow_cd -
+            fi
+            ;;
+          *) check_simple_command "$EFF" ;;
+        esac
       fi
       SEG=()
       case "$t" in
@@ -324,26 +344,22 @@ if [ "$TOOL_NAME" = "Bash" ]; then
       continue
     fi
 
-    # A redirection, glued to its target or followed by it. Redirections are
-    # stripped from the command's words either way, so `echo hi >f` has no operand f.
-    if [[ "$t" =~ $REDIR_RE ]]; then
-      rtarget="${BASH_REMATCH[2]}"
-      if [ -z "$rtarget" ]; then
-        if [ "$((i + 1))" -lt "$N" ] && [ "${OPS[$((i + 1))]}" -eq 0 ]; then
-          check_target "${TOKS[$((i + 1))]}" "$EFF"
-          i=$((i + 2))
-          continue
-        fi
-        # Followed by an operator: `>&2` and friends, handled above.
-        SEG+=("$t")
+    # A redirection, and only an unquoted one: `grep '>' f` writes nothing.
+    # Redirections and their targets are kept out of the command's words, so
+    # `echo hi >f` has no operand f.
+    if [ "${QUOTED[$i]}" -eq 0 ] && [[ "$t" =~ $REDIR_RE ]]; then
+      if [ "$((i + 1))" -lt "$N" ] && [ "${OPS[$((i + 1))]}" -eq 0 ]; then
+        check_target "${TOKS[$((i + 1))]}" "$EFF"
+        i=$((i + 2))
+      elif [ "$((i + 1))" -lt "$N" ] && [ "${TOKS[$((i + 1))]}" = "&" ]; then
+        # `>&2`, `2>&1`, `>&-`: a descriptor duplication, not a file and not a
+        # separator. Skip the `&` and the descriptor after it.
+        i=$((i + 2))
+        if [ "$i" -lt "$N" ] && [ "${OPS[$i]}" -eq 0 ]; then i=$((i + 1)); fi
+      else
+        # Followed by some other operator (`>(cmd)`): nothing to check here.
         i=$((i + 1))
-        continue
       fi
-      case "$rtarget" in
-        \&*) ;;   # >&2 glued
-        *) check_target "$rtarget" "$EFF" ;;
-      esac
-      i=$((i + 1))
       continue
     fi
 

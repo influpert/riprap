@@ -287,9 +287,7 @@ nonsense on a branch with no implementation:
 | blockers outstanding | change the tests first — that is testing.md's bar, and implementing against tests you know are incomplete converts a finding into a regression inside the artifact everyone will later cite as proof |
 | do not merge | the tests and the plan disagree. That is step 1's question again, not a test bug — go back to it. |
 
-Then the checkpoint below. **Gate 1's menu carries three options, not four:** "proceed with
-blocking findings outstanding" is not offered, because testing.md forbids exactly that. The user
-can still overrule, and then it is an explicit disagreement with that document, recorded as one.
+Then the checkpoint below.
 
 **Test fixes from this gate are committed on their own too**, before step 5 — amend the
 tests-only commit or add a second one, and watch each changed assertion fail again for the reason
@@ -455,17 +453,26 @@ landed, and *offer* `/riprap:prune` rather than running it.
 
 ## The checkpoints, and the bound
 
-**Each gate: present, then ask.** Present the findings grouped by the classes
-interaction-preferences.md defines, each carrying your proposed disposition; then one
-the structured choice UI defined in `interaction-preferences.md`, with the recommended option first — fix everything at the blocking tier and
-proceed · fix the lesser findings too, naming what that adds · proceed with these named items
-outstanding · stop, this needs a different plan. Gate 1 omits the third, per step 4.
+**Each gate: present, start, then offer** — interaction-preferences.md's "fix, then offer".
+Present the findings grouped by the classes that document defines, each carrying your proposed
+disposition, and **start on everything at the blocking tier in the same turn**, without asking
+which to fix, then offer the MINORs as interaction-preferences.md describes. The one thing this skill adds to
+the offer: name what each finding would add to the diff, because that is the cost the user is
+choosing.
 
-**"Unless the user decides otherwise", precisely.** The user may overrule any *finding*. Where
+The checkpoint is still a stop **after** the fixes: present what changed, and wait for the
+signal to move to the next step. And where the verdict says the plan itself is wrong — gate 1's
+*do not merge*, or a finding that the approach is wrong — there is nothing to start: stop and
+ask, with the options: the plan stands, so go back to step 1 and settle the tests against it ·
+stop, this needs a different plan. Never a bare "proceed" — at gate 1 that means implementing
+against tests the reviewer says contradict the plan, which testing.md forbids.
+
+**Overruling a finding.** The user may overrule any *finding*. Where
 they overrule one at the blocking tier, push back once, explicitly — interaction-preferences.md,
-*Push back — never just agree* — and if they hold, **record it** — in the decisions record and later in the body's
-disposition column, as **Ignored — overruled by the user**, with their reason (the one case
-`/riprap:review`'s disposition table allows for a blocking finding to be Ignored). A finding dropped in silence is
+*Push back — never just agree* — and if they hold, **record it**, in the decisions record and
+later in the body's disposition column, as **Ignored — overruled by the user**, with their
+reason (the one case `/riprap:review`'s disposition table allows for a blocking finding to be
+Ignored). A finding dropped in silence is
 indistinguishable from one nobody made, which is the whole argument code-review.md makes for
 publishing them.
 

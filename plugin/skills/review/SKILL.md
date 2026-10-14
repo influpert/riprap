@@ -341,13 +341,13 @@ be worked out. The classes below are interaction-preferences.md's:
 |---|---|
 | **BLOCKER** | Implemented. The one exception is a BLOCKER that survives the second pass in step 7, which is Deferred, on a draft. |
 | **MAJOR** | Implemented — or Deferred with a tracking link when it is genuinely outside this branch's scope. Never Ignored: if it turned out not to be a problem it was never MAJOR, and the honest move is to reclassify it and say what changed your mind. |
+| **MINOR** | Any of the three. **Prefer Deferred for anything the task did not ask for** — a review is not a licence to grow the diff, and fixes to code near the change are exactly how a small pull request stops being separable (development-workflow.md). The author offers these to the user while the blocking fixes run (interaction-preferences.md's "fix, then offer"); one the user accepts is one the task asked for. |
+| **NON-ISSUE** | Ignored. That is what the class means. If it was fixed anyway it was a MINOR. |
 
 One case crosses these lines: a user who overrules a BLOCKER or MAJOR after you have pushed back
 once, explicitly (interaction-preferences.md, *Push back — never just agree*). Record it as **Ignored — overruled
 by the user**, with their reason in their words. That is their decision on the record, not
 yours.
-| **MINOR** | Any of the three. **Prefer Deferred for anything the task did not ask for** — a review is not a licence to grow the diff, and fixes to code near the change are exactly how a small pull request stops being separable (development-workflow.md). |
-| **NON-ISSUE** | Ignored. That is what the class means. If it was fixed anyway it was a MINOR. |
 
 **Every finding is reported, including the NON-ISSUEs** — interaction-preferences.md's class,
 not a shrug. Those are the cheapest lines in the table and often the most useful: they are the

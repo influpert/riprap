@@ -48,10 +48,12 @@ of each.
 
 What remains yours, and is not the skill's to do:
 
-- **Fix every BLOCKER and MAJOR before opening.** The skill reports; it never edits. Its
-  disposition table names the only two exceptions: a MAJOR genuinely outside this branch's
-  scope, deferred with a tracking link, and a BLOCKER that survives the second pass, which opens
-  the pull request as a draft with the disagreement stated.
+- **Fix every BLOCKER and MAJOR before opening, without asking which first.** The skill
+  reports; it never edits. Its disposition table names the only two exceptions: a MAJOR
+  genuinely outside this branch's scope, deferred with a tracking link, and a BLOCKER that
+  survives the second pass, which opens the pull request as a draft with the disagreement
+  stated. Tell the user about the MINOR findings as those fixes run —
+  [interaction-preferences.md](interaction-preferences.md)'s "fix, then offer".
 - **Publish every finding in the pull request body with a disposition and a reason** —
   including the ones you rejected. The skill produces that table and hands it over; putting it
   in the body is the part it cannot do for you.
@@ -71,7 +73,7 @@ Three things land, and each has one correct response:
 | What lands | What you do |
 |---|---|
 | **CI goes red** | Diagnose and fix it. This is rule 6 — a red run *on your own pull request* is the task, not a report. Push the fix; do not ask first. |
-| **A review comment** | Address it or answer it. Every comment gets one of the two, and "answer it" means saying why the change is not being made, not silence. |
+| **A review comment** | Address it or answer it. Every comment gets one of the two, and "answer it" means saying why the change is not being made, not silence. Classify it first, because a human reviewer's comment arrives without a class, then follow [interaction-preferences.md](interaction-preferences.md)'s "fix, then offer". The class decides whether you change the code, never whether you reply: a comment you defer or dismiss still gets its answer in its own thread. |
 | **A merge conflict** | Resolve it yourself: merge trunk into the branch, fix the conflicts, push. Escalate only when both sides changed the same logic and picking one loses behaviour. |
 
 **This does not reopen "never push without being asked"**

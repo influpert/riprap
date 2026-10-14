@@ -33,7 +33,7 @@
 #                command runs it, and so where it runs.
 #
 # One reader of the words comes with it, because every hook that reads a shell's
-# script needs the same answer, and the two copies it replaced both missed the
+# script needs the same answer, and the three copies it replaced all missed the
 # same case: shell_script_at, at the end, says where a shell's options end and its
 # script starts.
 
@@ -397,8 +397,8 @@ _tw_subst_body() {
 # shell_script_at WORD... — where a shell's own options end, given the words after
 # its name. Every hook that reads `bash -c TEXT`, or a heredoc fed to a shell, has
 # to answer this before it knows what the script is. It is answered here, once,
-# because the secret hook and the destructive guard each had a loop of their own,
-# and both loops got the same case wrong. Results in globals:
+# because the secret hook, the destructive guard and the merge gate each had a
+# test of their own, and all three got the same case wrong. Results in globals:
 #   SHELL_SCRIPT_AT  the index, among the words given, of the first that is neither
 #                    an option nor an option's value: the script's text under -c,
 #                    the script file without it. The word count when there is none,

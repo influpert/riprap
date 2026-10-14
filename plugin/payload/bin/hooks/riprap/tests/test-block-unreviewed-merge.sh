@@ -267,6 +267,26 @@ check "a merge fed to bash through a heredoc -> block" 2 "$(bash_at "$A" "bash <
 check "a merge in a here-string, piped into sh -> block" 2 "$(bash_at "$A" 'cat <<<"gh pr merge 5" | sh')"
 check "the same with the here-string spaced -> block" 2 "$(bash_at "$A" 'cat <<< "gh pr merge 5" | sh')"
 check "a merge in a here-string handed to bash -> block" 2 "$(bash_at "$A" 'bash <<<"gh pr merge 5"')"
+# An option's value is not the shell's script: in -euo pipefail, as in -o pipefail,
+# pipefail is -o's. Taken for a script file, it made the heredoc that script's
+# data, and the merge in it ran unread behind the strict-mode spelling agents write
+# most. The secret and destructive hooks read these with the same helper.
+check "a merge fed through a heredoc to bash -euo pipefail -> block" 2 \
+  "$(bash_at "$A" "bash -euo pipefail <<'EOF'${NL}gh pr merge 42 --squash${NL}EOF")"
+check "...to bash -o pipefail -> block" 2 \
+  "$(bash_at "$A" "bash -o pipefail <<'EOF'${NL}gh pr merge 42 --squash${NL}EOF")"
+check "...to bash -oe pipefail -> block" 2 \
+  "$(bash_at "$A" "bash -oe pipefail <<'EOF'${NL}gh pr merge 42 --squash${NL}EOF")"
+check "a merge in a here-string handed to bash -euo pipefail -> block" 2 \
+  "$(bash_at "$A" 'bash -euo pipefail <<<"gh pr merge 5"')"
+check "a heredoc to bash -s, whose operands are its \$1 -> block" 2 \
+  "$(bash_at "$A" "bash -s -- 5 <<'EOF'${NL}gh pr merge \"\$1\"${NL}EOF")"
+check "bash -o pipefail -c behind timeout -> block" 2 \
+  "$(bash_at "$A" "timeout 60 bash -o pipefail -c 'gh pr merge 42'")"
+check "bash -euo pipefail -c behind timeout -> block" 2 \
+  "$(bash_at "$A" "timeout 60 bash -euo pipefail -c 'gh pr merge 42'")"
+check "a heredoc to bash -euo pipefail behind timeout -> block" 2 \
+  "$(bash_at "$A" "timeout 60 bash -euo pipefail <<'EOF'${NL}gh pr merge 42${NL}EOF")"
 # GH_REPO assigned without export reaches gh only if the session already exported
 # it, which this gate cannot see, so the repository is a guess either way.
 check "GH_REPO set but not exported -> block" 2 "$(bash_at "$A" 'GH_REPO=o/r; gh pr merge 5')"
@@ -465,6 +485,17 @@ check "man gh pr merge -> allow" 0 "$(bash_at "$A" 'man gh pr merge')"
 check "echo an API merge -> allow" 0 "$(bash_at "$A" 'echo gh api -X PUT repos/o/r/pulls/5/merge')"
 check "echo a curl merge -> allow" 0 "$(bash_at "$A" 'echo curl -X PUT https://api.github.com/repos/o/r/pulls/5/merge')"
 check "echo a shell handed a merge -> allow" 0 "$(bash_at "$A" 'echo bash -c "gh pr merge 5"')"
+# A heredoc is a shell's script only when it has no other: no -c, and no script
+# file unless -s. Reading options as the shell does must not turn the data of a
+# script or of a -c command into a script of its own.
+check "a heredoc fed to a script run by bash -euo pipefail is its data -> allow" 0 \
+  "$(bash_at "$A" "bash -euo pipefail scripts/notes.sh <<'EOF'${NL}Merged with gh pr merge 42${NL}EOF")"
+check "a heredoc fed to bash -o pipefail -c is the -c command's data -> allow" 0 \
+  "$(bash_at "$A" "bash -o pipefail -c 'cat > notes.md' <<'EOF'${NL}Merged with gh pr merge 42${NL}EOF")"
+check "...behind timeout, the same -> allow" 0 \
+  "$(bash_at "$A" "timeout 60 bash -euo pipefail scripts/notes.sh <<'EOF'${NL}Merged with gh pr merge 42${NL}EOF")"
+check "bash -o pipefail -c behind timeout, reading a pull request -> allow" 0 \
+  "$(bash_at "$A" "timeout 60 bash -o pipefail -c 'gh pr view 42'")"
 
 echo
 echo "--- Redirections and shell keywords are not part of the merge ---"

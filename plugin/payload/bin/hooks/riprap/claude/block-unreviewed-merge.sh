@@ -420,18 +420,37 @@ is_evaluator() {
   esac
 }
 
-# shell_given_text NAME FLAG — whether the shell NAME, given FLAG next, runs the
-# text after it: a POSIX shell's -c, alone or run together (-lc); PowerShell's
-# -Command, which it takes as -c or any longer prefix; cmd's /c or /k, which Git
-# Bash users write //c so that it is not rewritten as a path.
+# shell_given_text NAME WORD... — whether the shell NAME, given WORDs after it,
+# runs text this gate can read: a POSIX shell's -c text, or its stdin, where a
+# heredoc puts the script when it has no -c and no script file (or has -s);
+# fish's -c, alone or run together (-lc); PowerShell's -Command, which it takes as
+# -c or any longer prefix; cmd's /c or /k, which Git Bash users write //c so that
+# it is not rewritten as a path.
+#
+# A POSIX shell's options are read by shell_script_at (lib/shell-words.sh), as the
+# secret and destructive hooks read them. Matching -c in the word straight after the
+# shell's name missed `timeout 60 bash -o pipefail -c '...'`, whose -c comes after
+# an option's value, and `-euo pipefail -c`, whose cluster has no c. fish is not
+# among them: its options are not a POSIX shell's.
 shell_given_text() {
   cmd_name "$1"
+  shift
   case "$CMD_NAME" in
-    bash | sh | zsh | dash | ksh | fish) [[ "$2" =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] ;;
-    pwsh | powershell) case "$2" in [-/][Cc]*) return 0 ;; *) return 1 ;; esac ;;
-    cmd) case "$2" in /[CcKk] | //[CcKk]) return 0 ;; *) return 1 ;; esac ;;
+    bash | sh | zsh | dash | ksh) shell_script_at "$@"; shell_runs_stdin "$#" || [ "$SHELL_DASH_C" -eq 1 ] ;;
+    fish) [[ "${1:-}" =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] ;;
+    pwsh | powershell) case "${1:-}" in [-/][Cc]*) return 0 ;; *) return 1 ;; esac ;;
+    cmd) case "${1:-}" in /[CcKk] | //[CcKk]) return 0 ;; *) return 1 ;; esac ;;
     *) return 1 ;;
   esac
+}
+
+# shell_runs_stdin COUNT — after shell_script_at over COUNT words, whether the shell
+# reads its script from stdin: no -c, and either no operand to run as a script file
+# or -s, which makes its operands the script's $1, $2, ... A heredoc or here-string
+# on that shell's command is then the script, and anything else the data of a
+# command that may never read it.
+shell_runs_stdin() {
+  [ "$SHELL_DASH_C" -eq 0 ] && { [ "$SHELL_SCRIPT_AT" -ge "$1" ] || [ "$SHELL_DASH_S" -eq 1 ]; }
 }
 
 # Prefixes that run the rest of the words as the command, changing nothing this
@@ -995,17 +1014,34 @@ note_git_checkout() {
 }
 
 # check_evaluator INDEX — w[INDEX] runs text: its arguments, what is piped into it,
-# or, when it takes nothing but flags, a heredoc on stdin. Only that text is read,
-# not the rest of the command, so `source .venv/bin/activate && rg mergePullRequest`
-# is a search after an activation and not a merge handed to source.
+# or a heredoc on stdin when that is where its script comes from. Only that text is
+# read, not the rest of the command, so `source .venv/bin/activate && rg
+# mergePullRequest` is a search after an activation and not a merge handed to
+# source.
+#
+# Whether a POSIX shell's script is on stdin is shell_script_at's answer, shared
+# with the secret and destructive hooks: no -c, and no script file unless -s. The
+# gate's own test, nothing but flags after the shell, took the pipefail of
+# `bash -euo pipefail <<'EOF'` for a script file, and the merge in the heredoc
+# went unread. Any other evaluator keeps that test: shell_script_at describes a
+# POSIX shell's options, not ssh's or PowerShell's.
 check_evaluator() {
-  local e="$1" name="${w[$1]##*/}" text="" a only_flags=1
-  for a in "${w[@]:$((e + 1))}"; do
-    text+=" $a"
-    case "$a" in -*) ;; *) only_flags=0 ;; esac
-  done
+  local e="$1" name="${w[$1]##*/}" text="" a stdin=1
+  for a in "${w[@]:$((e + 1))}"; do text+=" $a"; done
   text+=" $PIPE_IN"
-  if [ "$only_flags" -eq 1 ]; then
+  cmd_name "$name"
+  case "$CMD_NAME" in
+    bash | sh | zsh | dash | ksh)
+      shell_script_at "${w[@]:$((e + 1))}"
+      shell_runs_stdin "$((${#w[@]} - e - 1))" || stdin=0
+      ;;
+    *)
+      for a in "${w[@]:$((e + 1))}"; do
+        case "$a" in -*) ;; *) stdin=0 ;; esac
+      done
+      ;;
+  esac
+  if [ "$stdin" -eq 1 ]; then
     case "$CUR_TEXT" in *"<<"*) text+=" $CUR_TEXT" ;; esac
   fi
   if merge_text "$text"; then
@@ -1143,15 +1179,16 @@ simple_command() {
     done
   fi
 
-  # A shell or evaluator: as the command, or a shell given its text flag where the
-  # words can run (timeout 60 bash -c "...", xargs sh -c, { pwsh -c "..." }).
-  # Behind a command that only prints it, `echo bash -c "..."`, it runs nothing.
+  # A shell or evaluator: as the command, or a shell given text where the words can
+  # run (timeout 60 bash -o pipefail -c "...", xargs sh -c, { pwsh -c "..." }, or
+  # timeout 60 bash fed a heredoc). Behind a command that only prints it, `echo
+  # bash -c "..."`, it runs nothing.
   if is_evaluator "$argv0"; then
     check_evaluator "$k"
   elif [ -n "$through" ]; then
     j=$((k + 1))
     while [ "$j" -lt "$n" ]; do
-      if shell_given_text "${w[$j]##*/}" "${w[$((j + 1))]:-}"; then check_evaluator "$j"; break; fi
+      if shell_given_text "${w[$j]##*/}" "${w[@]:$((j + 1))}"; then check_evaluator "$j"; break; fi
       j=$((j + 1))
     done
   fi

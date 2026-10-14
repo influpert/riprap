@@ -83,10 +83,13 @@ A separate turn, with the review's findings as input.
   against the code first.** A reviewer can be wrong, and where one is, say so with evidence
   rather than changing the code to match a finding that does not hold. That disagreement is a
   result; burying it costs the next reader the reasoning.
-- **MINOR** in the same scheme (`interaction-preferences.md`): **fix only what is trivially
-  correct**, and prefer deferring anything the task did not ask for. A review is not a licence
-  to grow the diff, and fixes to code near the change are how a separable pull request stops
-  being separable.
+  Start on them without asking which to fix — `interaction-preferences.md`'s "fix, then
+  offer".
+- **MINOR and NON-ISSUE** in the same scheme: **offer them while the blocking fixes run**, per
+  that same section, and fix what the user accepts. With no answer, **fix only what is
+  trivially correct**, and prefer deferring anything the task did not ask for. A review is not
+  a licence to grow the diff, and fixes to code near the change are how a separable pull
+  request stops being separable.
 - **Commit and push before the next cycle.** This is the step that quietly breaks the loop
   when it is skipped: the next review reads the pull request, so an unpushed fix is invisible
   to it, the finding reappears unchanged, and the loop reports non-convergence on a defect

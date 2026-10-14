@@ -290,6 +290,39 @@ started — genuinely safe. This one gates *understanding*, where refusing produ
 the run, and leaves the identical ambiguity waiting for the next one. Copying its answer here
 would be taking the shape of a rule without the reason for it.
 
+### When review findings arrive: fix, then offer
+
+**A review's blocking findings are not a question.** When findings come back — from
+`/riprap:review`, from a critic, from a human reviewer on a pull request — start on every
+BLOCKER and MAJOR at once, without pausing to ask which of them to fix. The classes above
+already answered that: code-review.md and testing.md both require the blocking tier fixed, so a
+"which of these shall I fix?" spends a round trip to be told what the rules already say, and
+leaves the work idle for exactly as long as the user takes to reply.
+
+**While that work is under way, offer the rest.** Put the MINOR and NON-ISSUE findings to the
+user through the structured choice UI as a multi-select — each finding, or each group where
+there are more than the UI holds, with your recommendation first and "none — record them as
+they stand" as an option. Ask once the blocking fixes have started, never before: the offer must
+not hold them up, so where the harness can carry the fixes in a background sub-agent, hand them
+there and ask; otherwise make the first fix, then ask. An accepted NON-ISSUE becomes a MINOR,
+because a finding that gets fixed was not a non-issue.
+
+**This does not break "ask before the work".** That beat is about direction, and the
+direction of a blocking fix is set by the finding. The offer is about scope that the blocking
+work does not depend on, so an answer that arrives mid-fix changes nothing already written.
+
+**Three things still stop the work instead:**
+
+- **A finding you believe is wrong.** Push back, per the top of this file — verify it against
+  the code, and say why, rather than fixing it to match.
+- **A finding that says the approach is wrong.** That is a plan question, not a fix: stop and
+  ask, because every fix made before the answer is built on the thing in dispute.
+- **The user overrules a blocking finding.** Stop that fix, and record the overrule where the
+  calling workflow records dispositions.
+
+With nobody to answer, the rule in the section above applies: proceed on the blocking fixes,
+leave the MINORs deferred and the NON-ISSUEs ignored, and record both.
+
 ### Trigger words in your own draft
 
 Reread what you are about to send. If it contains any of these, **you have not decided

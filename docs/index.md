@@ -38,7 +38,7 @@ caused it is recorded next to it.
 
 <p class="provenance-note">Those four figures describe the codebase riprap was distilled
 <em>from</em>. They are not what it ships. What it ships is 21 guardrail documents, thirteen
-skills, twelve hooks and one agent — the inventory is on the
+skills, thirteen hooks and one agent — the inventory is on the
 <a href="reference.md">reference page</a>.</p>
 
 </div>

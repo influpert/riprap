@@ -49,6 +49,30 @@ file rather than a directory and riprap's hooks handle that ([git-hooks.md](git-
 baked into its tooling that a second checkout breaks; and when the change is small enough that
 the branch will live for a single commit.
 
+## Never write outside your worktree
+
+**Every file you create or change goes inside the worktree you are working in.** Scratch files,
+logs, throwaway output and `mktemp` results go in its `tmp/`, which git ignores; never in
+`/tmp`, the home directory, a sibling checkout, or the main checkout while the work lives in a
+worktree.
+
+**Why:** you only ever clean up where you are working. A file written anywhere else is not in
+the diff and not in `git status`, so nothing reminds anyone it exists, and when the work is done
+there is no step that removes it — the worktree goes, the file stays. In a sibling checkout it
+is worse: it lands in somebody else's branch, where it looks like their work.
+
+To move to another worktree, `cd` into it in a command of its own, so the session follows it;
+reaching into it by absolute path from here is the mistake this rule is about. The one
+exception is the host's own state — plan mode's plan file and the session's memory — which the
+host writes, owns and cleans up.
+
+`block-writes-outside-worktree.sh` refuses the common cases: Write and Edit outside the
+worktree, Bash redirections, `tee`, `touch`, `mkdir`, the destination of `cp`, `mv`, `install`
+and `ln`, and a bare `mktemp`. It cannot see everything — a command that writes through its own
+flags, or into a path held in a variable, passes — so the rule is yours to keep, and the hook
+only catches the slips. A project that genuinely needs a directory outside the worktree adds its
+prefix to `WORKTREE_WRITE_ALLOWED_PREFIXES` in `bin/hooks/lib/worktree-write.local.sh`.
+
 ## Do not run `git diff` before committing
 
 Use these instead:

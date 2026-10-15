@@ -406,37 +406,61 @@ is_evaluator() {
   esac
 }
 
-# shell_given_text NAME WORD... — whether the shell NAME, given WORDs after it,
-# runs text this gate can read: a POSIX shell's -c text, or its stdin, where a
-# heredoc puts the script when it has no -c and no script file (or has -s);
-# fish's -c, alone or run together (-lc); PowerShell's -Command, which it takes as
-# -c or any longer prefix; cmd's /c or /k, which Git Bash users write //c so that
-# it is not rewritten as a path.
+# shell_given_text VIA_ARGS WORD... — whether the command WORD..., a shell's name
+# first, is a shell that runs text this gate can read: text it is handed, or its
+# stdin when that is where its script comes from. Which shells those are, and where
+# each takes its text, is shell_run_text's answer (lib/shell-tools.sh): a POSIX
+# shell's -c after any options, PowerShell's -Command after any parameters, cmd's
+# /c after any switches. The secret, destructive and worktree hooks read shells with
+# the same function, so a shell one of them reads into is one they all do. This gate
+# kept its own copy, which looked only at the word straight after pwsh or cmd, and
+# `timeout 60 pwsh -NoProfile -Command "gh pr merge 5"` merged unread.
 #
-# A POSIX shell's options are read by shell_script_at (lib/shell-words.sh), as the
-# secret and destructive hooks read them. Matching -c in the word straight after the
-# shell's name missed `timeout 60 bash -o pipefail -c '...'`, whose -c comes after
-# an option's value, and `-euo pipefail -c`, whose cluster has no c. fish is not
-# among them: its options are not a POSIX shell's.
+# VIA_ARGS is 1 behind xargs or parallel. They put what they read after the words
+# they were given, so in `xargs pwsh -c` and `xargs -0 sh -c` the text is the pipe's.
+# One more word stands in for it: a -c, -Command or /c at the end then has text to
+# take, and in `xargs bash -n` the files xargs names are still script files.
+#
+# fish is read here and not there. Its options are not a POSIX shell's, and the
+# hooks that walk a shell's text would read fish's with bash's grammar, which it is
+# not written in; this gate only matches the text for a merge, so fish's grammar
+# never matters to it.
 shell_given_text() {
-  cmd_name "$1"
+  local via_args="$1"
   shift
-  case "$CMD_NAME" in
-    bash | sh | zsh | dash | ksh) shell_script_at "$@"; shell_runs_stdin "$#" || [ "$SHELL_DASH_C" -eq 1 ] ;;
-    fish) [[ "${1:-}" =~ ^-[A-Za-z]*c[A-Za-z]*$ ]] ;;
-    pwsh | powershell) case "${1:-}" in [-/][Cc]*) return 0 ;; *) return 1 ;; esac ;;
-    cmd) case "${1:-}" in /[CcKk] | //[CcKk]) return 0 ;; *) return 1 ;; esac ;;
-    *) return 1 ;;
-  esac
+  [ "$via_args" -eq 0 ] || set -- "$@" xargs-input
+  cmd_name "${1##*/}"
+  if [ "$CMD_NAME" = fish ]; then shift; fish_given_text "$@"; return; fi
+  shell_run_text "$@"
 }
 
-# shell_runs_stdin COUNT — after shell_script_at over COUNT words, whether the shell
-# reads its script from stdin: no -c, and either no operand to run as a script file
-# or -s, which makes its operands the script's $1, $2, ... A heredoc or here-string
-# on that shell's command is then the script, and anything else the data of a
-# command that may never read it.
-shell_runs_stdin() {
-  [ "$SHELL_DASH_C" -eq 0 ] && { [ "$SHELL_SCRIPT_AT" -ge "$1" ] || [ "$SHELL_DASH_S" -eq 1 ]; }
+# fish_given_text WORD... — the words after fish. Text with -c or -C (--command,
+# --init-command), alone, run together (-lc) or after other options (-l -c); its
+# stdin when no word is a script file. -d, -o, -f and -p take a value, which is
+# stepped over, so that it is not taken for that file.
+fish_given_text() {
+  local a c rest
+  while [ "$#" -gt 0 ]; do
+    a="$1"; shift
+    case "$a" in
+      --) [ "$#" -eq 0 ]; return ;;
+      --c* | --ini*) return 0 ;;
+      --debug | --debug-output | --features | --profile | --profile-startup) [ "$#" -eq 0 ] || shift ;;
+      --*) ;;
+      -?*)
+        rest="${a#-}"
+        while [ -n "$rest" ]; do
+          c="${rest:0:1}"; rest="${rest:1}"
+          case "$c" in
+            c | C) return 0 ;;
+            d | o | f | p) [ -n "$rest" ] || [ "$#" -eq 0 ] || shift; break ;;
+          esac
+        done
+        ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
 }
 
 # Prefixes that run the rest of the words as the command, changing nothing this
@@ -1056,12 +1080,12 @@ note_git_checkout() {
 # is a script that merges nothing. Reading the whole command whenever it held a
 # heredoc refused both, the second with advice that could not be followed.
 #
-# Whether a POSIX shell's script is on stdin is shell_script_at's answer, shared
+# Whether a POSIX shell's script is on stdin is shell_run_text's answer, shared
 # with the secret and destructive hooks: no -c, and no script file unless -s. The
 # gate's own test, nothing but flags after the shell, took the pipefail of
 # `bash -euo pipefail <<'EOF'` for a script file, and the merge in the heredoc
-# went unread. Any other evaluator keeps that test: shell_script_at describes a
-# POSIX shell's options, not ssh's or PowerShell's.
+# went unread. Any other evaluator keeps that test: shell_run_text reads a POSIX
+# shell's options for this, not ssh's or PowerShell's.
 #
 # VIA_ARGS is 1 behind xargs or parallel, which turn what they read into the
 # command's arguments and give it no stdin of their own. Their input is then text
@@ -1075,8 +1099,8 @@ check_evaluator() {
   # /dev/stdin, as the script file or the file sourced, is stdin by another name.
   case "$CMD_NAME" in
     bash | sh | zsh | dash | ksh)
-      shell_script_at "${w[@]:$((e + 1))}"
-      shell_runs_stdin "$((${#w[@]} - e - 1))" || stdin=0
+      shell_run_text "${w[@]:$e}" || :
+      stdin="$SHELL_RUN_STDIN"
       [ "${w[$((e + 1 + SHELL_SCRIPT_AT))]:-}" != /dev/stdin ] || stdin=1
       takes_text="$SHELL_DASH_C"
       ;;
@@ -1254,7 +1278,7 @@ simple_command() {
     while [ "$j" -lt "$n" ]; do
       cmd_name "${w[$((j - 1))]##*/}"
       case "$CMD_NAME" in xargs | parallel) via_args=1 ;; esac
-      if shell_given_text "${w[$j]##*/}" "${w[@]:$((j + 1))}"; then check_evaluator "$j" "$via_args"; break; fi
+      if shell_given_text "$via_args" "${w[@]:$j}"; then check_evaluator "$j" "$via_args"; break; fi
       j=$((j + 1))
     done
   fi

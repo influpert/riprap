@@ -323,6 +323,34 @@ check "in a function's body -> block" 2 "$(bash_at "$A" 'function f { gh pr merg
 check "a merge handed to PowerShell behind timeout -> block" 2 "$(bash_at "$A" 'timeout 60 pwsh -Command "gh pr merge 5"')"
 check "a merge handed to cmd /c, written //c in Git Bash -> block" 2 "$(bash_at "$A" 'cmd //c "gh pr merge 5"')"
 check "a merge set to run on a trap -> block" 2 "$(bash_at "$A" "trap 'gh pr merge 5' EXIT")"
+# Behind a wrapper, a shell's text is found where that shell takes it, after the
+# options in front of it, by lib/shell-tools.sh's shell_run_text, which the other
+# hooks read shells with too. The gate's own copy looked only at the word straight
+# after pwsh or cmd, so -NoProfile or /Q there, both ordinary, let these through.
+check "pwsh -NoProfile -Command behind timeout -> block" 2 \
+  "$(bash_at "$A" 'timeout 60 pwsh -NoProfile -Command "gh pr merge 5"')"
+check "pwsh -nop -c behind timeout -> block" 2 "$(bash_at "$A" 'timeout 60 pwsh -nop -c "gh pr merge 5"')"
+check "powershell -ExecutionPolicy Bypass -Command behind timeout -> block" 2 \
+  "$(bash_at "$A" 'timeout 60 powershell -ExecutionPolicy Bypass -Command "gh pr merge 5"')"
+check "pwsh -NoProfile -c behind xargs -> block" 2 "$(bash_at "$A" 'xargs pwsh -NoProfile -c "gh pr merge 5"')"
+check "pwsh -NoProfile -c behind sudo -> block" 2 "$(bash_at "$A" 'sudo pwsh -NoProfile -c "gh pr merge 5"')"
+check "cmd /Q /c behind timeout -> block" 2 "$(bash_at "$A" 'timeout 60 cmd /Q /c "gh pr merge 5"')"
+check "cmd /d /c behind nice -> block" 2 "$(bash_at "$A" 'nice cmd /d /c "gh pr merge 5"')"
+check "fish -l -c behind timeout -> block" 2 "$(bash_at "$A" 'timeout 60 fish -l -c "gh pr merge 5"')"
+check "fish --command= behind timeout -> block" 2 "$(bash_at "$A" 'timeout 60 fish --command="gh pr merge 5"')"
+# xargs puts what it reads after the words it was given, so a -c, -Command or /c
+# that ends the line takes its text from the pipe.
+check "a merge piped into xargs pwsh -c, which runs it -> block" 2 "$(bash_at "$A" "echo 'gh pr merge 5' | xargs pwsh -c")"
+check "a merge piped into xargs cmd /c, which runs it -> block" 2 "$(bash_at "$A" "echo 'gh pr merge 5' | xargs cmd /c")"
+# The same shells given a read, a script file or text that merges nothing are not
+# refused for it.
+check "pwsh -NoProfile -Command of a read behind timeout -> allow" 0 \
+  "$(bash_at "$A" 'timeout 60 pwsh -NoProfile -Command "gh pr view 5"')"
+check "pwsh -NoProfile -File behind timeout -> allow" 0 \
+  "$(bash_at "$A" 'timeout 60 pwsh -NoProfile -File merge-report.ps1')"
+check "cmd /Q /c of something else behind timeout -> allow" 0 "$(bash_at "$A" 'timeout 60 cmd /Q /c dir')"
+check "fish -l -c of a read behind timeout -> allow" 0 "$(bash_at "$A" 'timeout 60 fish -l -c "gh pr view 5"')"
+check "a read piped into xargs pwsh -c -> allow" 0 "$(bash_at "$A" "echo 'gh pr view 5' | xargs pwsh -c")"
 
 echo
 echo "--- A merge in a PowerShell script block is refused unread ---"
@@ -346,6 +374,8 @@ check "in a script block kept in a variable -> block" 2 "$(ps_at "$A" '$merge = 
 check "handed to pwsh -Command -> block" 2 "$(ps_at "$A" 'pwsh -Command gh pr merge 5')"
 check "handed to powershell.exe -c, quoted -> block" 2 "$(ps_at "$A" 'powershell.exe -c "gh pr merge 5"')"
 check "handed to cmd /c -> block" 2 "$(ps_at "$A" 'cmd /c gh pr merge 5')"
+check "handed to pwsh -NoProfile -c inside Start-Job -> block" 2 \
+  "$(ps_at "$A" 'Start-Job { pwsh -NoProfile -c "gh pr merge 5" } | Wait-Job')"
 check "handed to Invoke-Expression -> block" 2 "$(ps_at "$A" 'Invoke-Expression "gh pr merge 5 --squash"')"
 check "handed to iex -> block" 2 "$(ps_at "$A" 'iex "gh pr merge 5"')"
 check_contains "... and the refusal names the cmdlet" "through ForEach-Object" \

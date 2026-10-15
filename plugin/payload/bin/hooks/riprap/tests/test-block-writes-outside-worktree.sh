@@ -397,7 +397,22 @@ check "...as \$PWD/tmp where it was exported, though a cd comes between -> allow
 check "TMPDIR outside in front of mktemp -> block" 2 "$(bash_in "$REPO" "TMPDIR=$OTHER mktemp -d")"
 check "mktemp -t, which writes in \$TMPDIR -> block" 2 "$(bash_in "$REPO" "mktemp -t build.XXXXXX")"
 check "...with TMPDIR inside -> allow" 0 "$(bash_in "$REPO" "TMPDIR=tmp mktemp -t build.XXXXXX")"
+# Short options cluster, as getopt reads them: -dt is -d and -t. Matched only as a
+# word of its own, -t in `mktemp -dt name.XXXXXX`, the commonest way to ask for a
+# scratch directory, fell through, and the template was taken for a path where
+# mktemp runs.
+check "mktemp -dt, -t in a cluster -> block" 2 "$(bash_in "$REPO" "mktemp -dt build.XXXXXX")"
+check "d=\$(mktemp -dt ...) -> block" 2 "$(bash_in "$REPO" "d=\$(mktemp -dt build.XXXXXX)")"
+check "mktemp -td, -t first in the cluster -> block" 2 "$(bash_in "$REPO" "mktemp -td build.XXXXXX")"
+check "mktemp -qt -> block" 2 "$(bash_in "$REPO" "mktemp -qt build.XXXXXX")"
+check "...-dt with TMPDIR inside -> allow" 0 "$(bash_in "$REPO" "TMPDIR=tmp mktemp -dt build.XXXXXX")"
+# -p in a cluster takes the rest of it as its directory, or else the next word.
+check "mktemp -dp DIR outside, -p in a cluster -> block" 2 "$(bash_in "$REPO" "mktemp -dp $OTHER build.XXXXXX")"
+check "mktemp -dpDIR outside, glued -> block" 2 "$(bash_in "$REPO" "mktemp -dp$OTHER build.XXXXXX")"
+check "mktemp -dp tmp -> allow" 0 "$(bash_in "$REPO" "mktemp -dp tmp build.XXXXXX")"
+check "mktemp -dptmp, glued -> allow" 0 "$(bash_in "$REPO" "mktemp -dptmp build.XXXXXX")"
 check "a template with no slash is made where mktemp runs -> allow" 0 "$(bash_in "$REPO" "mktemp build.XXXXXX")"
+check "...with -d in front, and no -t -> allow" 0 "$(bash_in "$REPO" "mktemp -d build.XXXXXX")"
 check "...after a cd out -> block" 2 "$(bash_in "$REPO" "cd $OTHER && mktemp build.XXXXXX")"
 
 echo

@@ -422,23 +422,39 @@ note_tmpdir() {  # VALUE BASE
 # in; with -p DIR or --tmpdir=DIR, in DIR; with --tmpdir alone, -t, or no template
 # at all, in $TMPDIR: the one assigned in front of it, else the one the command
 # exported, else the session's, else /tmp. -t prefers $TMPDIR to -p, as GNU's does.
+# Short options are read as getopt reads them, alone or in a cluster: -dt is -d and
+# -t, and -p takes the rest of its cluster as its directory, or else the next word.
+# Matching -t only as a word of its own let `mktemp -dt name.XXXXXX`, the commonest
+# way to ask for a scratch directory, through as a template where mktemp runs, when
+# GNU and BSD mktemp alike make it in $TMPDIR or /tmp.
 # Reads on_command's words, n and assigns.
 check_mktemp() {
-  local base="$1" j="$2" w tmpl="" pdir="" use_tmpdir=0 tflag=0 tmpdir="" a
+  local base="$1" j="$2" w tmpl="" pdir="" use_tmpdir=0 tflag=0 tmpdir="" a c rest
   if [ -n "${CMD_TMPDIR+set}" ]; then tmpdir="$CMD_TMPDIR"; elif [ -n "${TMPDIR+set}" ]; then tmpdir="$TMPDIR"; fi
   for a in ${assigns[@]+"${assigns[@]}"}; do case "$a" in TMPDIR=*) tmpdir="${a#TMPDIR=}" ;; esac; done
   while [ "$j" -lt "$n" ]; do
     w="${words[$j]}"
     j=$((j + 1))
     case "$w" in
-      -p) pdir="${words[$j]:-}"; j=$((j + 1)) ;;
-      -p?*) pdir="${w#-p}" ;;
       --tmpdir=*) pdir="${w#*=}" ;;
       --tmpdir) use_tmpdir=1 ;;
-      -t) tflag=1 ;;
       --suffix) j=$((j + 1)) ;;
       --) [ "$j" -ge "$n" ] || tmpl="${words[$j]}"; break ;;
-      -*) ;;
+      --* | -) ;;
+      -*)
+        rest="${w#-}"
+        while [ -n "$rest" ]; do
+          c="${rest:0:1}"
+          rest="${rest:1}"
+          case "$c" in
+            t) tflag=1 ;;
+            p)
+              if [ -n "$rest" ]; then pdir="$rest"; else pdir="${words[$j]:-}"; j=$((j + 1)); fi
+              rest=""
+              ;;
+          esac
+        done
+        ;;
       *) [ -n "$tmpl" ] || tmpl="$w" ;;
     esac
   done

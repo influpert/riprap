@@ -26,7 +26,8 @@
 # Anything this cannot read with certainty is refused, not guessed: a flag it
 # does not know; `cd` to a variable; a merge run through `timeout`, `xargs`,
 # `sudo`, a shell given the command as text, or any other command not known only
-# to print its words; a GH_REPO set but not exported; a merge with no number
+# to print its words; a GH_REPO set but not exported, or set to a value this
+# never sees (read, a for loop, Set-Item Env:GH_REPO); a merge with no number
 # after a `git checkout`; an MCP merge whose repository the session places on
 # more than one host. Those refusals say the merge could not be checked and how
 # to write it so it can be; the hold procedure is for a merge that was checked
@@ -735,12 +736,66 @@ resolve_dir() {  # $1 = target, $2 = base; prints the directory or "?"
 
 # set_gh_repo ENTRY PREV NEXT — record an export, assignment or unset of GH_REPO.
 # In a pipeline or in the background it runs in a subshell of its own, or in this
-# one under lastpipe or zsh, so what follows may or may not see it.
+# one under lastpipe or zsh, so what follows may or may not see it. PowerShell's
+# environment is its process's, and its parentheses and $( ) start no new one, so
+# there what a command sets inside them, every command after it sees.
 set_gh_repo() {
-  local entry="$1"
+  local entry="$1" i
   case "$2" in "|" | "&") entry="?" ;; esac
   case "$3" in "|" | "&") entry="?" ;; esac
-  GHREPOS[$((${#GHREPOS[@]} - 1))]="$entry"
+  if [ "$TOOL_NAME" = PowerShell ]; then
+    for i in "${!GHREPOS[@]}"; do GHREPOS[$i]="$entry"; done
+  else
+    GHREPOS[$((${#GHREPOS[@]} - 1))]="$entry"
+  fi
+}
+
+# GH_REPO as PowerShell names it. It reads a variable's name in any case, and $Env:
+# is how its own documentation spells this one; braced, ${env:GH_REPO} is the same
+# variable. The Env: drive names it as a path (Set-Item Env:GH_REPO, or Env:\GH_REPO,
+# whose backslash is a slash by now), and .NET's SetEnvironmentVariable by its bare
+# name. Compared as written, only $env:GH_REPO was read, `$Env:GH_REPO = 'o/r'` was
+# taken for some other variable, and the merge after any of these was looked up in
+# the session's repository while gh merged in o/r.
+PS_ENV_VAR_RE='^\$([Ee][Nn][Vv]:[Gg][Hh]_[Rr][Ee][Pp][Oo]|\{[Ee][Nn][Vv]:[Gg][Hh]_[Rr][Ee][Pp][Oo]\})'
+PS_ENV_PATH_RE='^(-[A-Za-z]+:)?[Ee][Nn][Vv]:/?[Gg][Hh]_[Rr][Ee][Pp][Oo]$'
+PS_ENV_NAME_RE='^[Gg][Hh]_[Rr][Ee][Pp][Oo](,.*)?$'
+SETENV_ARGS=0    # 1 when the next command read is SetEnvironmentVariable's arguments
+
+# ps_gh_repo_assignment WORD... — whether the command WORD... (its first four words
+# are enough) assigns PowerShell's GH_REPO: $env:GH_REPO in any of its spellings,
+# then an assignment operator, alone or glued to either side. Sets PS_GH_REPO to
+# "=VALUE" for `= VALUE`, and to "?" for any other operator (+=, ??=) or a value that
+# is a command's output, which this gate does not evaluate. Anything else only
+# reads it, as `$env:GH_REPO -eq 'o/r'` does.
+ps_gh_repo_assignment() {
+  local rest op value used
+  [[ "$1" =~ $PS_ENV_VAR_RE ]] || return 1
+  rest="${1:${#BASH_REMATCH[0]}}"
+  case "$rest" in
+    "") op="${2:-}"; value="${3:-}"; used=3 ;;
+    *=) op="$rest"; value="${2:-}"; used=2 ;;
+    *=*) op="${rest%%=*}="; value="${rest#*=}"; used=1 ;;
+    *) return 1 ;;
+  esac
+  [[ "$op" =~ $SHELL_PS_OP_RE ]] || return 1
+  PS_GH_REPO="?"
+  if [ "$op" = "=" ] && [ "$#" -le "$used" ]; then PS_GH_REPO="=$value"; fi
+  return 0
+}
+
+# reads_env_item WORD — whether the command WORD only reads an item on PowerShell's
+# Env: drive, or prints its name. Any other command that names Env:GH_REPO may set
+# or remove it: Set-Item, New-Item, Remove-Item and the rest of the item cmdlets.
+reads_env_item() {
+  cmd_name "$1"
+  case "$CMD_NAME" in
+    get-item | gi | get-childitem | gci | dir | ls | test-path | get-content | gc | cat | type | \
+      get-itemproperty | gp | resolve-path | rvpa)
+      return 0
+      ;;
+    *) prints_its_arguments "$1" ;;
+  esac
 }
 
 # --- reading each gh, curl and git command ----------------------------------------
@@ -1143,7 +1198,8 @@ check_evaluator() {
 # simple_command PREV_OP NEXT_OP WORD... — one simple command, between two
 # operators (empty at either end of the text).
 simple_command() {
-  local prev="$1" next="$2"
+  local prev="$1" next="$2" setenv_args="$SETENV_ARGS"
+  SETENV_ARGS=0
   shift 2
   [ "$#" -gt 0 ] || return 0
   local -a w=("$@")
@@ -1173,12 +1229,20 @@ simple_command() {
   PIPE_IN="$pipe_in"
   CMD_STDIN="$cmd_stdin"
 
+  # The arguments of .NET's SetEnvironmentVariable, which the walk reads as a command
+  # of their own because they are in parentheses: `('GH_REPO', 'o/r')` sets GH_REPO
+  # to a value this gate does not follow.
+  if [ "$setenv_args" -eq 1 ] && [[ "${w[0]}" =~ $PS_ENV_NAME_RE ]]; then
+    set_gh_repo "?" "$prev" "$next"
+    return 0
+  fi
+
   while [ "$k" -lt "$n" ] && is_keyword "${w[$k]}"; do k=$((k + 1)); done
   # PowerShell runs the command an assignment is given and keeps what it prints:
   # `$out = gh pr merge 5`, `$null = ...` to discard it, `[string]$out = ...`. Read
   # as the command, `$out` hid the merge behind it. $env:GH_REPO is the exception,
   # read below as the variable it sets.
-  while [ "$k" -lt "$n" ] && [ "${w[$k]}" != '$env:GH_REPO' ] \
+  while [ "$k" -lt "$n" ] && ! ps_gh_repo_assignment "${w[@]:$k:4}" \
       && shell_ps_assignment "${w[$k]}" "${w[$((k + 1))]:-}"; do
     k=$((k + SHELL_PS_ASSIGN))
   done
@@ -1207,11 +1271,16 @@ simple_command() {
   while [ "$k" -lt "$n" ] && is_plain_prefix "${w[$k]}"; do k=$((k + 1)); done
   [ "$k" -lt "$n" ] || return 0
 
-  local argv0="${w[$k]##*/}" a j
+  local argv0="${w[$k]##*/}" verb a j
+  # PowerShell reads a command's name in any case, so there it is matched folded:
+  # `set-location ../other` moves the merge as Set-Location does, and read as written
+  # it left the merge looked up where the command started.
+  verb="$argv0"
+  if [ "$TOOL_NAME" = PowerShell ]; then cmd_name "$argv0"; verb="$CMD_NAME"; fi
 
-  case "$argv0" in
+  case "$verb" in
     # PowerShell's own names, beside its aliases cd, chdir, sl and pushd.
-    cd | pushd | Set-Location | sl | chdir | Push-Location)
+    cd | pushd | Set-Location | set-location | sl | chdir | Push-Location | push-location)
       local t="" dir
       j=$((k + 1))
       while [ "$j" -lt "$n" ]; do
@@ -1226,11 +1295,11 @@ simple_command() {
       DIRS[$top]="$dir"
       return 0
       ;;
-    popd | Pop-Location) DIRS[$top]="?"; return 0 ;;
+    popd | Pop-Location | pop-location) DIRS[$top]="?"; return 0 ;;
     export | declare | typeset)
       # declare and typeset export only with -x. PowerShell's $env: is below.
       local exported=1
-      if [ "$argv0" != export ]; then
+      if [ "$verb" != export ]; then
         exported=0
         for a in "${w[@]:$((k + 1))}"; do [[ ! "$a" =~ ^-[A-Za-z]*x ]] || exported=1; done
       fi
@@ -1248,11 +1317,16 @@ simple_command() {
             # front of this very command when there is one, since bash leaves
             # `GH_REPO=x/y export GH_REPO` with x/y exported. Read as an export of
             # nothing, it had this gate asking the session's repository while gh
-            # merged in x/y. Otherwise, one assigned earlier in the command.
+            # merged in x/y. Otherwise, one assigned earlier in the command, and
+            # with none, whatever the shell held, which this gate cannot see:
+            # `read GH_REPO; export GH_REPO` merges in the repository read.
             if [ "$exported" -eq 0 ]; then :
             elif [ "$have_gh_repo" -eq 1 ]; then set_gh_repo "=$gh_repo" "$prev" "$next"
             else
-              case "${GHREPOS[$top]}" in u:*) set_gh_repo "=${GHREPOS[$top]#u:}" "$prev" "$next" ;; esac
+              case "${GHREPOS[$top]}" in
+                u:*) set_gh_repo "=${GHREPOS[$top]#u:}" "$prev" "$next" ;;
+                -) set_gh_repo "?" "$prev" "$next" ;;
+              esac
             fi
             ;;
         esac
@@ -1263,14 +1337,42 @@ simple_command() {
       for a in "${w[@]:$((k + 1))}"; do [ "$a" != GH_REPO ] || set_gh_repo "=" "$prev" "$next"; done
       return 0
       ;;
+    # The commands that give a variable named among their words a value this gate
+    # cannot see: read and mapfile from their input, for and select from a list,
+    # getopts from the options, printf -v from its format, local from anywhere.
+    # Read as leaving GH_REPO alone, each had the merge after it looked up in the
+    # session's repository while gh merged in whichever one GH_REPO now named.
+    read | mapfile | readarray | getopts | for | select | printf | local)
+      for a in "${w[@]:$((k + 1))}"; do
+        case "$a" in GH_REPO | GH_REPO=* | -vGH_REPO) set_gh_repo "?" "$prev" "$next"; break ;; esac
+      done
+      ;;
     git) note_git_checkout "${w[@]:$((k + 1))}" ;;
   esac
   # PowerShell sets an environment variable, which every child process sees, as
   # $env:GH_REPO = 'o/r' (the tokenizer has stripped the quotes).
-  if [ "${w[$k]}" = '$env:GH_REPO' ] && [ "${w[$((k + 1))]:-}" = "=" ]; then
-    set_gh_repo "=${w[$((k + 2))]:-}" "$prev" "$next"; return 0
-  fi
-  case "${w[$k]}" in '$env:GH_REPO='*) set_gh_repo "=${w[$k]#\$env:GH_REPO=}" "$prev" "$next"; return 0 ;; esac
+  if ps_gh_repo_assignment "${w[@]:$k:4}"; then set_gh_repo "$PS_GH_REPO" "$prev" "$next"; return 0; fi
+  # Or through the Env: drive, by a command other than one that only reads it. One
+  # that removes the item leaves GH_REPO unset, as `unset GH_REPO` does; any other
+  # gives it a value this gate does not follow.
+  case "${w[*]:$((k + 1))}" in
+    *[Ee][Nn][Vv]:*)
+      if ! reads_env_item "$argv0"; then
+        for a in "${w[@]:$((k + 1))}"; do
+          [[ "$a" =~ $PS_ENV_PATH_RE ]] || continue
+          cmd_name "$argv0"
+          case "$CMD_NAME" in
+            remove-item | ri | rm | del | erase | clear-item | cli) set_gh_repo "=" "$prev" "$next" ;;
+            *) set_gh_repo "?" "$prev" "$next" ;;
+          esac
+          break
+        done
+      fi
+      ;;
+  esac
+  # Or through .NET, `[Environment]::SetEnvironmentVariable('GH_REPO', 'o/r')`, whose
+  # arguments are the command read next.
+  case "$argv0" in *::*) cmd_name "${argv0##*::}"; [ "$CMD_NAME$next" != "setenvironmentvariable(" ] || SETENV_ARGS=1 ;; esac
 
   # Whether the words after the command word can run, and so why a merge among
   # them is refused unread. After a command known to run them they are its command.
@@ -1386,7 +1488,9 @@ simple_command() {
         =*) REPO="${GHREPOS[$top]#=}" ;;
         u:*) unverifiable "it sets GH_REPO without exporting it, so whether gh sees it depends on an environment this gate cannot read." \
 "  Export it (export GH_REPO=<owner>/<repo>), or give the merge --repo <owner>/<repo>." ;;
-        *) unverifiable "it sets GH_REPO in a pipeline or in the background, where it may not reach the commands after it." ;;
+        *) unverifiable "it sets GH_REPO in a pipeline or in the background, where it may not reach the commands after it, or to a value this gate never sees (from read, a for loop, printf -v, a bare export, Set-Item Env:GH_REPO or SetEnvironmentVariable), so which repository gh merges in is a guess." \
+"  Give the merge --repo <owner>/<repo>, which names its repository whatever
+  GH_REPO holds: gh pr merge <number> --repo <owner>/<repo>." ;;
       esac
     fi
     if has_expansion "$REPO"; then

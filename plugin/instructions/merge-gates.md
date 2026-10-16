@@ -57,16 +57,18 @@ the MCP server merges on is a guess, and the merge is refused.
 
 Anything the hook can't read with certainty is refused, not guessed: a flag it doesn't know, `cd`
 to a variable, a pull request number, HTTP method or API host that is a variable, a `GH_REPO`
-assigned without `export`, a merge with no number after a `git checkout` or `git switch` in the
-same command, a merge run through `timeout`, `xargs`, `sudo` or any other command that does not
-only print or document it, a merge in a PowerShell script block `{ }` handed to a cmdlet such as
-`ForEach-Object` or kept in a variable (either may run it per input, later or elsewhere), a
-shell handed the merge as text (`bash -c`, `pwsh -Command`, `cmd /c`, `eval`,
-`Invoke-Expression`, a pipe or a heredoc into `sh`), a GraphQL `mergePullRequest` sent through
-`gh api` or `curl`, which names its pull request by node ID, or an MCP merge the session places
-on two hosts. Those refusals say that the merge could not be checked and how to write it so that
-it can be — a `gh pr merge <number>` of its own — and do not carry the hold procedure below,
-which is for a merge that was checked.
+assigned without `export` or given a value the hook never sees (by `read`, a `for` loop,
+`printf -v`, a bare `export`, `Set-Item Env:GH_REPO` or .NET's `SetEnvironmentVariable`, any of
+which left a merge looked up in the session's repository while `gh` merged in another), a merge
+with no number after a `git checkout` or `git switch` in the same command, a merge run through
+`timeout`, `xargs`, `sudo` or any other command that does not only print or document it, a merge
+in a PowerShell script block `{ }` handed to a cmdlet such as `ForEach-Object` or kept in a
+variable (either may run it per input, later or elsewhere), a shell handed the merge as text
+(`bash -c`, `pwsh -Command`, `cmd /c`, `eval`, `Invoke-Expression`, a pipe or a heredoc into
+`sh`), a GraphQL `mergePullRequest` sent through `gh api` or `curl`, which names its pull request
+by node ID, or an MCP merge the session places on two hosts. Those refusals say that the merge
+could not be checked and how to write it so that it can be — a `gh pr merge <number>` of its own
+— and do not carry the hold procedure below, which is for a merge that was checked.
 
 **Every spelling is looked up through `gh`, the MCP tools included.** Where `gh` is missing, or
 not signed in for the pull request's host, no merge can be checked, and each one is refused until
@@ -77,10 +79,11 @@ as a GraphQL query kept in a file is not seen, and the gate does not pretend oth
 a slip, and the rule still holds where it cannot look. A PowerShell command is read with the same
 shell grammar as a Bash one, which finds a `gh` or `curl` call — by the names Windows runs them
 by too, `gh.exe`, `curl.exe` and a full path — `Invoke-RestMethod`, a merge assigned to a
-variable (`$out = gh pr merge 5`), `Set-Location`, `Push-Location` and `$env:GH_REPO`, and
-nothing else of PowerShell's own. First, what that grammar would misread
-is read as PowerShell reads it: a backtick that ends a line is joined to the next, a backslash is
-a path separator, and a comment is dropped. Inside single quotes, an `@'…'@` here-string or a
+variable (`$out = gh pr merge 5`), `Set-Location`, `Push-Location` and `$env:GH_REPO` — each
+in any case, `$Env:` and `set-location` included, as PowerShell reads them — and nothing else of
+PowerShell's own. First, what that grammar would misread is read as PowerShell reads it: a
+backtick that ends a line is joined to the next, a backslash is a path separator, and a comment
+is dropped. Inside single quotes, an `@'…'@` here-string or a
 comment, a backtick is text, so a commit message or pull request body that quotes `gh pr merge`
 in a code span is no merge. Anywhere else a backtick is PowerShell's escape character, which that grammar
 does not have: a merge in a command with one is refused, because the gate would be checking a

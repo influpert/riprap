@@ -639,6 +639,27 @@ asks "given to env, which runs no export of the shell's, it changes nothing" "$A
   'env GH_REPO=x/y export GH_REPO; gh pr merge 5'
 EXPECT="$A|o/r|5" check "an export inside a subshell does not leak out" 0 \
   "$(bash_at "$A" '(export GH_REPO=o/r); gh pr merge 5')"
+# GH_REPO given a value this gate never saw: read, a for loop and printf -v all set
+# it, and a bare export hands gh whatever the shell held. Read as unset, each left
+# the merge looked up in the session's repository while gh merged in another. None
+# can be resolved here, so each is refused, and --repo is the way past.
+EXPECT="nothing" check "read GH_REPO, then a merge -> block" 2 "$(bash_at "$A" 'read GH_REPO <<< o/r; gh pr merge 5')"
+EXPECT="nothing" check "read -r GH_REPO from a file, exported -> block" 2 \
+  "$(bash_at "$A" 'read -r GH_REPO < .repo; export GH_REPO; gh pr merge 5')"
+EXPECT="nothing" check "a for loop over GH_REPO -> block" 2 \
+  "$(bash_at "$A" 'for GH_REPO in o/r; do export GH_REPO; gh pr merge 5; done')"
+EXPECT="nothing" check "printf -v GH_REPO, exported -> block" 2 \
+  "$(bash_at "$A" 'printf -v GH_REPO o/r; export GH_REPO; gh pr merge 5')"
+EXPECT="nothing" check "a bare export of a GH_REPO this command never set -> block" 2 \
+  "$(bash_at "$A" 'export GH_REPO; gh pr merge 5')"
+check_contains "... and the refusal gives the way past" "--repo" "$(bash_at "$A" 'export GH_REPO; gh pr merge 5')"
+# Reading GH_REPO, or setting some other variable the same ways, changes nothing.
+EXPECT="nothing" check "read of another variable, then a merge -> allow" 0 \
+  "$(bash_at "$A" 'read -r answer <<< y; gh pr merge 5')"
+EXPECT="nothing" check "GH_REPO printed or searched for, then a merge -> allow" 0 \
+  "$(bash_at "$A" 'printf "%s\n" "$GH_REPO"; env | grep GH_REPO; gh pr merge 5')"
+EXPECT="nothing" check "read GH_REPO, then a merge that names its repository -> allow" 0 \
+  "$(bash_at "$A" 'read GH_REPO <<< x/y; gh pr merge 5 --repo o/r')"
 # With no number, gh merges the pull request of the branch checked out when it runs.
 # The gate asked about the branch it found before the checkout ran.
 asks "gh pr checkout N, then a merge with no number -> N" "$A||7" 'gh pr checkout 7 && gh pr merge --squash'
@@ -677,6 +698,43 @@ EXPECT="$B||5" check "PowerShell Set-Location, then a merge -> where it went" 2 
   "$(cmd_at "$A" PowerShell "Set-Location $B; gh pr merge 5")"
 EXPECT="$A|o/r|5" check "PowerShell \$env:GH_REPO, then a merge -> that repository" 2 \
   "$(cmd_at "$A" PowerShell "\$env:GH_REPO = 'o/r'; gh pr merge 5")"
+# PowerShell reads a variable's name in any case, and $Env: is how its own
+# documentation spells this one. Compared as written, only $env:GH_REPO was read:
+# every other spelling was taken for some other variable, and so was a GH_REPO set
+# through the Env: drive or .NET, and the merge after it was looked up in the
+# session's repository while gh merged in o/r.
+EXPECT="$A|o/r|5" check "\$Env:GH_REPO, as PowerShell's docs spell it -> that repository" 2 \
+  "$(cmd_at "$A" PowerShell "\$Env:GH_REPO = 'o/r'; gh pr merge 5")"
+EXPECT="$A|o/r|5" check "\$ENV:GH_REPO, glued to its value -> that repository" 2 \
+  "$(cmd_at "$A" PowerShell "\$ENV:GH_REPO='o/r'; gh pr merge 5")"
+EXPECT="$A|o/r|5" check "\$env:gh_repo -> that repository" 2 "$(cmd_at "$A" PowerShell "\$env:gh_repo = 'o/r'; gh pr merge 5")"
+EXPECT="$A|o/r|5" check "\${env:GH_REPO} -> that repository" 2 "$(cmd_at "$A" PowerShell "\${env:GH_REPO} = 'o/r'; gh pr merge 5")"
+EXPECT="$A|o/r|5" check "set in parentheses, which start no new process -> that repository" 2 \
+  "$(cmd_at "$A" PowerShell "(\$env:GH_REPO = 'o/r'); gh pr merge 5")"
+EXPECT="$A|o/r|5" check "\$Env:GH_REPO, harmless there -> allow" 0 "$(cmd_at "$A" PowerShell "\$Env:GH_REPO = 'o/r'; gh pr merge 6")"
+EXPECT="nothing" check "Set-Item on Env:GH_REPO, whose value this gate does not read -> block" 2 \
+  "$(cmd_at "$A" PowerShell "Set-Item -Path Env:GH_REPO -Value o/r; gh pr merge 5")"
+EXPECT="nothing" check "New-Item on Env:\\GH_REPO -> block" 2 \
+  "$(cmd_at "$A" PowerShell "New-Item -Path Env:\\GH_REPO -Value o/r; gh pr merge 5")"
+EXPECT="nothing" check "[Environment]::SetEnvironmentVariable of GH_REPO -> block" 2 \
+  "$(cmd_at "$A" PowerShell "[Environment]::SetEnvironmentVariable('GH_REPO', 'o/r'); gh pr merge 5")"
+EXPECT="nothing" check "\$env:GH_REPO given a command's output -> block" 2 \
+  "$(cmd_at "$A" PowerShell "\$env:GH_REPO = Get-Content .repo; gh pr merge 5")"
+EXPECT="$A||5" check "Remove-Item Env:GH_REPO unsets it -> where it runs" 2 \
+  "$(cmd_at "$A" PowerShell "\$env:GH_REPO = 'x/y'; Remove-Item Env:GH_REPO; gh pr merge 5")"
+# Reading GH_REPO, or setting another variable the same way, changes nothing.
+EXPECT="nothing" check "GH_REPO read three ways, then a merge -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "Get-ChildItem Env:GH_REPO; Write-Host \"repo: \$Env:GH_REPO\"; if (\$env:GH_REPO -eq 'x/y') { gh pr merge 5 }")"
+EXPECT="nothing" check "SetEnvironmentVariable of another variable, then a merge -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "[Environment]::SetEnvironmentVariable('GH_DEBUG', '1'); gh pr merge 5")"
+EXPECT="nothing" check "Set-Item Env:GH_REPO, then a merge that names its repository -> allow" 0 \
+  "$(cmd_at "$A" PowerShell "Set-Item Env:GH_REPO x/y; gh pr merge 5 --repo o/r")"
+# Its command names are read in any case too, so set-location moves the merge as
+# Set-Location does.
+EXPECT="$B||5" check "set-location, in lower case, then a merge -> where it went" 2 \
+  "$(cmd_at "$A" PowerShell "set-location $B; gh pr merge 5")"
+EXPECT="$A||5" check "CD, in upper case, then a merge -> not where it started" 0 \
+  "$(cmd_at "$A" PowerShell "CD $B; gh pr merge 5")"
 EXPECT="$A||5" check "a Monitor that merges once the checks pass -> that pull request" 2 \
   "$(cmd_at "$A" Monitor 'until gh pr checks 5; do sleep 30; done; gh pr merge 5 --squash')"
 EXPECT="$A||6" check "the same Monitor, harmless -> allow" 0 \

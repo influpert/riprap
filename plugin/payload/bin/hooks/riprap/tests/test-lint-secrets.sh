@@ -369,13 +369,61 @@ for c in 'timeout 30 grep -r API_KEY .' 'timeout 10 git show HEAD:.env' "timeout
     'stdbuf -oL grep -rn API_KEY .' 'xargs grep -r API_KEY .' 'timeout 30 rg -uu API_KEY' \
     'timeout 30 find . -type f -exec grep -l API_KEY {} +' 'ggrep -r API_KEY .' \
     'nice -n 10 grep -r API_KEY .' 'sudo -u nobody grep -r API_KEY .' 'env -u FOO grep -r API_KEY .' \
-    'ionice -c 3 grep -rn API_KEY .' 'time -p grep -r API_KEY .'; do
+    'ionice -c 3 grep -rn API_KEY .' 'time -p grep -r API_KEY .' 'sudo -R /srv/jail grep -r API_KEY .'; do
   check "$c -> block" 2 "$(bash_in "$PROJ" "$c")"
 done
 for c in 'timeout 30 grep -r API_KEY src/' 'timeout 30 test -f .env' 'sudo -u deploy chmod 600 /srv/app/.env' \
     'sudo -u deploy ls -la /srv/app/.env' 'nice -n 10 ls -la .env' 'stdbuf -oL tail -f log/dev.log'; do
   check "$c -> allow" 0 "$(bash_in "$PROJ" "$c")"
 done
+
+echo
+echo "--- Behind every prefix walk_command_start knows ---"
+# This walk kept a prefix list of its own, and it drifted from the one the
+# destructive and write guards read: `chronic grep -r KEY .` reached it as a
+# command called chronic, and `chronic ls .env` as one that reads .env. The names
+# are read from walk_command_start's own case arms, so a prefix added there with no
+# form here fails this suite instead of going untested. A form carries the operand
+# its prefix takes before the command: chrt a priority, taskset a mask, flock a
+# file, timeout a duration.
+prefix_form() {  # NAME -> the prefix as an agent writes it, in PREFIX_FORM
+  case "$1" in
+    chrt) PREFIX_FORM="chrt 10" ;;
+    taskset) PREFIX_FORM="taskset 1" ;;
+    flock) PREFIX_FORM="flock /tmp/riprap.lock" ;;
+    timeout | gtimeout) PREFIX_FORM="$1 5" ;;
+    nice) PREFIX_FORM="nice -n 5" ;;
+    ionice) PREFIX_FORM="ionice -c 3" ;;
+    stdbuf) PREFIX_FORM="stdbuf -oL" ;;
+    caffeinate) PREFIX_FORM="caffeinate -i" ;;
+    watch) PREFIX_FORM="watch -n 1" ;;
+    sudo | doas | gsudo | env | command | builtin | nohup | noglob | exec | time | setsid | \
+      unbuffer | chronic | winpty | wsl | xargs) PREFIX_FORM="$1" ;;
+    *) return 1 ;;
+  esac
+}
+PREFIXES=$(sed -n '/^walk_command_start()/,/^}/p' "$SCRIPT_DIR/../lib/shell-walk.sh" \
+  | sed -n 's/^      \([a-z][a-z0-9 |]*\)).*/\1/p' | tr '|' ' ')
+n_prefixes=0
+for name in $PREFIXES; do
+  n_prefixes=$((n_prefixes + 1))
+  if ! prefix_form "$name"; then
+    FAIL=$((FAIL + 1))
+    printf 'FAIL: walk_command_start knows the prefix %s, and this suite has no form for it\n' "$name"
+    continue
+  fi
+  check "$PREFIX_FORM grep -r API_KEY . -> block" 2 "$(bash_in "$PROJ" "$PREFIX_FORM grep -r API_KEY .")"
+  check "$PREFIX_FORM ls -la .env -> allow (it only names the file)" 0 \
+    "$(bash_in "$PROJ" "$PREFIX_FORM ls -la .env")"
+done
+# An extraction that matched nothing would make the loop above pass vacuously.
+if [ "$n_prefixes" -lt 20 ]; then
+  FAIL=$((FAIL + 1)); printf 'FAIL: read only %s prefixes from walk_command_start\n' "$n_prefixes"
+fi
+check "a prefix named by its path, /usr/bin/nice -> block" 2 "$(bash_in "$PROJ" '/usr/bin/nice grep -r API_KEY .')"
+check "chronic git show HEAD:.env -> block (the parser behind it is reached)" 2 \
+  "$(bash_in "$PROJ" 'chronic git show HEAD:.env')"
+check "chronic git show HEAD:src/app.ts -> allow" 0 "$(bash_in "$PROJ" 'chronic git show HEAD:src/app.ts')"
 
 echo
 echo "--- find: what -exec runs, and what -prune leaves out ---"
@@ -424,6 +472,14 @@ check 'grep -rn "$PWD" -> block' 2 "$(bash_in "$PROJ" 'grep -rn API_KEY "$PWD"')
 HOME="$TMP" check 'grep -rn ~/proj -> block' 2 "$(bash_in "$PROJ" 'grep -rn API_KEY ~/proj')"
 check 'cd "$CLAUDE_PROJECT_DIR/src" && grep -rn . -> allow' 0 \
   "$(bash_in "$PROJ" 'cd "$CLAUDE_PROJECT_DIR/src" && grep -rn API_KEY .')"
+# popd goes back to where its pushd left, as the walk the other guards read follows
+# it. Followed here by a copy that knew no stack, a popd lost the directory and the
+# search after it went unchecked.
+check 'pushd src && popd && grep -rn . -> block (popd returns to the root)' 2 \
+  "$(bash_in "$PROJ" 'pushd src && popd && grep -rn API_KEY .')"
+check 'pushd src && grep -rn . -> allow (the root moved)' 0 "$(bash_in "$PROJ" 'pushd src && grep -rn API_KEY .')"
+check 'Push-Location src; Pop-Location; rg -uu -> block' 2 \
+  "$(jq -cn --arg d "$PROJ" '{tool_name:"PowerShell",cwd:$d,tool_input:{command:"Push-Location src; Pop-Location; rg -uu API_KEY"}}')"
 check 'grep -rn "$PWD/src" -> allow' 0 "$(bash_in "$PROJ" 'grep -rn API_KEY "$PWD/src"')"
 
 echo

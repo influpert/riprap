@@ -57,6 +57,12 @@ _secret_reads_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Invoke-Expression run, the same answer the destructive and write guards read.
 # shellcheck source=./shell-tools.sh
 . "$_secret_reads_dir/shell-tools.sh"
+# walk_command_start, which finds the command behind its prefixes, and the walk's
+# cd, pushd and popd follower: the same answers the destructive and write guards
+# read. This file kept copies of both, and they drifted: `chronic grep -r KEY .`
+# reached it as a command called chronic, and a popd lost the directory.
+# shellcheck source=./shell-walk.sh
+. "$_secret_reads_dir/shell-walk.sh"
 unset _secret_reads_dir
 
 # --- which commands read -------------------------------------------------------
@@ -136,7 +142,7 @@ SECRET_SEARCH_SKIP_DIRS=(
 # function reached outside a walk still finds them set; secret_command_touches_env
 # gives each walk its own.
 _SR_SEP=$'\x1f'
-_SR_VN=() _SR_VV=() _SR_STASH_T=() _SR_STASH_W=() _SR_STASH_Q=()
+_SR_VN=() _SR_VV=() _SR_STASH_T=() _SR_STASH_W=() _SR_STASH_Q=() _SR_PUSHED=()
 _SR_PIPE_FIND="" _SR_PIPE_FINDQ="" _SR_FIND_SRC="" _SR_FIND_SRCQ=""
 
 # --- helpers -------------------------------------------------------------------
@@ -1767,105 +1773,30 @@ _secret_copy_stays() {
 
 # --- the command walk ------------------------------------------------------------
 
-# _secret_unwrap K — from index K past assignments, keywords and wrappers to the
-# command a simple command runs, in _SR_K. A wrapper's options are skipped with
-# their values: `nice -n 10 grep` runs grep, not a command called 10, and
-# `timeout 30 grep` runs grep, not one called 30. When xargs is one of them,
-# _SR_XARGS is 1 and _SR_XARGS_REPL is its -I string, if it has one.
-_secret_unwrap() {
-  local k="$1" n=${#_SR_W[@]} w o vals longs j c rest skip br='{}'
-  _SR_XARGS=0 _SR_XARGS_REPL=""
-  while [ "$k" -lt "$n" ]; do
-    w="${_SR_W[$k]}"
-    case "$w" in
-      [A-Za-z_]*=*) k=$((k + 1)); continue ;;
-      if | then | else | elif | do | while | until | '!' | '{') k=$((k + 1)); continue ;;
-      sudo) vals=ugpCDhrtTUR; longs=" --user --group --prompt --close-from --chdir --host --role --type --command-timeout --other-user --chroot " ;;
-      doas) vals=uC; longs=" " ;;
-      env) vals=uCS; longs=" --unset --chdir --split-string " ;;
-      nice) vals=n; longs=" --adjustment " ;;
-      ionice) vals=cnpPu; longs=" --class --classdata --pid --pgid --uid " ;;
-      time) vals=fo; longs=" --format --output " ;;
-      timeout | gtimeout) vals=sk; longs=" --signal --kill-after " ;;
-      stdbuf) vals=ioe; longs=" --input --output --error " ;;
-      xargs) vals=ILnPsdEa; longs=" --arg-file --delimiter --max-args --max-procs --max-lines --max-chars --process-slot-var "; _SR_XARGS=1 ;;
-      exec) vals=a; longs=" " ;;
-      command | builtin | nohup | setsid | unbuffer) vals=""; longs=" " ;;
-      *) break ;;
-    esac
-    k=$((k + 1))
-    while [ "$k" -lt "$n" ]; do
-      o="${_SR_W[$k]}"
-      case "$o" in
-        --) k=$((k + 1)); break ;;
-        --*=*)
-          [ "$w:${o%%=*}" != xargs:--replace ] || _SR_XARGS_REPL="${o#*=}"
-          k=$((k + 1))
-          ;;
-        --*)
-          [ "$w:$o" != xargs:--replace ] || _SR_XARGS_REPL="$br"
-          case "$longs" in *" $o "*) k=$((k + 2)) ;; *) k=$((k + 1)) ;; esac
-          ;;
-        -?*)
-          skip=0
-          j=1
-          while [ "$j" -lt "${#o}" ]; do
-            c="${o:$j:1}"
-            rest="${o:$((j + 1))}"
-            if [ "$w:$c" = xargs:i ]; then _SR_XARGS_REPL="${rest:-$br}"; break; fi
-            case "$vals" in
-              *"$c"*)
-                if [ -n "$rest" ]; then
-                  [ "$w:$c" != xargs:I ] || _SR_XARGS_REPL="$rest"
-                else
-                  skip=1
-                  [ "$w:$c" != xargs:I ] || _SR_XARGS_REPL="${_SR_W[$((k + 1))]:-}"
-                fi
-                break
-                ;;
-            esac
-            j=$((j + 1))
-          done
-          k=$((k + 1 + skip))
-          ;;
-        [A-Za-z_]*=*) case "$w" in env | sudo) k=$((k + 1)) ;; *) break ;; esac ;;
-        *) break ;;
-      esac
-    done
-    # timeout's first operand is its duration, not the command.
-    case "$w" in timeout | gtimeout) [ "$k" -ge "$n" ] || k=$((k + 1)) ;; esac
+# _secret_follow_dir START — move _SR_BASE as the cd, pushd or popd in _SR_W from
+# START moves the shell, or PowerShell's Set-Location, Push-Location or
+# Pop-Location. The moving is lib/shell-walk.sh's _walk_follow_dir, the follower
+# the destructive and write guards read, so the three agree on where a relative
+# path lands, and a popd goes back to where its pushd left. This file kept a
+# follower of its own that knew no stack, so `pushd src && popd && grep -r KEY .`
+# lost the directory and the search after it went unchecked.
+#
+# Each word is resolved first by _secret_resolve, which knows the names an agent
+# gives the project root — $CLAUDE_PROJECT_DIR, $(git rev-parse --show-toplevel)
+# — that the walk's own expansion does not. The follower reads and writes its
+# caller's seg, dir, pushed and start through bash's dynamic scope; start is left
+# empty, so a destination it cannot work out empties _SR_BASE, which is what an
+# unknown directory is here: what depends on it, a search root or a relative glob,
+# is then not checked.
+_secret_follow_dir() {
+  local w dir="${_SR_BASE:-}" start=""
+  local -a seg=() pushed=(${_SR_PUSHED[@]+"${_SR_PUSHED[@]}"})
+  for w in "${_SR_W[@]:$1}"; do
+    if _secret_resolve "$w"; then seg+=("$_SR_RES"); else seg+=("$w"); fi
   done
-  _SR_K="$k"
-}
-
-# _secret_cd START — follow `cd DIR` so later relative paths resolve where the
-# shell would resolve them. A directory the hook cannot know empties the base, and
-# what depends on it — a search root, a relative glob — is then not checked.
-_secret_cd() {
-  local t="${_SR_W[$1]:-}"
-  case "$t" in
-    -P | -L | -e | -@) t="${_SR_W[$(($1 + 1))]:-}" ;;
-    # PowerShell's Set-Location -Path DIR, in any case.
-    -[PpLl]*)
-      shell_cmd_name "$t"
-      case "$SHELL_CMD_NAME" in -path | -literalpath | -lp) t="${_SR_W[$(($1 + 1))]:-}" ;; esac
-      ;;
-  esac
-  [ -n "$t" ] || t="${HOME:-}"
-  if [ -z "$t" ] || [ "$t" = - ] || ! _secret_resolve "$t"; then
-    _SR_BASE=""
-    return 0
-  fi
-  t="$_SR_RES"
-  case "$t" in
-    /*) ;;
-    *) [ -n "${_SR_BASE:-}" ] || return 0; t="$_SR_BASE/$t" ;;
-  esac
-  if [ -d "$t" ]; then
-    _SR_BASE=$(cd "$t" 2>/dev/null && pwd) || _SR_BASE="$t"
-  else
-    _SR_BASE="$t"
-  fi
+  _walk_follow_dir
+  _SR_BASE="$dir"
+  _SR_PUSHED=(${pushed[@]+"${pushed[@]}"})
 }
 
 # _secret_for START — `for NAME in WORD...`: NAME holds each word in turn, so the
@@ -1884,7 +1815,7 @@ _secret_for() {
 # _secret_simple DEPTH — one simple command, its words in _SR_W and _SR_Q, and
 # its heredoc bodies in _SR_HD.
 _secret_simple() {
-  local depth="$1" n=${#_SR_W[@]} j=0 k ci w q cmd lcmd t h
+  local depth="$1" n=${#_SR_W[@]} j=0 k ci w q cmd lcmd t h at=0
   local -a w2=() q2=() hs=()
   _SR_FIND_SRC="" _SR_FIND_SRCQ=""
 
@@ -1954,8 +1885,15 @@ _secret_simple() {
     return 1
   fi
 
-  _secret_unwrap 0
-  k="$_SR_K"
+  # The command behind its prefixes — sudo -u x, timeout 30, nice -n 10, flock
+  # FILE, xargs -I{} and the rest — is walk_command_start's (lib/shell-walk.sh),
+  # once the reserved words that open a compound command are stepped over as the
+  # walk steps over them. One list, read by every guard: a prefix one guard sees
+  # through and another does not is a way past the second that nobody chose.
+  while [ "$at" -lt "$n" ] && [ "${_SR_Q[$at]}" = 0 ] && _walk_is_reserved "${_SR_W[$at]}"; do at=$((at + 1)); done
+  walk_command_start "" "${_SR_W[@]:$at}"
+  k=$((at + WALK_CMD_AT))
+  _SR_XARGS="$WALK_CMD_XARGS" _SR_XARGS_REPL="$WALK_CMD_REPL"
   [ "$k" -lt "$n" ] || return 1
   ci="$k"
   cmd="${_SR_W[$k]##*/}"
@@ -1971,19 +1909,17 @@ _secret_simple() {
     fi
   done
 
-  # PowerShell's names for cd, pushd and popd, in any case. A bare Push-Location
-  # only pushes where it is.
+  # cd, pushd and popd, and PowerShell's names for them in any case.
   shell_cmd_name "$cmd"
   lcmd="$SHELL_CMD_NAME"
   case "$lcmd" in
-    set-location | sl | chdir) _secret_cd "$k"; return 1 ;;
-    push-location) [ "$k" -ge "$n" ] || _secret_cd "$k"; return 1 ;;
-    pop-location) _SR_BASE=""; return 1 ;;
+    cd | pushd | popd | chdir | set-location | sl | push-location | pop-location)
+      _secret_follow_dir "$at"
+      return 1
+      ;;
   esac
 
   case "$cmd" in
-    cd | pushd) _secret_cd "$k"; return 1 ;;
-    popd) _SR_BASE=""; return 1 ;;
     # A loop's words are names, and become its variable's value.
     for | select) _secret_for "$k"; return 1 ;;
     # A case's words are patterns; a word starting with a dash is the far side of
@@ -2131,6 +2067,8 @@ _secret_analyze() {
   local -a _SR_W=() _SR_Q=() _SR_HD=() toks=() ops=() quoted=() bodies=() body_at=() seg=() segq=()
   local -a kinds=() saved_base=() saved_seg=() saved_segq=() sub_start=() sub_glued=()
   local -a hd_at=() hd_body=() seghd=() saved_hd=()
+  # The pushd stack is the shell's that runs TEXT: a `bash -c` script starts empty.
+  local -a _SR_PUSHED=()
   # In a variable: a regex written inline after =~ is quoted differently across
   # bash versions, and a `\>` that reaches regcomp is a word boundary, not a `>`.
   local out_re='^[0-9]*>[>|]?$'

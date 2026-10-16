@@ -187,7 +187,7 @@ walk_literal_dir() {
 
 # Words that open or continue a compound command. They come first in what the
 # tokenizer hands over as a simple command — `then rm -rf x` — and are not the
-# command that runs.
+# command that runs. lib/secret-reads.sh steps over them with this too.
 _walk_is_reserved() {
   case "$1" in
     '{' | '}' | '!' | 'if' | 'then' | 'else' | 'elif' | 'fi' | 'do' | 'done' | 'while' | 'until' | 'esac') return 0 ;;
@@ -323,7 +323,9 @@ walk_commands() {  # $1 = text, $2 = starting directory, $3 = callback
 
 # Apply the cd / pushd / popd in `seg`, if it is one, or PowerShell's Set-Location,
 # Push-Location or Pop-Location. Reads and writes walk_commands' locals through
-# bash's dynamic scope.
+# bash's dynamic scope: seg, dir, pushed and start. lib/secret-reads.sh, whose walk
+# is its own, calls it with locals of those names, so the secret guard follows a
+# directory exactly as the destructive and write guards do.
 _walk_follow_dir() {
   local j=0 m=${#seg[@]} argv0 name dest=""
   # Assignments, and the two builtins that run a builtin by name.
@@ -497,7 +499,9 @@ _walk_cd() {
 # shorter list of its own, so `timeout 60 cp a /outside` reached it as a command
 # called timeout while the destructive guard refused `timeout 60 rm -rf /outside`.
 # And this list was shorter than the merge gate's, so `ionice -c3 nice -n19 rm -rf`,
-# the ordinary way to delete a large tree gently, reached both guards as ionice.
+# the ordinary way to delete a large tree gently, reached both guards as ionice. The
+# secret guard kept a copy of its own, which never learnt chronic, flock or taskset,
+# so `chronic grep -r KEY .` reached it as a command called chronic.
 walk_command_start() {  # $1 = directory, then the words
   local dir="$1" a k=0 n repl="" xargs=0
   shift
@@ -514,8 +518,10 @@ walk_command_start() {  # $1 = directory, then the words
     k=$((k + 1))
     shell_cmd_name "${a##*/}"
     case "$SHELL_CMD_NAME" in
-      sudo | doas) _walk_skip_options "-u -g -p -C -r -t -U -T --user --group --prompt
-        --close-from --role --type --other-user --command-timeout" "-D --chdir" ;;
+      # sudo's -R is the root it chroots to. Its -h is --help: the host form takes
+      # its value glued on (-hHOST), so `sudo -h rm` is no host called rm.
+      sudo | doas) _walk_skip_options "-u -g -p -C -r -t -U -T -R --user --group --prompt
+        --close-from --role --type --other-user --command-timeout --chroot" "-D --chdir" ;;
       gsudo) _walk_skip_options "-u -i --user --integrity" ;;
       env) _walk_skip_options "-u --unset" "-C --chdir" ;;
       command)

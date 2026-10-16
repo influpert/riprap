@@ -75,18 +75,20 @@ prose alone does not survive a busy afternoon.
      one tried after `cat` is refused. `git show <rev>:<path>` reads the path it names;
      `git log -- .env` does not, until `-p` asks for the patch.
    - **The same command, however it is dressed.** A wrapper is looked through, options and
-     all — `timeout 30`, `sudo -u deploy`, `nice -n 10`, `xargs`, `stdbuf -oL`. A
-     substitution (`"$(cat .env)"`, read from where its command runs, after any `cd`), a
+     all — `timeout 30`, `sudo -u deploy`, `nice -n 10`, `flock FILE`, `xargs`, `stdbuf -oL`
+     — by the one list the destructive and write guards read too. A substitution
+     (`"$(cat .env)"`, read from where its command runs, after any `cd`), a
      `bash -c '…'` script and its `$1`, the text handed to `pwsh -Command`,
      `Invoke-Expression` or `cmd /c` (where `type` prints a file), and a heredoc
      or here-string fed to a shell with no script of its own (`bash <<'EOF'`) are read as
      commands. Globs and brace expansion are expanded as the shell would (`cat .env*`,
      `cat .env{,.local}`). A `cd` is followed, by path or by `$CLAUDE_PROJECT_DIR`, `$PWD`,
      `~` or `$(git rev-parse --show-toplevel)`, so `cd secrets && cat api.json` reads
-     `secrets/api.json`; so are PowerShell's `Set-Location` and `Push-Location`. A literal
-     path put in a variable, or walked by a `for` loop, is
-     followed into the commands after it. Comments, quoted prose and a heredoc fed to any
-     other command are not read as commands — the backticks in a commit message are text.
+     `secrets/api.json`; so are `pushd` and `popd`, and PowerShell's `Set-Location`,
+     `Push-Location` and `Pop-Location`. A literal path put in a variable, or walked by a
+     `for` loop, is followed into the commands after it. Comments, quoted prose and a
+     heredoc fed to any other command are not read as commands — the backticks in a commit
+     message are text.
    - **A copy to a name the patterns do not recognise**, such as `cp .env /tmp/env-copy`:
      the next read of the copy would go through.
    - **A file handed to a program that then prints it**: `--env-file .env` with a container

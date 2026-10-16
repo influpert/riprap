@@ -113,8 +113,9 @@ prose alone does not survive a busy afternoon.
 
    Every refusal names the path it matched and a way forward that works: the tests run
    each suggested search back through the hook.
-2. **A pre-commit hook** — `bin/hooks/git/pre-commit` refuses a staged secret-bearing file
-   and scans staged additions for token values.
+2. **A pre-commit hook** — `bin/hooks/git/pre-commit` refuses a staged secret-bearing file,
+   with the same allowance for a directory called `secrets` that is source, and scans
+   staged additions for token values.
 3. **Permission rules, if you add them.** riprap ships `permissions.suggested.json`, whose
    `deny` list refuses `Read` on the paths above. `/riprap:install` shows it and offers its
    entries for you to choose; it never writes `.claude/settings.json` itself, because a
@@ -124,8 +125,9 @@ prose alone does not survive a busy afternoon.
    than replace it.
 
 Layers 1 and 2 share one pattern library, `bin/hooks/riprap/lib/secret-patterns.sh`, so which
-files count as secret-bearing has a single definition and cannot drift between its two
-enforcers. Whether a command or a search *reads* one is decided in
+files count as secret-bearing — the names, and the one exception for a directory of secrets
+that is source — has a single definition and cannot drift between its two enforcers.
+Whether a command or a search *reads* one is decided in
 `bin/hooks/riprap/lib/secret-reads.sh`, which asks that same definition about every path.
 
 Two properties of that library are deliberate and worth not "fixing":
@@ -171,9 +173,11 @@ refuses them is one people switch off.
   `site-packages`, `vendor` and the like. certifi's `cacert.pem` is a public CA bundle in
   every Python virtualenv; a key in a package's test fixtures is nobody's credential.
 - **A directory called `secrets` that is source.** A Go package at `internal/secrets/`, or
-  a Rails `config/credentials/` with its tracked `.yml.enc`: when git tracks files in it,
-  only what `.gitignore` keeps out of it is treated as a secret. A directory git tracks
-  nothing in is a store of secrets, and so is one that does not exist.
+  a Rails `config/credentials/` with its committed `.yml.enc`: when the last commit has
+  files in it, only what `.gitignore` keeps out of it is treated as a secret, by the hook
+  and by the pre-commit alike, so an edit the agent may make is one it may commit. A
+  directory with nothing committed is a store of secrets, and so is one that does not
+  exist. Staging a file, or force-adding an ignored one, changes neither answer.
 - **A Grep, or plain `rg`, with `.gitignore` in force and no ignored path given.** They
   leave an ignored `.env` alone, so the hook does not walk the tree on every search to
   second-guess them. A secret file that `.gitignore` does not cover is within their reach:

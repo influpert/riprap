@@ -279,7 +279,7 @@ case "$SURFACE" in
     # The path is judged as a Bash argument is: where it resolves from the call's
     # directory, measured from the project, so a project that itself sits under a
     # directory called secrets/ is not all secret-bearing, and a Go package called
-    # internal/secrets/ that git tracks is source.
+    # internal/secrets/ with committed files is source (secret_source_under_secrets).
     if [ -n "$TARGET" ] && secret_tool_target "$TOOL_NAME" "$TARGET" "$CWD"; then
       case "$TOOL_NAME:$SECRET_HIT_WHY" in
         Read:*) block_named "Read would open it" Read ;;

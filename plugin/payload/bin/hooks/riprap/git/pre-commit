@@ -122,8 +122,17 @@ FAILED=0
 # an opinion rather than the hook falling over, which is why it sat here. An
 # empty commit is the obvious way in, but so is any commit whose staged set is
 # empty by the time this runs.
+#
+# A file secret-bearing only by its directory, in a directory called secrets that
+# is source — a Go package at internal/secrets/ — is source here as it is to the
+# Claude hook: secret_source_under_secrets is the one definition both ask. Asked
+# by the hook alone, the agent was let edit internal/secrets/store.go and then
+# refused the commit, with --no-verify the only way on.
 for f in ${STAGED[@]+"${STAGED[@]}"}; do
   if secret_env_file_path "$f"; then
+    if ! secret_env_file_path "${f##*/}" && secret_source_under_secrets "$f" "$REPO_ROOT/$f"; then
+      continue
+    fi
     echo "❌ Refusing to commit a secret-bearing file: $f" >&2
     echo "   Add it to .gitignore. Commit a .example instead." >&2
     FAILED=1

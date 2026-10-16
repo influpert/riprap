@@ -278,6 +278,53 @@ else
   FAIL=$((FAIL + 1)); printf 'FAIL: pre-commit refused .env.example (exit=%s)\n' "$rc"
 fi
 
+# A directory called secrets that is source is source to both enforcers. Judged so
+# by the Claude hook alone, an agent was let edit internal/secrets/store.go and
+# then refused the commit. Both ask the last commit and .gitignore, never the
+# index: staged, a file would make its own directory "tracked", and `git add -f`
+# makes a key one an index-aware check-ignore never calls ignored.
+SRCSIDE="$TMP/srcside"
+mkdir -p "$SRCSIDE/bin/hooks" "$SRCSIDE/internal/secrets" "$SRCSIDE/config/credentials" "$SRCSIDE/secrets"
+cp -R "$SCRIPT_DIR/.." "$SRCSIDE/bin/hooks/riprap"
+printf 'config/credentials/*.key\n' > "$SRCSIDE/.gitignore"
+printf 'package secrets\nfunc Get() {}\n' > "$SRCSIDE/internal/secrets/store.go"
+printf 'ciphertext\n' > "$SRCSIDE/config/credentials/production.yml.enc"
+git -C "$SRCSIDE" init -q
+git -C "$SRCSIDE" add -A
+git -C "$SRCSIDE" -c user.name=t -c user.email=t@example.invalid commit -qm init
+git -C "$SRCSIDE" config core.hooksPath bin/hooks/riprap/git
+commit_src() {  # EXPECT DESCRIPTION PATH [git add option] — EXPECT: pass, or the refusal's text
+  local expect="$1" desc="$2" path="$3" out rc
+  git -C "$SRCSIDE" add ${4:+"$4"} -- "$path"
+  out=$(git -C "$SRCSIDE" -c user.name=t -c user.email=t@example.invalid commit -qm "edit $path" 2>&1)
+  rc=$?
+  # A hook that never ran would pass too, so a pass has to be the hook's own.
+  case "$expect:$rc:$out" in
+    pass:0:*"secret hygiene passed"*) PASS=$((PASS + 1)); printf 'PASS: %s\n' "$desc" ;;
+    pass:*) FAIL=$((FAIL + 1)); printf 'FAIL: %s (exit=%s):\n%s\n' "$desc" "$rc" "$out" ;;
+    *:0:*) FAIL=$((FAIL + 1)); printf 'FAIL: %s (committed)\n' "$desc" ;;
+    *:*:*"$expect"*) PASS=$((PASS + 1)); printf 'PASS: %s\n' "$desc"; git -C "$SRCSIDE" rm -q --cached -- "$path" ;;
+    *) FAIL=$((FAIL + 1)); printf 'FAIL: %s (refused for another reason):\n%s\n' "$desc" "$out" ;;
+  esac
+}
+check "sed -i on tracked source in internal/secrets/ -> allow" 0 \
+  "$(bash_in "$SRCSIDE" 'sed -i s/Get/Fetch/ internal/secrets/store.go')"
+printf 'package secrets\nfunc Fetch() {}\n' > "$SRCSIDE/internal/secrets/store.go"
+commit_src pass "...and pre-commit commits the edit it allowed" internal/secrets/store.go
+printf 'ciphertext, rotated\n' > "$SRCSIDE/config/credentials/production.yml.enc"
+commit_src pass "pre-commit commits an edit to a committed .yml.enc in config/credentials/" \
+  config/credentials/production.yml.enc
+printf '{"api_key":"not-a-real-value"}\n' > "$SRCSIDE/secrets/api.json"
+commit_src "secret-bearing file: secrets/api.json" \
+  "pre-commit refuses a first file in a secrets/ with nothing committed (staging it is no evidence)" \
+  secrets/api.json
+printf 'not-a-real-value\n' > "$SRCSIDE/config/credentials/prod.key"
+git -C "$SRCSIDE" add -f -- config/credentials/prod.key
+check "cat a force-staged, ignored key beside the committed .yml.enc -> block" 2 \
+  "$(bash_in "$SRCSIDE" 'cat config/credentials/prod.key')"
+commit_src "secret-bearing file: config/credentials/prod.key" \
+  "...and pre-commit refuses it: .gitignore says what it is, not the index" config/credentials/prod.key -f
+
 echo
 echo "--- The Grep tool ---"
 check "Grep glob .env* -> block (a glob overrides .gitignore)" 2 \

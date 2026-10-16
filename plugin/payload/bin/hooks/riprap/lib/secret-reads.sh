@@ -207,13 +207,6 @@ _secret_rel() {
   return 0
 }
 
-# git, without the repository-local variables a git hook exports. These calls only
-# read, but with an ambient GIT_DIR they would answer about the wrong repository.
-_secret_git_isolated() {
-  # shellcheck disable=SC2046  # the variable names are git's own list
-  (unset $(git rev-parse --local-env-vars 2>/dev/null); exec git "$@")
-}
-
 _secret_hit_reset() {
   SECRET_HIT_PATH="" SECRET_HIT_BY="" SECRET_HIT_KIND="" SECRET_HIT_ROOT="" SECRET_HIT_FILES=""
   SECRET_HIT_DIR="" SECRET_HIT_CMD="" SECRET_HIT_WHY="" SECRET_HIT_OPTS="" SECRET_HIT_EXPR=""
@@ -266,41 +259,6 @@ _secret_resolve() {
   return 0
 }
 
-# _secret_source_under_secrets REL ABS — 0 when a path that is secret-bearing only
-# because a directory on its way is called secrets/ (or config/credentials/) is in
-# fact source. That directory has files git tracks — internal/secrets/ in a Go
-# module, config/credentials/ beside its tracked .yml.enc — and the path is not
-# one .gitignore keeps out. Inside such a directory the ignored files are the
-# live ones, the same line the search check draws; a file the agent has just
-# written is untracked but not ignored, and it is source too. A directory git
-# tracks nothing in is a store of secrets, as is one that does not exist.
-_secret_source_under_secrets() {
-  local rel="${1%/}" abs="${2%/}" pat r head anchor dir
-  for pat in "${SECRET_PATH_PREFIXES[@]}"; do
-    case "/$rel/" in */"$pat"*) break ;; esac
-    pat=""
-  done
-  [ -n "$pat" ] || return 1
-  case "$rel" in
-    /*) r="$rel/"; anchor="" ;;
-    *) r="/$rel/"; anchor="${abs%/"$rel"}" ;;
-  esac
-  head="${r%%/"$pat"*}"
-  dir="$anchor$head/${pat%/}"
-  [ -d "$dir" ] || return 1
-  [ -n "$(_secret_git_isolated -C "$dir" ls-files -- . 2>/dev/null | head -n 1)" ] || return 1
-  if [ -d "$abs" ]; then
-    [ -z "$(_secret_git_isolated -C "$abs" ls-files -o -i --exclude-standard --directory -- . 2>/dev/null | head -n 1)" ]
-    return
-  fi
-  if [ -e "$abs" ]; then
-    ! _secret_git_isolated -C "${abs%/*}" check-ignore -q -- "${abs##*/}" 2>/dev/null
-    return
-  fi
-  # Not on disk — `./internal/secrets/...` is a package pattern: the directory decides.
-  [ -z "$(_secret_git_isolated -C "$dir" ls-files -o -i --exclude-standard --directory -- . 2>/dev/null | head -n 1)" ]
-}
-
 # _secret_named PATH — 0 if PATH names a secret-bearing file or directory, with
 # the path to report in _SR_NAMED. Judged as spelled, an absolute path measured
 # from its project, and then where it resolves when the spelling alone does not
@@ -320,14 +278,14 @@ _secret_named() {
     secret_env_file_path "${spelled##*/}" && return 0
     [ -n "$abs" ] || return 0
     _secret_rel "$abs"
-    ! _secret_source_under_secrets "$_SR_REL" "$abs"
+    ! secret_source_under_secrets "$_SR_REL" "$abs"
     return
   fi
   { [ -n "$abs" ] && [ -e "$abs" ]; } || return 1
   _secret_rel "$abs"
   [ "$_SR_REL" != "$spelled" ] || return 1
   secret_env_file_path "$_SR_REL" || return 1
-  _secret_source_under_secrets "$_SR_REL" "$abs" && return 1
+  secret_source_under_secrets "$_SR_REL" "$abs" && return 1
   _SR_NAMED="$abs"
   return 0
 }
@@ -853,7 +811,7 @@ _secret_check_root() {
   fi
   if [ -n "$abs" ]; then
     _secret_rel "$abs"
-    _secret_source_under_secrets "$_SR_REL" "$abs" && return 1
+    secret_source_under_secrets "$_SR_REL" "$abs" && return 1
   fi
   _secret_hit "$root" "$2"
 }
@@ -877,7 +835,7 @@ _secret_check_root() {
 # it. Counting them would block every search from the root of a repository that
 # commits a .env.development or a test fixture called server.pem, until someone
 # turned the hook off. So are dependency directories (SECRET_SEARCH_SKIP_DIRS),
-# and files in a directory of secrets that is source (_secret_source_under_secrets).
+# and files in a directory of secrets that is source (secret_source_under_secrets).
 _secret_reach() {
   local mode="$1" root="$2" by="$3" follow="${4:-0}" hidden="${5:-0}" noignore="${6:-0}"
   local abs f d b pat comp rest v reached show sd
@@ -957,7 +915,7 @@ _secret_reach() {
     # Secret-bearing only by its directory, in a directory that is source.
     if ! secret_env_file_path "$b"; then
       _secret_rel "${abs%/}/$f"
-      ! _secret_source_under_secrets "$_SR_REL" "${abs%/}/$f" || continue
+      ! secret_source_under_secrets "$_SR_REL" "${abs%/}/$f" || continue
     fi
     reached=1
     if [ "$mode" = find ]; then

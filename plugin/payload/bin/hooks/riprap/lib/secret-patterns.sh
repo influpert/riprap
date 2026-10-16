@@ -5,9 +5,11 @@
 #
 # Two concerns:
 #   1. Secret-bearing files (.env*, key files) must never be read into an agent
-#      context or committed. secret_env_file_path is the ONLY definition of which
-#      paths those are; the command and search checks in secret-reads.sh ask it
-#      rather than keeping a list of their own, which is how they used to drift.
+#      context or committed. secret_env_file_path, with its one exception
+#      secret_source_under_secrets, is the ONLY definition of which paths those
+#      are; the command and search checks in secret-reads.sh and the pre-commit
+#      ask it rather than keeping a list of their own, which is how they used to
+#      drift.
 #   2. High-signal secret token values must never be written into files or
 #      staged in a commit.
 #
@@ -85,6 +87,57 @@ secret_env_file_path() {
   done
 
   return 1
+}
+
+# secret_source_under_secrets REL ABS — 0 when REL, secret-bearing only because a
+# directory on its way is called secrets/ (or config/credentials/), is in fact
+# source: that directory has files in the last commit — internal/secrets/ in a Go
+# module, config/credentials/ beside its committed .yml.enc — and .gitignore does
+# not keep REL out. Inside such a directory the ignored files are the live ones; a
+# file just written is not ignored, and it is source too. A directory with nothing
+# committed is a store of secrets, as is one that does not exist. ABS is where REL
+# is on disk, and REL is measured from ABS's project.
+#
+# The one exception to secret_env_file_path, and both enforcers make it: the Claude
+# hook before a read, and the pre-commit before refusing a staged file. Made by one
+# of them only, the agent was let read and edit internal/secrets/store.go and then
+# refused the commit. It asks the last commit and .gitignore, never the index,
+# because the index is what a commit is about to change: staged, secrets/api.json
+# would make its own directory "tracked", and `git add -f` makes a file one that an
+# index-aware check-ignore never calls ignored.
+secret_source_under_secrets() {
+  local rel="${1%/}" abs="${2%/}" pat r head anchor dir
+  for pat in "${SECRET_PATH_PREFIXES[@]}"; do
+    case "/$rel/" in */"$pat"*) break ;; esac
+    pat=""
+  done
+  [ -n "$pat" ] || return 1
+  case "$rel" in
+    /*) r="$rel/"; anchor="" ;;
+    *) r="/$rel/"; anchor="${abs%/"$rel"}" ;;
+  esac
+  head="${r%%/"$pat"*}"
+  dir="$anchor$head/${pat%/}"
+  [ -d "$dir" ] || return 1
+  [ -n "$(_secret_git_isolated -C "$dir" ls-tree -r --name-only HEAD -- . 2>/dev/null | head -n 1)" ] || return 1
+  if [ -d "$abs" ]; then
+    [ -z "$(_secret_git_isolated -C "$abs" ls-files -o -i --exclude-standard --directory -- . 2>/dev/null | head -n 1)" ]
+    return
+  fi
+  if [ -e "$abs" ]; then
+    ! _secret_git_isolated -C "${abs%/*}" check-ignore -q --no-index -- "${abs##*/}" 2>/dev/null
+    return
+  fi
+  # Not on disk — `./internal/secrets/...` is a package pattern: the directory decides.
+  [ -z "$(_secret_git_isolated -C "$dir" ls-files -o -i --exclude-standard --directory -- . 2>/dev/null | head -n 1)" ]
+}
+
+# git, without the repository-local variables a git hook exports. These calls only
+# read, but with an ambient GIT_DIR they would answer about the wrong repository —
+# and in the pre-commit there is one.
+_secret_git_isolated() {
+  # shellcheck disable=SC2046  # the variable names are git's own list
+  (unset $(git rev-parse --local-env-vars 2>/dev/null); exec git "$@")
 }
 
 # Scan text against the token patterns. Echoes each match as

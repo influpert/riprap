@@ -104,6 +104,13 @@ check "quoted > is text, not a redirect -> allow" 0 \
   "$(bash_in "$REPO" "git commit -m 'a > $OTHER/b'")"
 check "redirect after a heredoc -> block" 2 \
   "$(bash_in "$REPO" "cat <<'EOF' > $OTHER/x\\nbody\\nEOF")"
+# A shift in arithmetic is not a heredoc. Read as one, its delimiter (3) never came,
+# and every line after it was taken for the body.
+check "redirect on the line after \$((1<<3)) -> block" 2 \
+  "$(bash_in "$REPO" "x=\$((1<<3))\\necho hi > $OTHER/x")"
+check "...after (( x <<= 1 )) -> block" 2 "$(bash_in "$REPO" "(( x <<= 1 ))\\necho hi > $OTHER/x")"
+check "...and a heredoc after it is still data -> allow" 0 \
+  "$(bash_in "$REPO" "x=\$((1<<3))\\ncat <<'EOF' > tmp/notes.md\\necho hi > $OTHER/x\\nEOF")"
 
 echo
 echo "--- A quoted > is an argument; an unquoted one is a redirection, glued or not ---"

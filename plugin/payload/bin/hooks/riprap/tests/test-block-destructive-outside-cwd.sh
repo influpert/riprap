@@ -189,6 +189,74 @@ check "rm as an argument to echo -> allow" 0 "$(bash_in "$WORK" "echo rm -rf $OT
 check "rm as a grep pattern over a path outside -> allow" 0 "$(bash_in "$WORK" "grep -n rm $OTHER/README.md")"
 
 echo
+echo "--- A shift in arithmetic is not a heredoc ---"
+# Read as a heredoc, the << in $((1<<3)) took 3 for a delimiter no line ever
+# matched, and every line after it vanished into the body. bash reads it as a
+# shift, in $((...)), in ((...)) and in a for ((...)), and runs those lines.
+check "an rm on the line after \$((1<<3)) -> block" 2 "$(bash_in "$WORK" "x=\$((1<<3))
+rm -rf $OTHER")"
+check "...after a dd block size of \$((1<<20)) -> block" 2 "$(bash_in "$WORK" "dd if=/dev/zero of=blob bs=\$((1<<20)) count=1
+rm -rf $OTHER")"
+check "...after (( x = 1 << 3 )) -> block" 2 "$(bash_in "$WORK" "(( x = 1 << 3 ))
+rm -rf $OTHER")"
+check "...after a for ((...)) loop with a shift in it -> block" 2 \
+  "$(bash_in "$WORK" "for ((i=0;i<1<<2;i++)); do :; done
+rm -rf $OTHER")"
+check "...after a shift inside parentheses inside \$((...)) -> block" 2 "$(bash_in "$WORK" "x=\$(( (1<<3) + 1 ))
+rm -rf $OTHER")"
+check "...after a multi-line \"\$(...)\" with a shift in it -> block" 2 "$(bash_in "$WORK" "msg=\"\$(
+  n=\$((1<<3))
+  echo \"size \$n\"
+)\"
+rm -rf $OTHER")"
+# A reserved word glued to the (( still starts a command: ( ends a word, and bash
+# reads for((...)), while((...)) and if((...)) as arithmetic.
+check "...after for((...)) with no space -> block" 2 "$(bash_in "$WORK" "for((i=0;i<1<<2;i++)); do :; done
+rm -rf $OTHER")"
+check "...after while((...)) with no space -> block" 2 "$(bash_in "$WORK" "while((n<<=1, n<64)); do :; done
+rm -rf $OTHER")"
+check "...after then((...)) with no space -> block" 2 "$(bash_in "$WORK" "if true;then((x=1<<3));fi
+rm -rf $OTHER")"
+# The arithmetic inside a word: an offset in \${...}, the old \$[...], and an array
+# subscript. bash reads each to its closing bracket, and the << there shifts.
+check "...after an offset \${x:1<<1} -> block" 2 "$(bash_in "$WORK" "echo \${x:1<<1}
+rm -rf $OTHER")"
+check "...after a subscript a[1<<2]=x -> block" 2 "$(bash_in "$WORK" "a[1<<2]=x
+rm -rf $OTHER")"
+check "...after \$[1<<3] -> block" 2 "$(bash_in "$WORK" "echo \$[1<<3]
+rm -rf $OTHER")"
+# The controls: a heredoc is still one everywhere bash reads one, after an
+# arithmetic line, inside a substitution inside one, and after let, whose words are
+# ordinary words.
+check "a heredoc after an arithmetic line is still data -> allow" 0 "$(bash_in "$WORK" "x=\$((1<<3))
+cat <<'EOF' > notes.md
+rm -rf $OTHER
+EOF")"
+check "a commit message from a heredoc after an arithmetic line -> allow" 0 \
+  "$(bash_in "$WORK" "n=\$((1<<3)); git commit -m \"\$(cat <<'EOF'
+Stop running rm -rf $OTHER
+EOF
+)\"")"
+check "a heredoc inside a substitution inside \$((...)) is data -> allow" 0 \
+  "$(bash_in "$WORK" "x=\$(( \$(cat <<'EOF'
+rm -rf $OTHER
+EOF
+) + 1 ))")"
+check "let x=1<<3 opens a heredoc, as bash reads it -> allow" 0 "$(bash_in "$WORK" "let x=1<<3
+rm -rf $OTHER
+3")"
+check "a heredoc after a for((...)) loop with no space -> allow" 0 \
+  "$(bash_in "$WORK" "for((i=0;i<3;i++)); do :; done; cat <<'EOF' > notes.md
+rm -rf $OTHER
+EOF")"
+check "a heredoc glued to a \${...} that closed -> allow" 0 "$(bash_in "$WORK" "cat \${f}<<'EOF' > notes.md
+rm -rf $OTHER
+EOF")"
+check "a heredoc glued to a subscript that closed -> allow" 0 "$(bash_in "$WORK" "cat a[0]<<'EOF' > notes.md
+rm -rf $OTHER
+EOF")"
+
+echo
 echo "--- An input redirection is where stdin comes from, not an operand ---"
 check "xargs reading its list from a file outside -> allow (the file is stdin)" 0 \
   "$(bash_in "$WORK" "xargs rm -f < $OTHER/stale-files.txt")"

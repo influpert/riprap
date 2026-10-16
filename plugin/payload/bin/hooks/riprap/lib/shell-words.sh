@@ -60,6 +60,19 @@ tokenize_words() { tokenize_shell "$1" words; }
 # runs it. The bodies are still handed back, in TOKEN_HEREDOC_BODY, for the one
 # reader that runs its stdin as commands: a shell with no script of its own.
 # A here-string (`<<<`) is not a heredoc; its word stays an ordinary word.
+#
+# Nor is a `<<` in arithmetic: `$((1<<3))`, `(( x <<= 1 ))` and a `for ((...))`
+# shift, and the lines after them run. Read as a heredoc, its delimiter (3) never
+# came, so every line to the end of the text was taken for its body and went
+# unread by every hook. Each unquoted `(` is marked as it opens (_tw_paren_mark),
+# and a `<<` opens a heredoc only where the innermost open one is not arithmetic,
+# so a `$(cat <<EOF` inside arithmetic is still a heredoc. The other places bash
+# does arithmetic are inside a word, and a `<<` glued into a `${x:1<<2}`, a `$[...]`
+# or an array subscript (`a[1<<2]=x`) still open is a shift too (_tw_in_brackets).
+# `let x=1<<3` is a heredoc, as bash reads it: let's arguments are ordinary words.
+# One limit, and it is rare: a `((` that bash, failing to read it as arithmetic,
+# reads as two subshells is read as arithmetic here, so a heredoc in it is read as
+# commands, which refuses more rather than less.
 tokenize_command() { tokenize_shell "$1" command; }
 
 # tokenize_redirects TEXT — tokenize_command, and also split out each unquoted
@@ -114,7 +127,10 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
   local LC_ALL=C
   local s="$1" mode="$2" cmd=0 redir=0
   local i=0 len=${#s}
-  local ch nxt cur="" cur_q=0 in_word=0 state="none" start _tw_end rest run
+  local ch nxt cur="" cur_q=0 in_word=0 state="none" start _tw_end _tw_mark rest run
+  # One mark per unquoted `(` still open, innermost last: A for arithmetic, `(`
+  # for commands. Command modes only, where a `<<` can open a heredoc.
+  local parens=""
   local BSLASH=$'\\' NL=$'\n' TAB=$'\t'
   # What a quoted run copies unchanged is taken a run at a time, up to the next
   # character it has to look at: even byte by byte, `${s:$i:1}` copies the whole
@@ -201,7 +217,10 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
           rest="${s:$i}"
           rest="${rest%%"$NL"*}"
           i=$((i + ${#rest} - 1))
-        elif [ "$cmd" -eq 1 ] && [ "$ch" = "<" ] && [ "${s:$((i + 1)):1}" = "<" ]; then
+        elif [ "$cmd" -eq 1 ] && [ "$ch" = "<" ] && [ "${s:$((i + 1)):1}" = "<" ] \
+            && [ "${parens#"${parens%?}"}" != A ] && ! _tw_in_brackets; then
+          # Inside arithmetic, `<<` is a shift and falls through to the branches
+          # below, as two `<`.
           if [ "${s:$((i + 2)):1}" = "<" ]; then
             # `<<<`, a here-string, whose word is an ordinary word. Taken whole:
             # one `<` at a time, its last two read as a heredoc, and the word
@@ -250,6 +269,10 @@ tokenize_shell() {  # $1 = text, $2 = words | command | redirects | reads
             [[:space:]]) _tw_flush ;;
             ';' | '&' | '|' | '(' | ')' | '`')
               if [ "$cmd" -eq 1 ]; then
+                case "$ch" in
+                  "(") _tw_paren_mark "$parens"; parens+="$_tw_mark" ;;
+                  ")") parens="${parens%?}" ;;
+                esac
                 _tw_flush
                 if { [ "$ch" = "&" ] || [ "$ch" = "|" ]; } && [ "${s:$((i + 1)):1}" = "$ch" ]; then
                   _tw_op "$ch$ch"; i=$((i + 1))
@@ -328,19 +351,31 @@ _tw_heredoc_bodies() {
 # as commands. Limit: a `case` pattern's unpaired `)` ends it early, which is
 # where the old reading of the quotes left everything anyway.
 _tw_subst_end() {
-  # One character per open context: `(` for a parenthesis or substitution, `"` for
-  # double quotes. The substitution's heredocs are its own, and their bodies are
-  # skipped without being handed back: they are data in a word.
-  local stack="(" c prev="(" rest
+  # One character per open context: `(` for a parenthesis or substitution that
+  # holds commands, A for one that is arithmetic (_tw_paren_mark), `"` for double
+  # quotes. The substitution's heredocs are its own, and their bodies are skipped
+  # without being handed back: they are data in a word. A `<<` in arithmetic is a
+  # shift, and read as a heredoc it took the rest of the text for its body, the
+  # closing `)` and the commands after the word with it.
+  local stack c prev="(" rest
   local -a heredocs=()
-  i=$((i + 2))
+  i=$((i + 1))
+  _tw_paren_mark ""
+  stack="$_tw_mark"
+  i=$((i + 1))
   while [ "$i" -lt "$len" ]; do
     c="${s:$i:1}"
     if [ "${stack#"${stack%?}"}" = '"' ]; then
       case "$c" in
         "$BSLASH") i=$((i + 1)) ;;
         '"') stack="${stack%?}" ;;
-        '$') if [ "${s:$((i + 1)):1}" = "(" ]; then stack+="("; i=$((i + 1)); fi ;;
+        '$')
+          if [ "${s:$((i + 1)):1}" = "(" ]; then
+            i=$((i + 1))
+            _tw_paren_mark "$stack"
+            stack+="$_tw_mark"
+          fi
+          ;;
       esac
     else
       case "$c" in
@@ -353,7 +388,7 @@ _tw_subst_end() {
           esac
           ;;
         '"') stack+='"' ;;
-        '(') stack+="(" ;;
+        '(') _tw_paren_mark "$stack"; stack+="$_tw_mark" ;;
         ')')
           stack="${stack%?}"
           [ -n "$stack" ] || return 0
@@ -367,7 +402,8 @@ _tw_subst_end() {
           esac
           ;;
         '<')
-          if [ "${s:$((i + 1)):1}" = "<" ]; then
+          if [ "${s:$((i + 1)):1}" = "<" ] && [ "${stack#"${stack%?}"}" != A ] \
+              && ! _tw_in_brackets; then
             if [ "${s:$((i + 2)):1}" = "<" ]; then
               i=$((i + 2))
             else
@@ -384,6 +420,79 @@ _tw_subst_end() {
     i=$((i + 1))
   done
   i=$((len - 1))
+}
+
+# _tw_paren_mark STACK — the mark for the unquoted `(` at i, given the marks of the
+# parentheses still open around it, innermost last: A when it opens or sits inside
+# arithmetic, `(` when it holds commands. Left in _tw_mark. `$((` opens arithmetic,
+# and so does a `((` where a command starts, which is how `(( x <<= 1 ))` and `for
+# ((...))` begin; `$(` holds commands even inside arithmetic; any other `(` takes
+# the mark of the one around it, so `$(( (1<<2) + 1 ))` is arithmetic throughout.
+#
+# A command starts after an operator or a line break, and also straight after a
+# reserved word with nothing between: `(` ends a word, so bash reads `for((i=0;
+# i<1<<n;i++))`, `while((n<<=1))` and `if((x<<2))` as arithmetic too, and the
+# C-style loop is written that way as often as with the space. Missed, its shift
+# took the rest of the text for a heredoc body as surely as the spaced one did.
+_tw_paren_mark() {
+  local before="" after="${s:$((i + 1)):1}" k word
+  # Guarded: at 0, `${s:-1:1}` would be the text's last character.
+  [ "$i" -eq 0 ] || before="${s:$((i - 1)):1}"
+  if [ "$before" = '$' ]; then
+    if [ "$after" = "(" ]; then _tw_mark=A; else _tw_mark="("; fi
+  elif [ "${1#"${1%?}"}" = A ]; then
+    _tw_mark=A
+  elif [ "$after" = "(" ]; then
+    _tw_mark="("
+    # The reserved word glued on, if there is one: the run of letters, `!` and `{`
+    # before the `(`, and what comes before that run must itself start a command.
+    k=$((i - 1))
+    while [ "$k" -ge 0 ]; do
+      case "${s:$k:1}" in [a-z] | '!' | '{') k=$((k - 1)) ;; *) break ;; esac
+    done
+    word="${s:$((k + 1)):$((i - k - 1))}"
+    case "$word" in
+      "" | for | while | until | if | elif | then | else | do | time | '!' | '{')
+        before=""
+        [ "$k" -lt 0 ] || before="${s:$k:1}"
+        case "$before" in
+          "" | " " | "$TAB" | "$NL" | ';' | '&' | '|' | '(' | ')' | '`') _tw_mark=A ;;
+        esac
+        ;;
+    esac
+  else
+    _tw_mark="("
+  fi
+}
+
+# _tw_in_brackets — whether the `<<` at i is glued into a `${...}`, a `$[...]` or an
+# array subscript (`name[...]`) still open in its word. bash reads each of those
+# to its closing bracket as part of the word, and does arithmetic in the offset of
+# `${x:1<<2}`, in `$[1<<3]` and in the subscript of `a[1<<2]=x`: the `<<` shifts,
+# and the line after it runs. Read as a heredoc, it hid that line as `$((1<<3))`
+# did. The word is read back from the `<<` to the blank or operator before it, and
+# only at a `<<`, so nothing else pays for the scan. A `<<` after a bracket that
+# closed, as in `cat ${f}<<EOF`, is a heredoc, as it is to bash.
+_tw_in_brackets() {
+  local k=$((i - 1)) w t open
+  local subscript='^[A-Za-z_][A-Za-z0-9_]*\[[^]]*$'
+  while [ "$k" -ge 0 ]; do
+    case "${s:$k:1}" in [[:space:]] | ';' | '&' | '|' | '(' | ')' | '`') break ;; esac
+    k=$((k - 1))
+  done
+  w="${s:$((k + 1)):$((i - k - 1))}"
+  for open in '${' '$['; do
+    case "$w" in
+      *"$open"*)
+        t="${w##*"$open"}"
+        case "$open$t" in
+          '${'*'}'* | '$['*']'*) ;;
+          *) return 0 ;;
+        esac
+        ;;
+    esac
+  done
+  [[ "$w" =~ $subscript ]]
 }
 
 _tw_flush() {

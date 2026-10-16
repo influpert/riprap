@@ -535,6 +535,14 @@ check "a here-string does not swallow the line after it -> block" 2 "$(bash_cmd 
 cat .env')"
 check "grep -c '<' -> allow" 0 "$(bash_cmd "grep -c '<' index.html")"
 check "a here-string -> allow" 0 "$(bash_cmd 'grep -c x <<< "$y"')"
+# A shift in arithmetic is not a heredoc: read as one, its delimiter never came and
+# every line after it went unread.
+check "a shift in \$((...)) does not swallow the line after it -> block" 2 "$(bash_cmd 'x=$((1<<3))
+cat .env')"
+check "...nor does a heredoc after it stop being data -> allow" 0 "$(bash_cmd "x=\$((1<<3))
+cat > notes.md <<'EOF'
+cat .env
+EOF")"
 check "sort<input.txt -> allow" 0 "$(bash_cmd 'sort<input.txt')"
 
 echo

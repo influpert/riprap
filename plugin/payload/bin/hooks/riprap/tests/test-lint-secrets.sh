@@ -626,6 +626,34 @@ check "rg BEGIN src -> allow" 0 "$(bash_in "$MONO" 'rg BEGIN src')"
 check "Grep path src -> allow" 0 "$(grep_in "$MONO" '{"pattern":"BEGIN","path":"src"}')"
 check "rg into an installed package -> allow (a vendored test key is nobody's secret)" 0 \
   "$(bash_in "$MONO" 'rg createClient node_modules/pkg')"
+# A repository's own root, though the repository around it ignores the directory:
+# a Claude Code worktree, which the main checkout's .git/info/exclude ignores. rg
+# reads the inner repository's .gitignore there, and leaves its ignored files
+# alone; asked of the outer one, every Grep given the root walked the tree, and
+# was refused for files rg never opens.
+NESTED="$TMP/nested"
+mkdir -p "$NESTED/wt/src"
+printf 'x\n' > "$NESTED/README.md"
+git -C "$NESTED" init -q
+printf 'wt/\n' >> "$NESTED/.git/info/exclude"
+git -C "$NESTED" add -A
+git -C "$NESTED" -c user.name=t -c user.email=t@example.invalid commit -qm init
+printf '.env\nserver.pem\n' > "$NESTED/wt/.gitignore"
+printf 'API_KEY=not-a-real-value\n' > "$NESTED/wt/.env"
+printf 'not a real key\n' > "$NESTED/wt/server.pem"
+printf 'createClient()\n' > "$NESTED/wt/src/index.ts"
+git -C "$NESTED/wt" init -q
+git -C "$NESTED/wt" add -A
+git -C "$NESTED/wt" -c user.name=t -c user.email=t@example.invalid commit -qm init
+export CLAUDE_PROJECT_DIR="$NESTED/wt"
+check "Grep given a worktree's own root, which the outer repo ignores -> allow" 0 \
+  "$(grep_in "$NESTED/wt" "{\"pattern\":\"x\",\"path\":\"$NESTED/wt\"}")"
+check "Grep given it as a relative path from the outer repo -> allow" 0 \
+  "$(grep_in "$NESTED" '{"pattern":"x","path":"wt/"}')"
+check "rg --hidden given the worktree's root -> allow" 0 "$(bash_in "$NESTED" 'rg --hidden createClient wt')"
+check "rg -uu given the worktree's root -> block (ignore rules off reach .env)" 2 \
+  "$(bash_in "$NESTED" 'rg -uu createClient wt')"
+export CLAUDE_PROJECT_DIR="$MONO"
 
 echo
 echo "--- Installed dependencies are not the project's secrets ---"

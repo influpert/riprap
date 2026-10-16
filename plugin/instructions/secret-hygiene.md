@@ -102,13 +102,14 @@ prose alone does not survive a busy afternoon.
      `-exec wc -l` — or whose list is handed to one (`find … | xargs grep`,
      `grep KEY "$(find …)"`, quoted or not), and ripgrep or the Grep tool once a glob,
      `--no-ignore` or `-u` takes them past `.gitignore`, or once they are given a directory
-     `.gitignore` excludes, which ripgrep searches anyway. A glob that names a file overrides
-     `.gitignore` for it. This fires only when such a file is really there and git does not
-     track it. The search's own `--exclude`, `--include`, `--exclude-dir` and negated globs
-     are honoured, and `find`'s expression is evaluated as `find` evaluates it, so a
-     `-prune` and an earlier `-o` branch leave files out, and a `-name` that belongs to the
-     pruning branch does not. The message lists the files and the exclusions that clear
-     them all.
+     `.gitignore` excludes, which ripgrep searches anyway — unless it is a repository's own
+     root, such as a worktree, whose own `.gitignore` ripgrep reads. A glob that names a file
+     overrides `.gitignore` for it. This fires only when such a file is really there and git
+     does not track it. The search's own `--exclude`, `--include`, `--exclude-dir` and
+     negated globs are honoured, and `find`'s expression is evaluated as `find` evaluates
+     it, so a `-prune` and an earlier `-o` branch leave files out, and a `-name` that
+     belongs to the pruning branch does not. The message lists the files and the
+     exclusions that clear them all.
    - **Edit or Write content containing a token value.**
 
    Every refusal names the path it matched and a way forward that works: the tests run

@@ -787,6 +787,14 @@ _secret_root_ignored() {
   esac
   abs="${abs%/}"
   [ -d "$abs" ] || return 1
+  # The root of a repository of its own — a Claude Code worktree under
+  # .claude/worktrees/, a nested checkout — is where ripgrep starts reading that
+  # repository's ignore rules, and what the repository around it says of the
+  # directory says nothing about which files rg opens inside. Asked of the outer
+  # one, every Grep given a worktree's own root walked the whole tree, and was
+  # refused when an ignored .env was in it, which rg leaves alone. ripgrep knows a
+  # repository by its .git, and so does this, without a fork.
+  [ ! -e "$abs/.git" ] || return 1
   _secret_git_isolated -C "${abs%/*}/" check-ignore -q -- "${abs##*/}/" 2>/dev/null
 }
 

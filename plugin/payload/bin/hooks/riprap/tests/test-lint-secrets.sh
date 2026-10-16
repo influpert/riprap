@@ -245,6 +245,30 @@ check_lacks "a refusal never offers to list a runner it does not see through" "S
   "$(bash_cmd 'npm run show -- .env')"
 
 echo
+echo "--- A project's replacement of the check, written for the old library ---"
+# The old library invited a local file to replace a function outright, and taking
+# a command and answering yes or no was the only way it had to add a reader. Such
+# a replacement sets none of the SECRET_HIT_* globals the hook now reads, and under
+# set -u the hook died on the first of them: exit 1, which Claude Code treats as a
+# non-blocking error, so the read went ahead.
+mkdir -p "$TMP/oldhooks/lib"
+cp -R "$SCRIPT_DIR/.." "$TMP/oldhooks/riprap"
+cat > "$TMP/oldhooks/lib/secret-patterns.local.sh" <<'EOF'
+secret_command_touches_env() {
+  local readers='(cat|bat|grep|head|tail|less|source)'
+  printf '%s\n' "$1" | grep -Eq "(^|[^A-Za-z0-9_.-])${readers}[[:space:]]+([^|;&]*[[:space:]])?\\.env([[:space:]]|$)"
+}
+EOF
+SAVED_HOOK="$HOOK"
+HOOK="$TMP/oldhooks/riprap/claude/lint-secrets.sh"
+check "an old one-argument replacement still refuses cat .env -> block, not a crash" 2 "$(bash_cmd 'cat .env')"
+check "...and the reader it added -> block" 2 "$(bash_cmd 'bat .env')"
+check "...and lets through what it lets through -> allow" 0 "$(bash_cmd 'ls -la .env')"
+check_contains "...with a refusal that says what it can" "reads a secret-bearing file" "$(bash_cmd 'cat .env')"
+check_lacks "...and no empty path or command in it" "Blocked:  is" "$(bash_cmd 'cat .env')"
+HOOK="$SAVED_HOOK"
+
+echo
 echo "--- The pre-commit hook loads the same library ---"
 # secret-patterns.sh now sources more than it used to, and the git hook sources
 # secret-patterns.sh. A real commit through a real core.hooksPath is the only

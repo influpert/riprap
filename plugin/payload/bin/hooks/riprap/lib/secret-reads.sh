@@ -44,6 +44,14 @@
 #   SECRET_HIT_PRINT  find only: 1 when its list feeds another command, so the
 #                     suggested expression needs an explicit -print
 #
+# A project's local file that replaces secret_command_touches_env should set
+# SECRET_HIT_PATH and SECRET_HIT_BY for a named read, so the refusal can name them,
+# and may leave the rest as _secret_hit_reset leaves them. One that only answers
+# yes or no, as the library before this one asked, is still obeyed: the globals
+# are set at load and again before each call, and a refusal with no path says only
+# that the command reads a secret-bearing file. Left unset, they crashed the hook,
+# and a crashed hook lets the call through.
+#
 # Heuristic by design, like everything at this layer: it catches an honest
 # agent's slip and the obvious retry after a block — a different reader, a
 # wrapper, a quoted substitution, a heredoc into a shell, a loop over the files,
@@ -212,6 +220,9 @@ _secret_hit_reset() {
   SECRET_HIT_DIR="" SECRET_HIT_CMD="" SECRET_HIT_WHY="" SECRET_HIT_OPTS="" SECRET_HIT_EXPR=""
   SECRET_HIT_PRINT=0
 }
+# Set before anything can run, so they exist even when a project's local file has
+# replaced the function that would set them (see the header).
+_secret_hit_reset
 
 _secret_hit() {  # PATH BY — record the first named read; later ones add nothing
   [ -z "$SECRET_HIT_PATH" ] || return 0

@@ -113,18 +113,28 @@ runs_other_code() {
 # secret-bearing, and <CLAUSE>". SURFACE is bash, Read or Grep: what a Bash
 # command can do differently is no use to a Read call, and saying it anyway is
 # noise the agent has to work out does not apply.
+#
+# Every SECRET_HIT_* is read with a default, here and in block_search. A project's
+# local file may replace the check with one that answers only yes or no, as the
+# library before this one asked; under set -u a global it never set crashed the
+# hook, and Claude Code lets a call through a crashed hook. With no path, the
+# refusal says what it can.
 block_named() {
-  local clause="$1" surface="$2" path example base
-  path=$(shown "$SECRET_HIT_PATH")
-  base="${SECRET_HIT_PATH##*/}"
+  local clause="$1" surface="$2" path example="" base hit="${SECRET_HIT_PATH:-}"
+  path=$(shown "$hit")
+  base="${hit##*/}"
   {
-    echo "❌ Blocked: $path is secret-bearing, and $clause."
+    if [ -n "$hit" ]; then
+      echo "❌ Blocked: $path is secret-bearing, and $clause."
+    else
+      echo "❌ Blocked: this command reads a secret-bearing file."
+    fi
     echo ""
     echo "Anything a tool call reads goes to the model provider with the rest of the"
     echo "session, and it cannot be taken back."
     echo ""
     echo "The way forward:"
-    if example=$(example_for "$SECRET_HIT_PATH"); then
+    if [ -n "$hit" ] && example=$(example_for "$hit"); then
       echo "  - $example is beside it: read that for the names it expects."
     elif [ "$base" = settings.local.json ]; then
       echo "  - settings.json beside it holds the shared settings: read that. The local"
@@ -136,7 +146,7 @@ block_named() {
     echo "  - To check a value is set without printing it:  test -n \"\$MY_VAR\" && echo set"
     case "$surface" in
       bash)
-        if [ "$SECRET_HIT_WHY" = launder ]; then
+        if [ "${SECRET_HIT_WHY:-}" = launder ]; then
           echo "  - To keep a copy, give it a name that is still secret-bearing, or copy it"
           echo "    into a directory, which keeps its name:  cp .env .env.bak"
         fi
@@ -145,7 +155,7 @@ block_named() {
         echo "    secret-bearing (cp .env .env.bak)."
         echo "  - Putting the name in a variable or a substitution does not change what the"
         echo "    command reads. If the file really has to be opened, that is the human's."
-        if [ -n "$SECRET_HIT_CMD" ] && ! runs_other_code "$SECRET_HIT_CMD"; then
+        if [ -n "${SECRET_HIT_CMD:-}" ] && ! runs_other_code "$SECRET_HIT_CMD"; then
           echo "  - If \`$SECRET_HIT_CMD\` only loads the file and never prints it, a human can add"
           echo "    \`$SECRET_HIT_CMD\` to SECRET_NONREADING_COMMANDS in bin/hooks/lib/secret-patterns.local.sh."
         fi
@@ -199,30 +209,30 @@ block_search() {
     glob_fix+=" !${base//[[:space:]]/?}"
     rg_fix+=" -g '!$base'"
     find_names+="${find_names:+ -o }-name '$base'"
-  done <<<"$SECRET_HIT_FILES"
+  done <<<"${SECRET_HIT_FILES:-}"
   {
-    echo "❌ Blocked: $SECRET_HIT_BY would read a secret-bearing file under $root:"
+    echo "❌ Blocked: ${SECRET_HIT_BY:-this search} would read a secret-bearing file under $root:"
     printf '%s' "$list"
     [ "$more" -eq 0 ] || echo "     ... and $more more"
     echo ""
-    case "$SECRET_HIT_BY" in
+    case "${SECRET_HIT_BY:-}" in
       find*)
-        if [ "$SECRET_HIT_PRINT" -eq 1 ]; then
+        if [ "${SECRET_HIT_PRINT:-0}" -eq 1 ]; then
           echo "The command find's list is handed to opens every file in it, hidden ones"
           echo "included. Git does not track these, so they are the live ones."
           echo ""
           echo "Prune them before anything else is tested, then hand the list on as before:"
-          echo "     find $root \\( $find_names \\) -prune -o \\( $SECRET_HIT_EXPR \\) -print"
+          echo "     find $root \\( $find_names \\) -prune -o \\( ${SECRET_HIT_EXPR:-} \\) -print"
         else
           echo "find -exec runs its command on every file the tests select, hidden ones"
           echo "included. Git does not track these, so they are the live ones."
           echo ""
           echo "Prune them before anything else is tested:"
-          echo "     find $root \\( $find_names \\) -prune -o \\( $SECRET_HIT_EXPR \\)"
+          echo "     find $root \\( $find_names \\) -prune -o \\( ${SECRET_HIT_EXPR:-} \\)"
         fi
         ;;
       Grep)
-        if [ "$SECRET_HIT_WHY" = ignored-root ]; then
+        if [ "${SECRET_HIT_WHY:-}" = ignored-root ]; then
           echo "The path is a directory .gitignore excludes, and ripgrep searches a path it"
           echo "is given anyway. Git does not track these, so they are the live ones."
         else
@@ -232,11 +242,11 @@ block_search() {
         echo ""
         echo "Add an exclusion to the glob (it takes several, separated by spaces), or"
         echo "narrow the path to the directories you mean:"
-        glob="$SECRET_HIT_OPTS$glob_fix"
+        glob="${SECRET_HIT_OPTS:-}$glob_fix"
         echo "     glob: \"${glob# }\""
         ;;
       rg)
-        if [ "$SECRET_HIT_WHY" = ignored-root ]; then
+        if [ "${SECRET_HIT_WHY:-}" = ignored-root ]; then
           echo "$root is a directory .gitignore excludes, and ripgrep searches a path it is"
           echo "given anyway. Git does not track these, so they are the live ones."
         else
@@ -246,9 +256,9 @@ block_search() {
         echo ""
         echo "Exclude them with a negated glob, or search where the code is:"
         if [ "$root" = . ]; then
-          echo "     rg$SECRET_HIT_OPTS$rg_fix PATTERN"
+          echo "     rg${SECRET_HIT_OPTS:-}$rg_fix PATTERN"
         else
-          echo "     rg$SECRET_HIT_OPTS$rg_fix PATTERN $root"
+          echo "     rg${SECRET_HIT_OPTS:-}$rg_fix PATTERN $root"
         fi
         ;;
       *)
@@ -281,7 +291,7 @@ case "$SURFACE" in
     # directory called secrets/ is not all secret-bearing, and a Go package called
     # internal/secrets/ with committed files is source (secret_source_under_secrets).
     if [ -n "$TARGET" ] && secret_tool_target "$TOOL_NAME" "$TARGET" "$CWD"; then
-      case "$TOOL_NAME:$SECRET_HIT_WHY" in
+      case "$TOOL_NAME:${SECRET_HIT_WHY:-}" in
         Read:*) block_named "Read would open it" Read ;;
         Grep:dir) block_named "Grep would search every file in it" Grep ;;
         *) block_named "Grep would search it" Grep ;;
@@ -314,16 +324,20 @@ case "$SURFACE" in
       done
       SECRET_NONREADING_COMMANDS=(${_kept[@]+"${_kept[@]}"})
     fi
+    # Reset here as well as inside: a project's replacement of the check may set
+    # none of what the refusal reads (see block_named).
+    _secret_hit_reset
     if secret_command_touches_env "$COMMAND" "$CWD"; then
-      if [ "$SECRET_HIT_KIND" = search ]; then
+      if [ "${SECRET_HIT_KIND:-}" = search ]; then
         block_search
       fi
-      case "$SECRET_HIT_WHY:$SECRET_HIT_BY" in
+      BY="${SECRET_HIT_BY:-}"
+      case "${SECRET_HIT_WHY:-}:$BY" in
         *:"<") block_named "a < redirect reads it" bash ;;
-        launder:*) block_named "\`$SECRET_HIT_BY\` would copy it to a name the patterns do not recognise, which the next read gets through" bash ;;
-        prints:*) block_named "\`$SECRET_HIT_BY\` is handed it and then prints what it loaded" bash ;;
-        dir:*) block_named "\`$SECRET_HIT_BY\` would read every file in it" bash ;;
-        *) block_named "\`$SECRET_HIT_BY\` reads it" bash ;;
+        launder:*) block_named "\`$BY\` would copy it to a name the patterns do not recognise, which the next read gets through" bash ;;
+        prints:*) block_named "\`$BY\` is handed it and then prints what it loaded" bash ;;
+        dir:*) block_named "\`$BY\` would read every file in it" bash ;;
+        *) block_named "\`$BY\` reads it" bash ;;
       esac
     fi
     ;;

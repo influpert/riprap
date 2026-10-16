@@ -176,7 +176,9 @@ secret_scan_text() {
 # riprap owns this file and overwrites it on every update, so a pattern added
 # here is gone the next time. Project-specific patterns go in the file below
 # instead: riprap never writes anywhere in bin/hooks/lib/. It is sourced last, so
-# it can append to any array above or replace a function outright.
+# it can append to any array above or replace a function outright; secret-reads.sh
+# says what a replacement of secret_command_touches_env should set, and one that
+# only answers yes or no, written for an older library, is still obeyed.
 #
 # Without this the only way to add one pattern is to fork the whole library, and
 # forking it gives up every future upstream fix to the other patterns in it.

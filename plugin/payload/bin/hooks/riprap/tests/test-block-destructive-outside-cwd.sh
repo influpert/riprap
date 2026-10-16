@@ -675,6 +675,9 @@ check "caffeinate -i rm outside -> block" 2 "$(bash_in "$WORK" "caffeinate -i rm
 check "chrt -b 0 rm outside -> block" 2 "$(bash_in "$WORK" "chrt -b 0 rm -rf $OTHER/x")"
 check "taskset -c 0,1 rm outside -> block" 2 "$(bash_in "$WORK" "taskset -c 0,1 rm -rf $OTHER/x")"
 check "wsl rm outside, from PowerShell -> block" 2 "$(cmd_in PowerShell "$WORK" "wsl rm -rf $OTHER/x")"
+# A package runner runs the program it is given, as the secret guard reads it too.
+check "npx rm outside -> block" 2 "$(bash_in "$WORK" "npx --yes rm -rf $OTHER/x")"
+check "...inside -> allow" 0 "$(bash_in "$WORK" "npx --yes rm -rf ./x")"
 check "PowerShell \$null = rm outside -> block" 2 "$(cmd_in PowerShell "$WORK" '$null = rm -r -fo ..\riprap-other\f')"
 check "PowerShell \$r = rm outside -> block" 2 "$(cmd_in PowerShell "$WORK" '$r = rm -r ..\riprap-other\f')"
 check "PowerShell [string]\$r = rm outside -> block" 2 \

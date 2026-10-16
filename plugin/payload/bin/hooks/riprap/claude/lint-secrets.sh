@@ -94,6 +94,21 @@ example_for() {  # PATH
   return 1
 }
 
+# runs_other_code CMD — 0 for a shell, an interpreter or a package runner: a program
+# whose arguments are code or another program to run. The refusal never offers to
+# list one as a program that only loads a file, because listed, it waves through
+# everything it runs: bash listed is `bash -c 'cat .env'` allowed, python listed is
+# `python -m json.tool .env`. The runners the walk sees through (npx, pnpm exec, ...)
+# are not what a refusal names any more, but a bare `npm` or `uv` still can be.
+runs_other_code() {
+  case "$1" in
+    sh | bash | zsh | dash | ksh | fish | csh | tcsh | pwsh | powershell | cmd | \
+      python | python[0-9]* | node | nodejs | deno | bun | ruby | perl | php | lua | java | \
+      tsx | ts-node | npx | npm | pnpm | yarn | bunx | uv | uvx | pipx | poetry | make) return 0 ;;
+  esac
+  return 1
+}
+
 # block_named CLAUSE SURFACE — a read that names the file: "<path> is
 # secret-bearing, and <CLAUSE>". SURFACE is bash, Read or Grep: what a Bash
 # command can do differently is no use to a Read call, and saying it anyway is
@@ -130,7 +145,7 @@ block_named() {
         echo "    secret-bearing (cp .env .env.bak)."
         echo "  - Putting the name in a variable or a substitution does not change what the"
         echo "    command reads. If the file really has to be opened, that is the human's."
-        if [ -n "$SECRET_HIT_CMD" ]; then
+        if [ -n "$SECRET_HIT_CMD" ] && ! runs_other_code "$SECRET_HIT_CMD"; then
           echo "  - If \`$SECRET_HIT_CMD\` only loads the file and never prints it, a human can add"
           echo "    \`$SECRET_HIT_CMD\` to SECRET_NONREADING_COMMANDS in bin/hooks/lib/secret-patterns.local.sh."
         fi

@@ -214,7 +214,24 @@ check "a listed loader exempts nothing chained after it -> block" 2 \
 check "a listed sed -> allow (the escape reaches commands with their own parser)" 0 \
   "$(bash_cmd 'sed -i s/a/b/ .env')"
 check "a listed cp -> allow" 0 "$(bash_cmd 'cp .env /tmp/env-copy')"
+# A loader from node_modules/.bin is run through a package runner, and the runner
+# is not the program: read as one, `npx` was what the refusal named and told a
+# human to list, and listed, it let `npx cat .env` through.
+for c in 'npx dotenv -e .env -- jest' 'npx -y dotenv -e .env -- jest' 'pnpm exec dotenv -e .env -- jest' \
+    'npm exec -- dotenv -e .env -- jest' 'yarn dotenv -e .env -- jest' 'bunx dotenv -e .env -- jest'; do
+  check "$c, dotenv listed -> allow" 0 "$(bash_cmd "$c")"
+done
+check "npx cat .env, npx not listed -> block (the runner is not the program)" 2 "$(bash_cmd 'npx cat .env')"
+check "pnpm exec cat .env -> block" 2 "$(bash_cmd 'pnpm exec cat .env')"
 HOOK="$SAVED_HOOK"
+check_contains "behind npx, the refusal names the program it runs" "\`dotenv\` to SECRET_NONREADING_COMMANDS" \
+  "$(bash_cmd 'npx dotenv -e .env -- jest')"
+# Listed, a shell, an interpreter or a runner would wave through everything it runs.
+check_lacks "a refusal never offers to list an interpreter" "SECRET_NONREADING_COMMANDS" \
+  "$(bash_cmd 'python3 tools/show.py .env')"
+check_lacks "a refusal never offers to list a shell" "SECRET_NONREADING_COMMANDS" "$(bash_cmd 'bash .env')"
+check_lacks "a refusal never offers to list a runner it does not see through" "SECRET_NONREADING_COMMANDS" \
+  "$(bash_cmd 'npm run show -- .env')"
 
 echo
 echo "--- The pre-commit hook loads the same library ---"
@@ -397,8 +414,12 @@ prefix_form() {  # NAME -> the prefix as an agent writes it, in PREFIX_FORM
     stdbuf) PREFIX_FORM="stdbuf -oL" ;;
     caffeinate) PREFIX_FORM="caffeinate -i" ;;
     watch) PREFIX_FORM="watch -n 1" ;;
+    npm) PREFIX_FORM="npm exec --" ;;
+    pnpm) PREFIX_FORM="pnpm dlx" ;;
+    bun) PREFIX_FORM="bun x" ;;
+    pipx) PREFIX_FORM="pipx run" ;;
     sudo | doas | gsudo | env | command | builtin | nohup | noglob | exec | time | setsid | \
-      unbuffer | chronic | winpty | wsl | xargs) PREFIX_FORM="$1" ;;
+      unbuffer | chronic | winpty | wsl | xargs | npx | bunx | uvx | yarn) PREFIX_FORM="$1" ;;
     *) return 1 ;;
   esac
 }

@@ -75,13 +75,13 @@ prose alone does not survive a busy afternoon.
      one tried after `cat` is refused. `git show <rev>:<path>` reads the path it names;
      `git log -- .env` does not, until `-p` asks for the patch.
    - **The same command, however it is dressed.** A wrapper is looked through, options and
-     all — `timeout 30`, `sudo -u deploy`, `nice -n 10`, `flock FILE`, `xargs`, `stdbuf -oL`
-     — by the one list the destructive and write guards read too. A substitution
-     (`"$(cat .env)"`, read from where its command runs, after any `cd`), a
-     `bash -c '…'` script and its `$1`, the text handed to `pwsh -Command`,
-     `Invoke-Expression` or `cmd /c` (where `type` prints a file), and a heredoc
-     or here-string fed to a shell with no script of its own (`bash <<'EOF'`) are read as
-     commands. Globs and brace expansion are expanded as the shell would (`cat .env*`,
+     all — `timeout 30`, `sudo -u deploy`, `nice -n 10`, `flock FILE`, `xargs`, `stdbuf -oL`,
+     and a package runner, `npx` or `pnpm exec` — by the one list the destructive and write
+     guards read too. A substitution (`"$(cat .env)"`, read from where its command runs,
+     after any `cd`), a `bash -c '…'` script and its `$1`, the text handed to
+     `pwsh -Command`, `Invoke-Expression` or `cmd /c` (where `type` prints a file), and a
+     heredoc or here-string fed to a shell with no script of its own (`bash <<'EOF'`) are
+     read as commands. Globs and brace expansion are expanded as the shell would (`cat .env*`,
      `cat .env{,.local}`). A `cd` is followed, by path or by `$CLAUDE_PROJECT_DIR`, `$PWD`,
      `~` or `$(git rev-parse --show-toplevel)`, so `cd secrets && cat api.json` reads
      `secrets/api.json`; so are `pushd` and `popd`, and PowerShell's `Set-Location`,
@@ -145,7 +145,9 @@ refuses them is one people switch off.
   `vercel env pull .env.local`. If one of yours only loads the file, a human adds the
   command to `SECRET_NONREADING_COMMANDS` in `bin/hooks/lib/secret-patterns.local.sh`.
   That list is consulted before any command's own parser, so it works for `sed` or `cp`
-  too.
+  too. List the program, not what starts it: a package runner in front of it — `npx`,
+  `pnpm exec`, `yarn`, `bunx`, `uvx`, `pipx run` — is looked through as any wrapper is, and
+  a runner, a shell or an interpreter, listed, would let through everything it runs.
 - **A copy that stays secret-bearing.** `cp .env .env.bak`, `cp .env ../worktree/` and
   `cp ../main/.env .env` keep a name the patterns recognise, and are how a worktree gets
   its configuration.

@@ -476,11 +476,12 @@ _walk_cd() {
 # the prefixes agents put in front of one: VAR=value, PowerShell's `$out =`, sudo,
 # doas and gsudo, env, command, builtin, exec, nohup, noglob, time, nice, ionice,
 # chrt, taskset, stdbuf, setsid, unbuffer, chronic, flock, caffeinate, timeout,
-# watch, wsl, winpty and xargs, compared by basename and as shell_cmd_name spells a
-# name, so /usr/bin/env is env and wsl.exe is wsl. Each prefix's own options are
-# stepped over with their values, so `nice -n 10 rm`, `ionice -c3 rm`, `flock
-# /tmp/l rm` and `timeout -s KILL 30 rm` all arrive at rm. DIR is where the words
-# run: WALK_DIR, for the words in WALK_WORDS. Sets:
+# watch, wsl, winpty and xargs, and the package runners npx, npm exec, pnpm exec and
+# dlx, yarn, bunx, bun x, uvx and pipx run, compared by basename and as
+# shell_cmd_name spells a name, so /usr/bin/env is env and wsl.exe is wsl. Each
+# prefix's own options are stepped over with their values, so `nice -n 10 rm`,
+# `ionice -c3 rm`, `flock /tmp/l rm` and `timeout -s KILL 30 rm` all arrive at rm.
+# DIR is where the words run: WALK_DIR, for the words in WALK_WORDS. Sets:
 #
 #   WALK_CMD_AT       the index of the command among the WORDs, or their count when
 #                     the prefixes leave none (`env`, `command -v rm`).
@@ -550,6 +551,52 @@ walk_command_start() {  # $1 = directory, then the words
         ;;
       timeout | gtimeout) _walk_skip_options "-s -k --signal --kill-after"; k=$((k + 1)) ;;   # then the duration
       xargs) xargs=1; _walk_skip_xargs_options ;;
+      # Package runners run the program they are given: `npx dotenv -e .env -- jest`
+      # runs dotenv, and `npx rm -rf ../x` an rm. Read as the command, the runner was
+      # what the secret guard's refusal named, and listing it as a program that only
+      # loads a file, which the refusal suggested, waved through every program run
+      # behind it. `-c TEXT` hands a shell text, which is not read, as for flock.
+      npx) _walk_skip_options "-p --package -w --workspace -c --call" ;;
+      bunx) _walk_skip_options "-p --package" ;;
+      uvx) _walk_skip_options "--from -w --with --with-editable --with-requirements -p --python" ;;
+      # These run one only through a subcommand; otherwise they are the command.
+      npm)
+        case "${w[$k]:-}" in
+          exec | x) k=$((k + 1)); _walk_skip_options "-p --package -w --workspace -c --call" ;;
+          *) k=$((k - 1)); break ;;
+        esac
+        ;;
+      pnpm)
+        case "${w[$k]:-}" in
+          exec | dlx) k=$((k + 1)); _walk_skip_options "--package" ;;
+          *) k=$((k - 1)); break ;;
+        esac
+        ;;
+      bun)
+        case "${w[$k]:-}" in
+          x) k=$((k + 1)); _walk_skip_options "-p --package" ;;
+          *) k=$((k - 1)); break ;;
+        esac
+        ;;
+      pipx)
+        case "${w[$k]:-}" in
+          run) k=$((k + 1)); _walk_skip_options "--spec --python --pip-args --index-url" ;;
+          *) k=$((k - 1)); break ;;
+        esac
+        ;;
+      # yarn runs a script or a dependency's program by name, `yarn dotenv ...`, as
+      # well as through exec, dlx and run; its own commands, and an option, mean
+      # yarn itself runs. `install` and `unlink` are listed because the write and
+      # destructive guards would read them as the programs of those names.
+      yarn)
+        case "${w[$k]:-}" in
+          exec | dlx | run) k=$((k + 1)); _walk_skip_options "-p --package" ;;
+          '' | -* | add | install | remove | upgrade | up | link | unlink | init | create | pack | \
+            publish | workspace | workspaces | global | cache | config | bin | info | why | node | \
+            npm | set | plugin | version | dedupe | rebuild | patch | import | audit | outdated | list)
+            k=$((k - 1)); break ;;
+        esac
+        ;;
       *) k=$((k - 1)); break ;;
     esac
   done

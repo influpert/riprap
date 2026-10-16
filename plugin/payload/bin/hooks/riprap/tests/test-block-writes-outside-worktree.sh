@@ -284,6 +284,10 @@ check "...inside -> allow" 0 "$(bash_in "$REPO" "nice -n 10 touch ./x")"
 check "sudo -u root does not hide the command -> block" 2 "$(bash_in "$REPO" "sudo -u root touch $OTHER/x")"
 check "...inside -> allow" 0 "$(bash_in "$REPO" "sudo -u root touch ./x")"
 check "a prefix named by its path -> block" 2 "$(bash_in "$REPO" "/usr/bin/env touch $OTHER/x")"
+check "a package runner does not hide the command -> block" 2 "$(bash_in "$REPO" "pnpm exec cp a $OTHER/x")"
+check "...inside -> allow" 0 "$(bash_in "$REPO" "pnpm exec cp a ./x")"
+check "yarn install is yarn's own command, not install(1) -> allow" 0 \
+  "$(bash_in "$REPO" "yarn install --modules-folder $OTHER/node_modules")"
 check "env -C moves where a relative write lands -> block" 2 "$(bash_in "$REPO" "env -C $OTHER touch x")"
 check "...into a subdirectory -> allow" 0 "$(bash_in "$REPO" "env -C src touch x")"
 check "...relative, with no cwd at all -> block (still fails closed)" 2 \

@@ -93,6 +93,10 @@ prose alone does not survive a busy afternoon.
      the next read of the copy would go through.
    - **A file handed to a program that then prints it**: `--env-file .env` with a container
      whose command is `env`, with `node -e`, or with `compose config`.
+   - **What a listed command runs.** The command after `kubectl exec`'s or
+     `gh codespace ssh`'s `--`, and after the `--` of a loader a project listed
+     (`dotenv -e .env -- cat .env`), is read as any command is, and a loader that runs
+     `printenv` prints what it loaded. `kubectl cp` and `gh codespace cp` are read as `cp`.
    - **A search that reaches one without naming it**: `grep -r` (a glob root such as `*`
      included), a `find` whose `-exec` runs a command that reads — `-exec grep`, not
      `-exec wc -l` — or whose list is handed to one (`find … | xargs grep`,
@@ -145,7 +149,8 @@ refuses them is one people switch off.
   `vercel env pull .env.local`. If one of yours only loads the file, a human adds the
   command to `SECRET_NONREADING_COMMANDS` in `bin/hooks/lib/secret-patterns.local.sh`.
   That list is consulted before any command's own parser, so it works for `sed` or `cp`
-  too. List the program, not what starts it: a package runner in front of it — `npx`,
+  too, and it covers the program's own arguments, never the command it runs after its
+  `--`. List the program, not what starts it: a package runner in front of it — `npx`,
   `pnpm exec`, `yarn`, `bunx`, `uvx`, `pipx run` — is looked through as any wrapper is, and
   a runner, a shell or an interpreter, listed, would let through everything it runs.
 - **A copy that stays secret-bearing.** `cp .env .env.bak`, `cp .env ../worktree/` and
@@ -183,6 +188,8 @@ It catches an honest slip and the obvious retry after a block. It does not follo
 - a `cd` to a place it cannot work out — a variable other than `$HOME`, `$PWD` or
   `$CLAUDE_PROJECT_DIR`, `cd -`, `cd "$(dirname …)"`. A search or a relative glob after
   one is not checked;
+- a command a listed loader runs when no `--` marks where it starts, or a search run on
+  another machine (`kubectl exec … -- grep -r`), whose files are not on this disk;
 - a `find` list passed on through anything but a plain filter (`sort`, `head`, `grep`)
   before `xargs`; an `fd -x` beyond a literal name; a recursive `git grep --untracked`,
   `ag` or `ack`;

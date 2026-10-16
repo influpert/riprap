@@ -99,7 +99,9 @@ SECRET_NONREADING_COMMANDS=(
   ssh-add ssh-keygen
   # remote clients: their arguments are resource names and API routes —
   # `kubectl delete secrets/db`, `gh api .../actions/secrets/public-key` — and a
-  # file they take is sent to the service, not printed
+  # file they take is sent to the service, not printed. What `kubectl exec` or
+  # `gh codespace ssh` runs after its `--`, and what `kubectl cp` copies out, is
+  # read all the same (_secret_listed_runs).
   gh kubectl
   # PowerShell's own names for the same acts, and the aliases it gives them:
   # Test-Path is its test, Get-Item, Get-ChildItem and Resolve-Path its ls and
@@ -115,6 +117,12 @@ SECRET_NONREADING_COMMANDS=(
   New-Item ni Remove-Item ri del erase rd Rename-Item rni ren Move-Item mi move
   Set-Content Add-Content Out-File Tee-Object Clear-Content
 )
+# What riprap lists, taken before a project's local file appends to it. Every one
+# of these acts on a name and runs nothing, so `--` is the end of its options:
+# `rm -- .env .env.local` removes two files. A name a project adds is a program it
+# says only loads what it is given, `dotenv`, and such a program exists to run the
+# command after its `--` (_secret_listed_runs).
+_SR_NONREADING_SHIPPED=("${SECRET_NONREADING_COMMANDS[@]}")
 
 # git subcommands that act on a path without printing what is in it. Every other
 # subcommand — show, diff, blame, cat-file, grep, archive, an alias — is a reader,
@@ -874,6 +882,9 @@ _secret_reach() {
   local mode="$1" root="$2" by="$3" follow="${4:-0}" hidden="${5:-0}" noignore="${6:-0}"
   local abs f d b pat comp rest v reached show sd
   local -a names=() type=(-type f) prune=(-name .git) cands=() hits=()
+  # A search run on another machine (`kubectl exec POD -- grep -r`) reaches its
+  # files, not this disk's; walking this one would judge the wrong files, slowly.
+  [ "${_SR_REMOTE:-0}" -eq 0 ] || return 1
   case "$root" in
     /*) abs="$root" ;;
     *) [ -n "${_SR_BASE:-}" ] || return 1; abs="$_SR_BASE/$root" ;;   # a cd the hook could not follow
@@ -1704,6 +1715,7 @@ _secret_jq() {  # CMD START
 # real file from its example: `cp config/app.pem.example config/app.pem` reads
 # only the example. PowerShell's Copy-Item is read as cp, its -Destination wherever
 # it stands: `Copy-Item -Destination .env -Path .env.example` copies the example.
+# So are `kubectl cp` and `gh codespace cp`, out of a pod or a codespace.
 _secret_copy() {  # CMD START
   local cmd="$1" k="$2" n=${#_SR_W[@]} w q skip=0 target="" i last dest src named=""
   local -a ops=() opsq=()
@@ -1720,7 +1732,9 @@ _secret_copy() {  # CMD START
         install:-g | install:--group | rsync:-e | rsync:--rsh | rsync:--exclude | rsync:--include | \
         rsync:--filter | rsync:-f | rsync:--exclude-from | rsync:--include-from | rsync:--chmod | \
         rsync:--chown | rsync:--backup-dir | rsync:--rsync-path | rsync:--password-file | \
-        rsync:--log-file | scp:-i | scp:-P | scp:-o | scp:-F | scp:-c | scp:-l | scp:-J)
+        rsync:--log-file | scp:-i | scp:-P | scp:-o | scp:-F | scp:-c | scp:-l | scp:-J | \
+        kubectl:-c | kubectl:--container | kubectl:-n | kubectl:--namespace | kubectl:--retries | \
+        gh:-c | gh:--codespace | gh:-p | gh:--profile | gh:-R | gh:--repo | gh:--repo-owner)
         skip=1; continue ;;
       *:-*) continue ;;
     esac
@@ -1737,8 +1751,9 @@ _secret_copy() {  # CMD START
   fi
   for ((i = 0; i <= last; i++)); do
     src="${ops[$i]}"
-    # scp and rsync spell a remote source host:path.
-    case "$cmd:$src" in scp:*:* | rsync:*:*) src="${src#*:}" ;; esac
+    # scp and rsync spell a remote source host:path, kubectl pod:path, and gh's
+    # codespace cp remote:path.
+    case "$cmd:$src" in scp:*:* | rsync:*:* | kubectl:*:* | gh:remote:*) src="${src#*:}" ;; esac
     _secret_word_names "$src" "${opsq[$i]}" || continue
     _secret_copy_stays "$_SR_NAMED" "$dest" "$((last + 1))" && continue
     _secret_hit "$_SR_NAMED" "$cmd"
@@ -1797,6 +1812,76 @@ _secret_follow_dir() {
   _walk_follow_dir
   _SR_BASE="$dir"
   _SR_PUSHED=(${pushed[@]+"${pushed[@]}"})
+}
+
+# _secret_listed_runs CMD START DEPTH — 0 when CMD, on SECRET_NONREADING_COMMANDS,
+# reads a secret all the same, through what it runs or copies. Being listed says
+# the names it is handed are not printed; it says nothing of a command it runs:
+#
+#   kubectl exec POD -- cat /app/.env    the words after `--` run in the pod, and
+#   gh codespace ssh -- cat .env         in the codespace, and print into this
+#                                        session as surely as a local cat
+#   kubectl cp POD:/app/.env ./x         a copy, read as cp is: out of the pod to a
+#   gh codespace cp remote:.env ./x      name the patterns miss
+#   dotenv -e .env -- cat .env           a loader a project listed runs what follows
+#   dotenv -e .env -- printenv           its `--`, and printenv prints what it loaded
+#
+# Short-circuited on the name alone, all of these went through. Only kubectl, gh
+# and a name a project added read their `--` as a command: riprap's own entries
+# end their options there. A command on another machine is read for what it
+# names, with no directory and no search: where it runs is not here, and a search
+# root there would be walked on this disk. A loader whose `--` is missing is not
+# looked into, since where its own options end is the program's to say.
+_secret_listed_runs() {
+  local cmd="$1" k="$2" depth="$3" n=${#_SR_W[@]} j w dd=-1 envfile="" remote=0
+  local -a tw=() tq=()
+  case "$cmd" in
+    kubectl | gh)
+      remote=1
+      # `kubectl cp` and `gh codespace cp`: the subcommand, past global options.
+      for ((j = k; j < n; j++)); do
+        case "$cmd:${_SR_W[$j]}" in
+          *:--) break ;;
+          kubectl:-n | kubectl:--namespace | kubectl:--context | kubectl:--cluster | \
+            kubectl:--kubeconfig | kubectl:-s | kubectl:--server) j=$((j + 1)) ;;
+          *:-*) ;;
+          gh:codespace | gh:cs) ;;
+          *:cp) _secret_copy "$cmd" "$((j + 1))"; return ;;
+          *) break ;;
+        esac
+      done
+      ;;
+    *) ! _secret_in_list "$cmd" "${_SR_NONREADING_SHIPPED[@]}" || return 1 ;;
+  esac
+  for ((j = k; j < n; j++)); do
+    if [ "${_SR_W[$j]}" = -- ]; then dd=$j; break; fi
+  done
+  [ "$dd" -ge 0 ] && [ "$((dd + 1))" -lt "$n" ] || return 1
+  # A project may list a program that acts on names, as rm does, and ends its
+  # options at `--`: what follows names a secret file, and is no command anybody
+  # runs. `trash -- .env .env.local` is two names.
+  if [ "$remote" -eq 0 ] && _secret_word_names "${_SR_W[$((dd + 1))]}" "${_SR_Q[$((dd + 1))]}"; then
+    return 1
+  fi
+  # The words before the `--` are the listed command's own, and not read.
+  for ((j = k; j < dd; j++)); do
+    w="${_SR_W[$j]}"
+    case "$w" in --*=*) w="${w#*=}" ;; esac
+    if _secret_word_names "$w" "${_SR_Q[$j]}"; then envfile="$_SR_NAMED"; break; fi
+  done
+  tw=("${_SR_W[@]:$((dd + 1))}")
+  tq=("${_SR_Q[@]:$((dd + 1))}")
+  local -a _SR_W=() _SR_Q=()
+  _SR_W=("${tw[@]}") _SR_Q=("${tq[@]}")
+  if [ "$remote" -eq 1 ]; then
+    local _SR_BASE="" _SR_REMOTE=1
+    _secret_simple "$depth"
+    return
+  fi
+  _secret_simple "$depth" && return 0
+  [ -n "$envfile" ] && _secret_envfile_prints "${_SR_W[0]##*/}" 0 || return 1
+  _secret_hit "$envfile" "$cmd"
+  SECRET_HIT_WHY=prints
 }
 
 # _secret_for START — `for NAME in WORD...`: NAME holds each word in turn, so the
@@ -1935,9 +2020,13 @@ _secret_simple() {
       ;;
   esac
 
-  # A command a project has declared only loads what it is given is not refused,
-  # whichever parser would otherwise read its arguments.
-  _secret_in_list "$cmd" "${SECRET_NONREADING_COMMANDS[@]}" && return 1
+  # A command on the list is not refused for the names it is handed, whichever
+  # parser would otherwise read its arguments; but one that runs another command
+  # is still read for what that command reads (_secret_listed_runs).
+  if _secret_in_list "$cmd" "${SECRET_NONREADING_COMMANDS[@]}"; then
+    _secret_listed_runs "$cmd" "$k" "$depth"
+    return
+  fi
 
   # PowerShell's -Command and Invoke-Expression, and cmd's /c: the text they are
   # handed is read as a command, as bash -c's is (shell_run_text,

@@ -199,7 +199,7 @@ echo "--- A project can list a program that only loads the file ---"
 # adopter's bin/hooks/ is, so nothing is written into this repository.
 mkdir -p "$TMP/hooks/lib"
 cp -R "$SCRIPT_DIR/.." "$TMP/hooks/riprap"
-printf 'SECRET_NONREADING_COMMANDS+=(dotenv sed cp)\n' > "$TMP/hooks/lib/secret-patterns.local.sh"
+printf 'SECRET_NONREADING_COMMANDS+=(dotenv sed cp trash)\n' > "$TMP/hooks/lib/secret-patterns.local.sh"
 check "dotenv -e .env -> block (it loads the file, which the hook cannot know)" 2 \
   "$(bash_cmd 'dotenv -e .env -- jest')"
 check "sed -i on .env -> block until a project lists sed" 2 "$(bash_cmd 'sed -i s/a/b/ .env')"
@@ -223,6 +223,17 @@ for c in 'npx dotenv -e .env -- jest' 'npx -y dotenv -e .env -- jest' 'pnpm exec
 done
 check "npx cat .env, npx not listed -> block (the runner is not the program)" 2 "$(bash_cmd 'npx cat .env')"
 check "pnpm exec cat .env -> block" 2 "$(bash_cmd 'pnpm exec cat .env')"
+# Listed says the loader's own arguments are not printed, not that the command it
+# runs after its `--` reads nothing. Short-circuited on the loader's name, every one
+# of these went through.
+for c in 'dotenv -e .env -- cat .env' 'dotenv -e .env -- printenv' 'dotenv -e .env -- bash -c "cat .env"' \
+    'dotenv -e .env -- grep -r API_KEY .' 'npx dotenv -e .env -- cat .env'; do
+  check "$c, dotenv listed -> block" 2 "$(bash_in "$PROJ" "$c")"
+done
+check_contains "a listed loader that prints what it loaded says so" "is handed it and then prints" \
+  "$(bash_cmd 'dotenv -e .env -- printenv')"
+check "a listed program that acts on names ends its options at -- -> allow" 0 \
+  "$(bash_cmd 'trash -- .env .env.local')"
 HOOK="$SAVED_HOOK"
 check_contains "behind npx, the refusal names the program it runs" "\`dotenv\` to SECRET_NONREADING_COMMANDS" \
   "$(bash_cmd 'npx dotenv -e .env -- jest')"
@@ -815,6 +826,28 @@ for c in 'tar -czf env.tgz .env' 'git diff main -- .env' 'git show --stat HEAD:.
     'git grep -n API_KEY -- .env.local' 'git grep -f .env' 'jq . .claude/settings.local.json' \
     'fd -H .env -x cat'; do
   check "$c -> block" 2 "$(bash_cmd "$c")"
+done
+
+echo
+echo "--- A remote client is listed for its names, not for what it runs ---"
+# kubectl and gh are listed because `kubectl delete secrets/db` names a resource,
+# not a file. What `kubectl exec` and `gh codespace ssh` run after `--` prints into
+# this session as a local cat would, and `kubectl cp` copies a file out to a name
+# the patterns miss; on the name alone, all of them went through.
+for c in 'kubectl exec deploy/api -- cat /app/.env' "kubectl exec api-7f9 -- sh -c 'cat /app/.env'" \
+    'kubectl -n prod exec -it api -- bash -c "cat /app/config/master.key"' \
+    'kubectl exec api-7f9 -- cat /var/run/secrets/kubernetes.io/serviceaccount/token' \
+    'kubectl cp api-7f9:/app/.env ./pod-env.txt' 'kubectl cp -n prod api-7f9:/app/.env ./pod-env.txt' \
+    'gh codespace ssh -- cat .env' 'gh cs ssh -- cat .env' 'gh codespace cp remote:/workspaces/app/.env ./x.txt'; do
+  check "$c -> block" 2 "$(bash_in "$PROJ" "$c")"
+done
+# A search there reaches the pod's files, which are not on this disk to judge; a
+# copy in under a secret-bearing name puts nothing into the session; and riprap's
+# own entries end their options at `--`, so what follows is names, not a command.
+for c in 'kubectl exec api -- ls -la /app' 'kubectl exec api -- grep -r API_KEY /' \
+    'kubectl cp .env api-7f9:/app/.env' 'kubectl logs api --tail 5' 'gh repo clone acme/app -- --depth 1' \
+    'rm -f -- .env .env.local' 'ls -la -- .env'; do
+  check "$c -> allow" 0 "$(bash_in "$PROJ" "$c")"
 done
 
 echo

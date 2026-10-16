@@ -2,8 +2,8 @@
 # PreToolUse hook: block a destructive command whose target resolves OUTSIDE the
 # worktree the session is working in — rm and unlink, PowerShell's Remove-Item, find
 # -delete and -exec rm, and the git commands that throw uncommitted work away: clean
-# -f, reset --hard, checkout and restore of files, switch --discard-changes, and stash
-# drop and clear.
+# -f, reset --hard, checkout and restore of files, switch --discard-changes, stash
+# drop and clear, and worktree remove --force.
 #
 # Why this exists: an agent working in one checkout ran `rm -f` against untracked
 # files in a *different* checkout on the same machine, and untracked files have no
@@ -52,7 +52,10 @@
 #     xargs rm. git clean -f, reset --hard, checkout -f or of files (`checkout --
 #     .`), restore of the working tree, switch --discard-changes and stash drop or
 #     clear: the directory git runs in after any cd and -C, and any --work-tree,
-#     --git-dir, GIT_WORK_TREE or GIT_DIR.
+#     --git-dir, GIT_WORK_TREE or GIT_DIR. git worktree remove --force: those, and
+#     the checkout it removes, which passes only when it is the worktree itself. Its
+#     operand can only be a checkout, so one nested inside the worktree, where
+#     Claude Code keeps its own, is another session's and is refused too.
 #   - a shell or an evaluator handed text (walk_run_text, in the library): `bash -c
 #     TEXT` (and sh, zsh, dash, ksh), `eval TEXT`, `pwsh -Command TEXT`,
 #     Invoke-Expression and `cmd /c`. TEXT is walked as a command of its own,
@@ -233,6 +236,9 @@ check_remove_item() {
 }
 
 BLOCK_REASON=""
+# 1 when what is refused is a checkout nested inside the boundary, which the
+# refusal's first line must not call outside it (check_worktree_removal).
+BLOCK_NESTED=0
 
 # check_target LABEL RAW DIR — record a block if RAW, resolved against DIR, lands
 # outside the boundary. A path that cannot be expanded is not checked, by design.
@@ -362,10 +368,11 @@ check_find() {
 }
 
 # git clean -f / git reset --hard: where git runs, and any work tree or git directory
-# it is pointed at. $1 = directory, $2 = the index after `git`; GIT_WORK_TREE and
-# GIT_DIR from the command's assignments arrive in env_work_tree / env_git_dir.
+# it is pointed at, and for git worktree remove --force the checkout it removes too.
+# $1 = directory, $2 = the index after `git`; GIT_WORK_TREE and GIT_DIR from the
+# command's assignments arrive in env_work_tree / env_git_dir.
 check_git() {
-  local run="$1" j="$2" a sub="" what="" d c rest
+  local run="$1" j="$2" a sub="" what="" d c rest removed=""
   local work_tree="$env_work_tree" git_dir="$env_git_dir"
   # git's own options, before the subcommand. -C is cumulative, each one relative
   # to the last, exactly as `cd` would be.
@@ -467,6 +474,31 @@ check_git() {
     stash)
       case "${w[$j]:-}" in drop | clear) what="git stash ${w[$j]}" ;; esac
       ;;
+    # worktree remove --force deletes a whole checkout, its modified and untracked
+    # files with it, and it is the retry git's own refusal suggests when there are
+    # any: without --force git removes only a clean one. Its operand is checked
+    # below, once git's directory is; -f may come before it or after it.
+    worktree)
+      if [ "${w[$j]:-}" = remove ]; then
+        local force=0 dd=0
+        j=$((j + 1))
+        while [ "$j" -lt "$n" ]; do
+          a="${w[$j]}"
+          j=$((j + 1))
+          if [ "$dd" -eq 0 ]; then
+            case "$a" in
+              --) dd=1; continue ;;
+              --force) force=1; continue ;;
+              --*) continue ;;
+              -*f*) force=1; continue ;;
+              -?*) continue ;;
+            esac
+          fi
+          [ -n "$removed" ] || removed="$a"
+        done
+        [ "$force" -eq 0 ] || what="git worktree remove --force"
+      fi
+      ;;
   esac
   [ -n "$what" ] || return 0
   [ -z "$BLOCK_REASON" ] || return 0
@@ -485,6 +517,30 @@ check_git() {
   fi
   if [ -n "$work_tree" ]; then check_target "$what work tree" "$work_tree" "$run"; fi
   if [ -n "$git_dir" ]; then check_target "$what git directory" "$git_dir" "$run"; fi
+  if [ -n "$removed" ]; then check_worktree_removal "$removed" "$run"; fi
+  return 0
+}
+
+# check_worktree_removal RAW DIR — the checkout `git worktree remove --force` deletes.
+# Outside the boundary it is refused as any target is. Inside it, the operand can
+# only be the worktree itself or a checkout nested in it, the way Claude Code keeps
+# its own under .claude/worktrees/: that one is inside only by its path. Its files
+# are another session's work, untracked here and in no diff of this one, so it is
+# refused too, where the same path given to rm is not, because rm's operand can be
+# anything and this one can only be a checkout.
+check_worktree_removal() {
+  local raw="$1" dir="$2" v resolved
+  local -a vals=("$raw")
+  if walk_for_values "$raw"; then vals=("${WALK_VALUES[@]}"); fi
+  for v in "${vals[@]}"; do
+    check_target "git worktree remove --force target" "$v" "$dir"
+    [ -z "$BLOCK_REASON" ] || return 0
+    resolved=$(walk_expand "$v" "$dir" loose) || continue
+    [ "$resolved" != "$BOUNDARY" ] || continue
+    BLOCK_REASON="git worktree remove --force target '$v' resolves to '$resolved', a checkout of its own inside the $BOUNDARY_NAME '$BOUNDARY': only the $BOUNDARY_NAME itself is this session's to remove"
+    BLOCK_NESTED=1
+    return 0
+  done
   return 0
 }
 
@@ -600,6 +656,8 @@ walk_commands "$COMMAND" "$START_DIR" on_command
 {
   if [ "$CWD_MISSING" -eq 1 ]; then
     echo "❌ Blocked: a destructive command, with no working directory to check it against."
+  elif [ "$BLOCK_NESTED" -eq 1 ]; then
+    echo "❌ Blocked: this destroys another checkout, nested inside the $BOUNDARY_NAME you are working in."
   else
     echo "❌ Blocked: this destroys something outside the $BOUNDARY_NAME you are working in."
   fi
@@ -613,11 +671,11 @@ walk_commands "$COMMAND" "$START_DIR" on_command
   # reads as a mistake to an agent clearing the other two.
   echo "rm, unlink, Remove-Item, find -delete, and the git commands that throw away"
   echo "uncommitted work (clean -f, reset --hard, checkout or restore of files, stash"
-  echo "drop) run unprompted only on what is inside the $BOUNDARY_NAME. Everything outside it is in scope,"
-  echo "caches and /tmp included: from a path alone, another checkout, another session's"
-  echo "scratch and a cache every project on this machine shares look the same, none of"
-  echo "them is this task's to remove, and an untracked file deleted there has no"
-  echo "history to restore it from."
+  echo "drop, worktree remove --force) run unprompted only on what is inside the"
+  echo "$BOUNDARY_NAME. Everything outside it is in scope, caches and /tmp included: from"
+  echo "a path alone, another checkout, another session's scratch and a cache every"
+  echo "project on this machine shares look the same, none of them is this task's to"
+  echo "remove, and an untracked file deleted there has no history to restore it from."
   echo ""
   echo "Do NOT rephrase the command to get past this check: not with a cd first, in"
   echo "this command or a call of its own, nor with a subshell, sh -c, a heredoc into a"

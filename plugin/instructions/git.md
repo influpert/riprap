@@ -88,10 +88,12 @@ prefix to `WORKTREE_WRITE_ALLOWED_PREFIXES` in `bin/hooks/lib/worktree-write-pat
 **Deleting has the same boundary: the worktree you are working in** — or, outside any git
 checkout, the directory itself — with no exception for the host's state. `rm`, `unlink`,
 `Remove-Item`, `find -delete`, and the git commands that throw uncommitted work away — `clean
--f`, `reset --hard`, `checkout` or `restore` of files, `stash drop` — destroy nothing outside it, and that
-includes tool caches and `/tmp`: from a path alone, another checkout, another session's scratch
-and a cache every project on the machine shares look the same, and none of them is the task's
-to remove. This rule exists because an agent once ran `rm -f` on untracked files in a different
+-f`, `worktree remove --force`, `reset --hard`, `checkout` or `restore` of files, `stash drop` —
+destroy nothing outside it, and that includes tool caches and `/tmp`: from a path alone, another
+checkout, another session's scratch and a cache every project on the machine shares look the
+same, and none of them is the task's to remove. A checkout nested inside the worktree, the way
+Claude Code keeps its own under `.claude/worktrees/`, is another session's too, though its path
+is inside. This rule exists because an agent once ran `rm -f` on untracked files in a different
 checkout on the same machine, and an untracked file has no history to restore it from. When
 one is refused, **do not rephrase it** — not with a `cd` first, in the same command or a call
 of its own, nor with a subshell, `sh -c`, a heredoc into a shell, `git -C` or `find` instead of
@@ -102,7 +104,8 @@ gone. Show the user the exact command and let them run it. `block-destructive-ou
 follows `cd`, `pushd`, `popd` and subshells, reads past `sudo`, `env`, `timeout`, `ionice`,
 `xargs` and a full path like `/bin/rm`, reads a heredoc fed to a shell, the text handed to `sh
 -c`, `pwsh -Command` or `cmd /c`, a `"$(…)"` inside double quotes and a `for` loop's literal
-list, and checks `git -C` and `find`'s starting points; a path that starts with a variable
+list, and checks `git -C`, `find`'s starting points and the checkout a `worktree remove
+--force` removes, nested or not; a path that starts with a variable
 passes it, so here too the hook only catches the slips. If it refuses a command that deletes nothing — a commit
 message or pull request body that quotes one — the text is what it misread: pass it from a file
 under `tmp/` with `git commit -F` or `gh pr create --body-file`.

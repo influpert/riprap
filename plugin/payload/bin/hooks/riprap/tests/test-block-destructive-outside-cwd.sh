@@ -771,6 +771,33 @@ check "git -C other restore --staged ., which leaves the files -> allow" 0 \
 check "git -C other stash list -> allow" 0 "$(bash_in "$WORK" "git -C $OTHER stash list")"
 check_contains "the refusal names these as well" "checkout or restore of files" \
   "$(bash_in "$WORK" "git -C $OTHER restore .")"
+# git worktree remove --force deletes a whole checkout, modified and untracked files
+# with it, and --force is the retry git's own refusal suggests when there are any.
+# Its operand is only ever a checkout, so one nested inside this worktree, where
+# Claude Code keeps its own (.claude/worktrees/<name>), is another session's too.
+check "git worktree remove --force of a sibling checkout -> block" 2 \
+  "$(bash_in "$WORK" "git worktree remove --force ../riprap-other")"
+check "...by absolute path, with -f -> block" 2 "$(bash_in "$WORK" "git worktree remove -f $OTHER")"
+check "...with -f -f, which removes a locked one too -> block" 2 \
+  "$(bash_in "$WORK" "git worktree remove -f -f ../riprap-other")"
+check "...with --force after the operand -> block" 2 \
+  "$(bash_in "$WORK" "git worktree remove ../riprap-other --force")"
+check "...from a git -C in another checkout -> block" 2 \
+  "$(bash_in "$WORK" "git -C $OTHER worktree remove --force ../riprap-other-wt")"
+check "...of a checkout nested in this worktree -> block" 2 \
+  "$(bash_in "$PROJ" "git worktree remove --force .claude/worktrees/other")"
+check "...of a nested checkout, from a subdirectory -> block" 2 \
+  "$(bash_in "$APP" "git worktree remove --force ../../.claude/worktrees/other")"
+check "git worktree remove without --force, which refuses a dirty checkout -> allow" 0 \
+  "$(bash_in "$PROJ" "git worktree remove ../riprap-other")"
+check "git worktree remove --force of the worktree itself, its own -> allow" 0 \
+  "$(bash_in "$APP" "git worktree remove --force ../..")"
+check "git worktree add, list and prune -> allow" 0 \
+  "$(bash_in "$PROJ" "git worktree add ../proj-task -b task && git worktree list && git worktree prune")"
+check_contains "the refusal names worktree remove --force" "worktree remove --force" \
+  "$(bash_in "$WORK" "git worktree remove --force ../riprap-other")"
+check_contains "and says why a nested checkout is not this one's" "a checkout of its own" \
+  "$(bash_in "$PROJ" "git worktree remove --force .claude/worktrees/other")"
 
 echo
 echo "--- The block message has to explain itself ---"

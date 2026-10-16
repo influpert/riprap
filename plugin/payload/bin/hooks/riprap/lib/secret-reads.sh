@@ -1623,11 +1623,17 @@ _secret_xargs_feed() {
   _secret_find_feed "$_SR_PIPE_FIND" "$_SR_PIPE_FINDQ" "find | xargs"
 }
 
-# _secret_subst_feed CMD_INDEX WORD_INDEX — `CMD ... $(find ...)`: the same, by
-# substitution.
+# _secret_subst_feed CMD_INDEX WORD_INDEX — `CMD ... $(find ...)`, or the same in
+# double quotes: the same, by substitution, when the word is a substitution whose
+# output is a find's list (the stash, filled by _secret_placeholder and
+# _secret_subst).
 _secret_subst_feed() {
   local ci="$1" pi="$2" n=${#_SR_W[@]} j s text="${_SR_W[$2]}" br='{}'
   local -a ex=()
+  for ((s = 0; s < ${#_SR_STASH_T[@]}; s++)); do
+    [ "${_SR_STASH_T[$s]}" != "$text" ] || break
+  done
+  [ "$s" -lt "${#_SR_STASH_T[@]}" ] || return 1
   for ((j = ci; j < n; j++)); do
     if [ "$j" -eq "$pi" ]; then
       ex+=("$br")
@@ -1636,13 +1642,7 @@ _secret_subst_feed() {
     fi
   done
   _secret_exec_reads "${ex[@]}" || return 1
-  for ((s = 0; s < ${#_SR_STASH_T[@]}; s++)); do
-    if [ "${_SR_STASH_T[$s]}" = "$text" ]; then
-      _secret_find_feed "${_SR_STASH_W[$s]}" "${_SR_STASH_Q[$s]}" "find, in \$(...)"
-      return
-    fi
-  done
-  return 1
+  _secret_find_feed "${_SR_STASH_W[$s]}" "${_SR_STASH_Q[$s]}" "find, in \$(...)"
 }
 
 # --- other commands with operands that are not paths ---------------------------
@@ -1984,15 +1984,19 @@ _secret_simple() {
   cmd="${_SR_W[$k]##*/}"
   k=$((k + 1))
 
-  # The files a find lists, handed to this command by xargs or by $(find ...).
+  # The files a find lists, handed to this command by xargs or by $(find ...) —
+  # quoted too: `cat "$(find . -name .env)"` is the spelling ShellCheck asks for,
+  # and the one word it makes is the file when find lists one.
   if [ "$_SR_XARGS" -eq 1 ] && [ -n "$_SR_PIPE_FIND" ]; then
     _secret_xargs_feed "$ci" && return 0
   fi
-  for ((j = ci; j < n; j++)); do
-    if [ "${_SR_Q[$j]}" = 2 ]; then
-      case "${_SR_W[$j]}" in '$(find '*) _secret_subst_feed "$ci" "$j" && return 0 ;; esac
-    fi
-  done
+  if [ "${#_SR_STASH_T[@]}" -gt 0 ]; then
+    for ((j = ci; j < n; j++)); do
+      case "${_SR_Q[$j]}:${_SR_W[$j]}" in
+        [12]:'$('*')') _secret_subst_feed "$ci" "$j" && return 0 ;;
+      esac
+    done
+  fi
 
   # cd, pushd and popd, and PowerShell's names for them in any case.
   shell_cmd_name "$cmd"
@@ -2137,9 +2141,21 @@ _secret_analyze_windows() {
 # _secret_subst DEPTH BODY — read a substitution that sat inside double quotes, as
 # the commands it is, from where the command around it runs. What the pipeline
 # around it carries is put back after, since reading it walks commands of its own.
+# When its last command lists a find's names, directly or through a filter, that
+# list is its output, and it goes in the stash under the word it is in, `$(BODY)`,
+# for the command that word is handed to. Read only as a find that lists names,
+# `cat "$(find . -name .env)"` was let through while the unquoted form was refused.
 _secret_subst() {
   local pf="$_SR_PIPE_FIND" pfq="$_SR_PIPE_FINDQ" fs="$_SR_FIND_SRC" fsq="$_SR_FIND_SRCQ"
+  _SR_FIND_SRC="" _SR_FIND_SRCQ=""
   _secret_analyze "$2" "${_SR_BASE:-}" "$(($1 + 1))" || true
+  if [ -n "$_SR_FIND_SRC" ]; then
+    # Keyed as _secret_simple will spell the word, its variables expanded.
+    _secret_expand_vars "\$($2)"
+    _SR_STASH_T+=("$_SR_EXP")
+    _SR_STASH_W+=("$_SR_FIND_SRC")
+    _SR_STASH_Q+=("$_SR_FIND_SRCQ")
+  fi
   _SR_PIPE_FIND="$pf" _SR_PIPE_FINDQ="$pfq" _SR_FIND_SRC="$fs" _SR_FIND_SRCQ="$fsq"
 }
 
@@ -2218,6 +2234,8 @@ _secret_analyze() {
         seg=()
         segq=()
         seghd=()
+        # What its output is, is the business of the commands in it alone.
+        _SR_FIND_SRC="" _SR_FIND_SRCQ=""
         i=$((i + 1))
         continue
       fi
@@ -2299,25 +2317,20 @@ _secret_analyze() {
 }
 
 # _secret_placeholder START END — the word a substitution's output becomes, in
-# _SR_PH: `$(` and its words from token START to END, then `)`. A find in it that
-# only lists names is kept in the stash, for the command its list is handed to.
-# Reads the token arrays of the _secret_analyze that calls it.
+# _SR_PH: `$(` and its words from token START to END, then `)`. When the last
+# command in it listed a find's names, directly or through a filter — `$(find .
+# -name .env | head -1)` — that list is its output, and goes in the stash for the
+# command the word is handed to, as _secret_subst does for a quoted one. Called
+# once the commands in it have been read, which left their find in _SR_FIND_SRC;
+# reads the token arrays of the _secret_analyze that calls it.
 _secret_placeholder() {
-  local s="$1" e="$2" j txt="" redir_re='^[0-9]*[<>]'
-  local -a w=() q=()
+  local s="$1" e="$2" j txt=""
   for ((j = s; j < e; j++)); do txt+="${txt:+ }${toks[$j]}"; done
   _SR_PH="\$($txt)"
-  [ "${toks[$s]:-}" = find ] || return 0
-  for ((j = s; j < e; j++)); do
-    [ "${ops[$j]}" -eq 0 ] || return 0
-    # A redirection inside it, `2>/dev/null`, is not one of find's words.
-    if [ "${quoted[$j]}" -eq 0 ] && [[ "${toks[$j]}" =~ $redir_re ]]; then j=$((j + 1)); continue; fi
-    w+=("${toks[$j]}")
-    q+=("${quoted[$j]}")
-  done
+  [ -n "$_SR_FIND_SRC" ] || return 0
   _SR_STASH_T+=("$_SR_PH")
-  _SR_STASH_W+=("$(_secret_join "${w[@]}")")
-  _SR_STASH_Q+=("$(_secret_join "${q[@]}")")
+  _SR_STASH_W+=("$_SR_FIND_SRC")
+  _SR_STASH_Q+=("$_SR_FIND_SRCQ")
 }
 
 # _secret_join WORD... — the words, each followed by the separator. Nothing at

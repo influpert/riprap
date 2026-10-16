@@ -100,9 +100,9 @@ prose alone does not survive a busy afternoon.
    - **A search that reaches one without naming it**: `grep -r` (a glob root such as `*`
      included), a `find` whose `-exec` runs a command that reads — `-exec grep`, not
      `-exec wc -l` — or whose list is handed to one (`find … | xargs grep`,
-     `grep KEY $(find …)`), and ripgrep or the Grep tool once a glob, `--no-ignore` or `-u`
-     takes them past `.gitignore`, or once they are given a directory `.gitignore`
-     excludes, which ripgrep searches anyway. A glob that names a file overrides
+     `grep KEY "$(find …)"`, quoted or not), and ripgrep or the Grep tool once a glob,
+     `--no-ignore` or `-u` takes them past `.gitignore`, or once they are given a directory
+     `.gitignore` excludes, which ripgrep searches anyway. A glob that names a file overrides
      `.gitignore` for it. This fires only when such a file is really there and git does not
      track it. The search's own `--exclude`, `--include`, `--exclude-dir` and negated globs
      are honoured, and `find`'s expression is evaluated as `find` evaluates it, so a

@@ -743,6 +743,18 @@ check "grep \$(find . -type f) -> block" 2 "$(bash_in "$PROJ" 'grep -n API_KEY $
 check "find | xargs grep -> block" 2 "$(bash_in "$PROJ" 'find . -type f | xargs grep -l API_KEY')"
 check "find -print0 | xargs -0 grep -> block" 2 \
   "$(bash_in "$PROJ" 'find . -type f -print0 | xargs -0 grep -l API_KEY')"
+# Quoted, which is how ShellCheck asks for it, the substitution is one word: the
+# file, when find lists one. Read only as a find that lists names, it went through
+# while the unquoted spelling was refused. Through a filter, the list is the same.
+for c in 'cat "$(find . -name .env)"' "grep API_KEY \"\$(find . -maxdepth 1 -name '.env*')\"" \
+    'source "$(find . -maxdepth 2 -name .env)"' 'cat $(find . -name .env | head -1)' \
+    'cat "$(find . -name .env | head -1)"' 'cat "$(find . -name .env 2>/dev/null)"'; do
+  check "$c -> block" 2 "$(bash_in "$PROJ" "$c")"
+done
+for c in 'cat "$(find src -name app.ts)"' 'wc -l "$(find . -name .env)"' 'echo "$(find . -name .env)"' \
+    'cat "$(find src -type f | head -1)"'; do
+  check "$c -> allow" 0 "$(bash_in "$PROJ" "$c")"
+done
 check "grep \$(find src -type f) -> allow" 0 "$(bash_in "$PROJ" 'grep -n API_KEY $(find src -type f)')"
 check "wc -l \$(find . -type f) -> allow" 0 "$(bash_in "$PROJ" 'wc -l $(find . -type f)')"
 check "find -name '*.ts' | xargs grep -> allow" 0 "$(bash_in "$PROJ" "find . -name '*.ts' | xargs grep -l API_KEY")"

@@ -14,22 +14,23 @@
 # `&&`, `;`, a pipe, a subshell, a shell keyword such as `if` or `then`, a prefix
 # such as `env`, or inside a command substitution, quoted or not. The text "gh pr
 # merge" inside a commit message, a heredoc, a single-quoted string or a grep
-# pattern is not a merge, and nor are the words after a command that does not
-# run them, as in `echo gh pr merge 5`. Its PR is the number, URL or branch among
-# its arguments, or else whatever `gh pr checkout` switched to earlier in the
-# command. Its repository is the `--repo` or GH_REPO it gives, an exported
-# GH_REPO earlier in the command, or else the directory it runs in after any
-# `cd`. That is where `gh pr diff` is asked. A gate that asked the session's own
-# checkout instead checked a different pull request whenever the command reached
-# into another repository, and allowed it when that one was harmless.
+# pattern is not a merge, and nor are the words after a command that only prints
+# or documents them, as in `echo gh pr merge 5`. Its PR is the number, URL or
+# branch among its arguments, or else whatever `gh pr checkout` switched to
+# earlier in the command. Its repository is the `--repo` or GH_REPO it gives, an
+# exported GH_REPO earlier in the command, or else the directory it runs in after
+# any `cd`. That is where `gh pr diff` is asked. A gate that asked the session's
+# own checkout instead checked a different pull request whenever the command
+# reached into another repository, and allowed it when that one was harmless.
 #
 # Anything this cannot read with certainty is refused, not guessed: a flag it
-# does not know, `cd` to a variable, a merge run through `timeout`, `xargs`,
-# `sudo`, or a shell given the command as text, a GH_REPO set but not exported, a
-# merge with no number after a `git checkout`, an MCP merge whose repository the
-# session places on more than one host. Those refusals say the merge could
-# not be checked and how to write it so it can be; the hold procedure is for a
-# merge that was checked and touches gated paths, and is kept for that.
+# does not know; `cd` to a variable; a merge run through `timeout`, `xargs`,
+# `sudo`, a shell given the command as text, or any other command not known only
+# to print its words; a GH_REPO set but not exported; a merge with no number
+# after a `git checkout`; an MCP merge whose repository the session places on
+# more than one host. Those refusals say the merge could not be checked and how
+# to write it so it can be; the hold procedure is for a merge that was checked
+# and touches gated paths, and is kept for that.
 #
 # `gh pr merge` is one spelling of a merge, and gating only that one let the
 # others through: the same merge as a REST call (`gh api -X PUT
@@ -473,18 +474,16 @@ is_plain_prefix() {
   esac
 }
 
-# runs_its_arguments WORD — whether the command word WORD runs a command made of
-# the words after it, so that a merge among them is run, and refused as one this
-# gate cannot see past. Wrappers that change how, as whom or how often it runs;
+# runs_its_arguments WORD — whether the command word WORD is known to run a command
+# made of the words after it, so that a merge among them is run, and refused as one
+# this gate cannot see past. Wrappers that change how, as whom or how often it runs;
 # those that run it per input (xargs, find -exec); and the runners that start it
 # inside an environment of their own (op run, docker exec, bundle exec, npx). An
 # option is here too, `-` included: it is one of a prefix skipped above (env -i,
-# env -, time -p), and what follows it is not read. Any other command does not
-# run its words: `echo gh pr merge 5` prints a merge and `man gh pr merge`
-# documents one, and each was refused as a merge run through echo or man. A name
-# missing from here lets a merge behind it through unchecked, so the list leans
-# long: an extra name costs at most the refusal of a command whose words spell
-# out a merge anyway.
+# env -, time -p), and what follows it is not read. This list only says why a
+# merge is refused. Whether it is refused is prints_its_arguments' answer, below:
+# a command on neither list may run its words too, and its merge is refused the
+# same way, as one behind a command this gate does not know.
 #
 # Windows' and PowerShell's are here too. wsl, winpty and gsudo run their words as
 # a command; ForEach-Object, Start-Job, try and PowerShell's other names below run
@@ -507,6 +506,27 @@ runs_its_arguments() {
       function | filter | foreach-object | foreach | % | where-object | where | '?' | \
       measure-command | invoke-command | icm | start-job | sajb | start-threadjob | trace-command | \
       try | catch | finally)
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# prints_its_arguments WORD — whether the command word WORD only prints or
+# documents the words after it, so that a merge among them is text: `echo gh pr
+# merge 5` prints one and `man gh pr merge` documents one, and each was refused as
+# a merge run through echo or man. Behind any other command a merge is refused
+# unread. Whether a command runs its words is otherwise a guess, and the two ways
+# of being wrong do not cost the same: a name missing here refuses a command that
+# spells out a merge in unquoted words, which quoting them answers, while a name
+# missing from a list of wrappers let `dotenvx run -- gh pr merge 5` and `rtk gh
+# pr merge 5` merge a gated pull request unchecked. So this list is short and
+# closed, and holds only names that never run their words.
+prints_its_arguments() {
+  cmd_name "$1"
+  case "$CMD_NAME" in
+    echo | printf | man | info | tldr | help | get-help | write-host | write-output | write | \
+      write-verbose | write-debug | write-information | write-warning | out-host)
       return 0
       ;;
     *) return 1 ;;
@@ -1252,18 +1272,28 @@ simple_command() {
   fi
   case "${w[$k]}" in '$env:GH_REPO='*) set_gh_repo "=${w[$k]#\$env:GH_REPO=}" "$prev" "$next"; return 0 ;; esac
 
-  # Whether the words after the command word can run, and how. After a command
-  # that runs them they are its command. In PowerShell they can also hold a script
-  # block, { ... }, which runs where whatever it is handed to decides: once per
-  # input, later in a job, when a variable holding it is invoked, or after an else
-  # behind a command that only prints. This gate does not read PowerShell's
-  # statements, so a merge in a block is refused unread rather than missed.
-  local through=""
-  if runs_its_arguments "$argv0"; then through="through ${w[$k]}, which this gate cannot see past"
+  # Whether the words after the command word can run, and so why a merge among
+  # them is refused unread. After a command known to run them they are its command.
+  # In PowerShell they can also hold a script block, { ... }, which runs where
+  # whatever it is handed to decides: once per input, later in a job, when a
+  # variable holding it is invoked, or after an else behind a command that only
+  # prints. This gate does not read PowerShell's statements, so a merge in a block
+  # is refused unread rather than missed. After any other command but one that only
+  # prints or documents its words, whether they run is a guess, and the merge is
+  # refused for that. `through` is the reason, empty only when the words are text.
+  local through="" instead=""
+  if runs_its_arguments "$argv0" || is_evaluator "$argv0"; then
+    through="it runs the merge through ${w[$k]}, which this gate cannot see past."
   elif [ "$TOOL_NAME" = PowerShell ]; then
     for a in "${w[@]:$k}"; do
-      case "$a" in *"{"*) through="inside a PowerShell script block, which this gate does not read"; break ;; esac
+      case "$a" in *"{"*) through="it runs the merge inside a PowerShell script block, which this gate does not read."; break ;; esac
     done
+  fi
+  if [ -z "$through" ] && ! prints_its_arguments "$argv0"; then
+    through="it is behind ${w[$k]}, a command this gate does not know, so whether ${w[$k]} runs it is a guess."
+    instead="$NAME_IT
+  If ${w[$k]} only prints or documents those words, quote them ('gh pr merge 5'):
+  quoted, they are one word of text, not a command."
   fi
 
   # A shell or evaluator: as the command, or a shell given text where the words can
@@ -1273,22 +1303,30 @@ simple_command() {
   if is_evaluator "$argv0"; then
     check_evaluator "$k"
   elif [ -n "$through" ]; then
+    # Only a word that names a shell is handed to shell_given_text, with every word
+    # after it. This runs behind every command but those that only print their
+    # words, and doing that at every word doubled the time a long `git add` took.
     local via_args=0
+    cmd_name "$argv0"
+    case "$CMD_NAME" in xargs | parallel) via_args=1 ;; esac
     j=$((k + 1))
     while [ "$j" -lt "$n" ]; do
-      cmd_name "${w[$((j - 1))]##*/}"
-      case "$CMD_NAME" in xargs | parallel) via_args=1 ;; esac
-      if shell_given_text "$via_args" "${w[@]:$j}"; then check_evaluator "$j" "$via_args"; break; fi
+      if is_evaluator "${w[$j]##*/}"; then
+        if shell_given_text "$via_args" "${w[@]:$j}"; then check_evaluator "$j" "$via_args"; break; fi
+      else
+        case "$CMD_NAME" in xargs | parallel) via_args=1 ;; esac
+      fi
       j=$((j + 1))
     done
   fi
 
   # Where in this command, if anywhere, a merge sits: `gh pr merge`, or a gh api
   # or curl call that parse_api or parse_curl reads as one. Looked for past the
-  # command word where those words can run, so that a merge run through `timeout`
-  # or `xargs` is found and refused rather than missed; behind any other command,
-  # echo or man, the words are text and the search stops at the command word. A
-  # gh api or curl call that only reads is passed over wherever it sits.
+  # command word wherever those words may run, so that a merge run through
+  # `timeout`, `xargs` or a command this gate has never heard of is found and
+  # refused rather than missed; behind echo or man, which only print or document
+  # them, the words are text and the search stops at the command word. A gh api or
+  # curl call that only reads is passed over wherever it sits.
   local m=-1 end=$((k + 1))
   [ -z "$through" ] || end=$n
   j=$k
@@ -1337,7 +1375,7 @@ simple_command() {
     j=$((j + 1))
   done
   [ "$m" -ge 0 ] || return 0
-  [ "$m" -eq "$k" ] || unverifiable "it runs the merge $through."
+  [ "$m" -eq "$k" ] || unverifiable "$through" "$instead"
 
   # No --repo: the GH_REPO in front of the command, else one exported earlier.
   if [ -z "$REPO" ]; then

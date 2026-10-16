@@ -32,15 +32,17 @@ reads the PR's changed files, and refuses if any match:
 that runs: as a command, after `cd`, `&&`, `;`, a pipe, a subshell, a shell keyword such as `if`
 or `then`, a prefix such as `env`, or inside a command substitution, quoted or not. The text
 inside a commit message, a heredoc body, a single-quoted string, a comment or a grep pattern is
-not a merge, and nor are the words after a command that does not run them, such as `echo` or
-`man`; a redirection such as `2>&1` is not part of one. The pull request is the number,
-URL or branch among its arguments, or, with none, the one an earlier `gh pr checkout` in the same
-command switched to. Its repository is the `--repo` the command gives, before `merge` or after
-it, the `GH_REPO` in front of it or exported earlier in the command, or else the directory it
-runs in after any `cd`, and that is where the hook asks `gh pr diff`. A REST merge's pull request
-is the one its endpoint names, with `{owner}/{repo}` filled in where `gh api` would fill them; an
-MCP merge's is the `owner`, `repo` and `pullNumber` (or `pull_number`) it is given. A `GET` on
-the same endpoint only asks whether the pull request has merged, and is not a merge.
+not a merge, and nor are the words after a command that only prints or documents them, such as
+`echo` or `man`. After any other command they may run, and a merge there is refused unread: a
+list of the commands that run their words is never complete, and `dotenvx run -- gh pr merge 5`
+went past one unchecked. A redirection such as `2>&1` is not part of a merge. The pull request is
+the number, URL or branch among its arguments, or, with none, the one an earlier `gh pr checkout`
+in the same command switched to. Its repository is the `--repo` the command gives, before `merge`
+or after it, the `GH_REPO` in front of it or exported earlier in the command, or else the
+directory it runs in after any `cd`, and that is where the hook asks `gh pr diff`. A REST merge's
+pull request is the one its endpoint names, with `{owner}/{repo}` filled in where `gh api` would
+fill them; an MCP merge's is the `owner`, `repo` and `pullNumber` (or `pull_number`) it is given.
+A `GET` on the same endpoint only asks whether the pull request has merged, and is not a merge.
 
 **An MCP merge names no server, so the hook asks on the one the session points at.** Given only
 `owner/repo`, `gh` looks on github.com, so every merge through a GitHub MCP server for GitHub
@@ -56,14 +58,15 @@ the MCP server merges on is a guess, and the merge is refused.
 Anything the hook can't read with certainty is refused, not guessed: a flag it doesn't know, `cd`
 to a variable, a pull request number, HTTP method or API host that is a variable, a `GH_REPO`
 assigned without `export`, a merge with no number after a `git checkout` or `git switch` in the
-same command, a merge run through `timeout`, `xargs` or `sudo`, a merge in a PowerShell script
-block `{ }` handed to a cmdlet such as `ForEach-Object` or kept in a variable (either may run it
-per input, later or elsewhere), a shell handed the merge as text (`bash -c`, `pwsh -Command`,
-`cmd /c`, `eval`, `Invoke-Expression`, a pipe or a heredoc into `sh`), a GraphQL
-`mergePullRequest` sent through `gh api` or `curl`, which names its pull request by node ID, or
-an MCP merge the session places on two hosts. Those refusals say that the merge could not be
-checked and how to write it so that it can be — a `gh pr merge <number>` of its own — and do not
-carry the hold procedure below, which is for a merge that was checked.
+same command, a merge run through `timeout`, `xargs`, `sudo` or any other command that does not
+only print or document it, a merge in a PowerShell script block `{ }` handed to a cmdlet such as
+`ForEach-Object` or kept in a variable (either may run it per input, later or elsewhere), a
+shell handed the merge as text (`bash -c`, `pwsh -Command`, `cmd /c`, `eval`,
+`Invoke-Expression`, a pipe or a heredoc into `sh`), a GraphQL `mergePullRequest` sent through
+`gh api` or `curl`, which names its pull request by node ID, or an MCP merge the session places
+on two hosts. Those refusals say that the merge could not be checked and how to write it so that
+it can be — a `gh pr merge <number>` of its own — and do not carry the hold procedure below,
+which is for a merge that was checked.
 
 **Every spelling is looked up through `gh`, the MCP tools included.** Where `gh` is missing, or
 not signed in for the pull request's host, no merge can be checked, and each one is refused until

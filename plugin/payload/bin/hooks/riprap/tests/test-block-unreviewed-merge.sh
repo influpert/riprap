@@ -299,9 +299,8 @@ check "git checkout, then a merge with no number -> block" 2 \
 check "git switch, then a merge with no number -> block" 2 "$(bash_at "$A" 'git switch feature/auth-fix; gh pr merge')"
 check "an unknown flag between pr and merge -> block" 2 "$(bash_at "$A" 'gh pr --yolo merge 5')"
 check "two different repositories for one merge -> block" 2 "$(bash_at "$A" 'gh -R o/r pr merge 5 -R x/y')"
-# A merge is looked for past the command word only behind a command that runs the
-# words after it, so that echo and man, which do not, are not taken for a way round
-# the gate. Every one of these runs the merge, and is still refused unread.
+# A merge past the command word is refused unread, unless that command only prints
+# or documents its words, as echo and man do. Every one of these runs the merge.
 check "through sudo -> block" 2 "$(bash_at "$A" 'sudo gh pr merge 5')"
 check "through nice -n -> block" 2 "$(bash_at "$A" 'nice -n 10 gh pr merge 5')"
 check "through watch -> block" 2 "$(bash_at "$A" 'watch -n 30 gh pr merge 5')"
@@ -323,6 +322,27 @@ check "in a function's body -> block" 2 "$(bash_at "$A" 'function f { gh pr merg
 check "a merge handed to PowerShell behind timeout -> block" 2 "$(bash_at "$A" 'timeout 60 pwsh -Command "gh pr merge 5"')"
 check "a merge handed to cmd /c, written //c in Git Bash -> block" 2 "$(bash_at "$A" 'cmd //c "gh pr merge 5"')"
 check "a merge set to run on a trap -> block" 2 "$(bash_at "$A" "trap 'gh pr merge 5' EXIT")"
+# Behind a command this gate has no name for, the merge is refused the same way:
+# whether that command runs its words is a guess, and a wrong guess merges a gated
+# pull request unchecked. Each of these was let through once the search stopped at
+# any command word not on a list of wrappers; rtk is a prefix some setups put on
+# every command, and dotenvx and cross-env are ordinary environment loaders.
+check "through dotenvx run -- -> block" 2 "$(bash_at "$A" 'dotenvx run -- gh pr merge 5')"
+check "through rtk -> block" 2 "$(bash_at "$A" 'rtk gh pr merge 5')"
+check "through nocorrect -> block" 2 "$(bash_at "$A" 'nocorrect gh pr merge 5')"
+check "through cross-env with an assignment -> block" 2 "$(bash_at "$A" 'cross-env GH_REPO=o/r gh pr merge 5')"
+check "through bwrap with options -> block" 2 "$(bash_at "$A" 'bwrap --bind / / gh pr merge 5')"
+check "a curl merge through dotenvx run -- -> block" 2 \
+  "$(bash_at "$A" 'dotenvx run -- curl -X PUT https://api.github.com/repos/o/r/pulls/5/merge')"
+check "a shell handed a merge, through dotenvx run -- -> block" 2 \
+  "$(bash_at "$A" 'dotenvx run -- bash -c "gh pr merge 5"')"
+check_contains "... saying it does not know the command" "does not know" \
+  "$(bash_at "$A" 'dotenvx run -- gh pr merge 5')"
+check_contains "... and how to write words it only prints" "quote them" \
+  "$(bash_at "$A" 'dotenvx run -- gh pr merge 5')"
+# That way forward works: quoted, the words are one, and no command.
+check "an unknown command given the merge as one quoted word -> allow" 0 \
+  "$(bash_at "$A" "dotenvx run -- echo 'gh pr merge 5'")"
 # Behind a wrapper, a shell's text is found where that shell takes it, after the
 # options in front of it, by lib/shell-tools.sh's shell_run_text, which the other
 # hooks read shells with too. The gate's own copy looked only at the word straight
@@ -506,12 +526,15 @@ check "a GraphQL read, then a search for the mutation -> allow" 0 \
   "$(bash_at "$A" "gh api graphql -f query='query { viewer { login } }' && rg -n enablePullRequestAutoMerge .")"
 check "a sourced file, a GraphQL read and a commit naming the mutation -> allow" 0 \
   "$(bash_at "$A" ". ./scripts/env.sh && gh api graphql -f query='query { viewer { login } }' > me.json && git commit -m \"Record the GraphQL mergePullRequest payload shape\"")"
-# The words after a command that does not run them are its arguments, not a
-# command. The gate looked past every command word for a gh or a curl, so each of
-# these was refused as a merge "run through echo", or through man.
+# The words after a command that only prints or documents them are its arguments,
+# not a command. The gate refused a merge past every command word, so each of these
+# was refused as a merge "run through echo", or through man.
 check "echo gh pr merge -> allow" 0 "$(bash_at "$A" 'echo gh pr merge 5')"
 check "printf gh pr merge -> allow" 0 "$(bash_at "$A" "printf '%s\n' gh pr merge 5")"
 check "man gh pr merge -> allow" 0 "$(bash_at "$A" 'man gh pr merge')"
+check "tldr gh pr merge -> allow" 0 "$(bash_at "$A" 'tldr gh pr merge')"
+check "ECHO in PowerShell, which reads names in any case -> allow" 0 "$(ps_at "$A" 'ECHO gh pr merge 5')"
+check "Write-Output gh pr merge, unquoted -> allow" 0 "$(ps_at "$A" 'Write-Output gh pr merge 5')"
 check "echo an API merge -> allow" 0 "$(bash_at "$A" 'echo gh api -X PUT repos/o/r/pulls/5/merge')"
 check "echo a curl merge -> allow" 0 "$(bash_at "$A" 'echo curl -X PUT https://api.github.com/repos/o/r/pulls/5/merge')"
 check "echo a shell handed a merge -> allow" 0 "$(bash_at "$A" 'echo bash -c "gh pr merge 5"')"

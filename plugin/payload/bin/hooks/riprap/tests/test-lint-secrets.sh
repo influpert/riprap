@@ -192,6 +192,22 @@ check "rg --hidden, ignore rules on -> allow" 0 "$(bash_in "$PROJ" 'rg --hidden 
 check "rg -g '.env*' -> block (a glob overrides .gitignore)" 2 "$(bash_in "$PROJ" "rg -g '.env*' API_KEY")"
 check "rg -uu -> block (no ignore rules, hidden files on)" 2 "$(bash_in "$PROJ" 'rg -uu API_KEY')"
 check "rg --files -g '.env*' -> allow (lists names, opens nothing)" 0 "$(bash_in "$PROJ" "rg --files -g '.env*'")"
+# Each switch that takes a search past .gitignore, makes grep recurse, or hands jq
+# a file whole is refused, and each refusal needs a test of its own: the parser
+# churns, and a line that dropped one of them failed nothing. --no-ignore is the
+# retry an agent reaches for when a plain rg skipped the file it wanted.
+check "rg --no-ignore --hidden reaches the ignored .env -> block" 2 \
+  "$(bash_in "$PROJ" 'rg --no-ignore --hidden API_KEY')"
+check "rg --no-ignore-vcs --hidden -> block" 2 "$(bash_in "$PROJ" 'rg --no-ignore-vcs --hidden API_KEY')"
+check "grep --dereference-recursive -> block" 2 "$(bash_in "$PROJ" 'grep --dereference-recursive API_KEY .')"
+check "grep -d recurse -> block" 2 "$(bash_in "$PROJ" 'grep -d recurse API_KEY .')"
+check "grep --directories=recurse -> block" 2 "$(bash_in "$PROJ" 'grep --directories=recurse API_KEY .')"
+check "grep -d skip on . -> allow (it opens no directory)" 0 "$(bash_in "$PROJ" 'grep -d skip API_KEY .')"
+check "jq --rawfile v .env -> block (it reads the file whole)" 2 "$(bash_cmd "jq -n --rawfile v .env '\$v'")"
+check "jq --slurpfile v .env -> block" 2 "$(bash_cmd "jq -n --slurpfile v .env '\$v'")"
+check "jq --rawfile v .env.example -> allow" 0 "$(bash_cmd "jq -n --rawfile v .env.example '\$v'")"
+check_contains "the rg suggestion keeps --no-ignore" "rg --no-ignore --hidden -g" \
+  "$(bash_in "$PROJ" 'rg --no-ignore --hidden API_KEY')"
 
 echo
 echo "--- A project can list a program that only loads the file ---"
@@ -1044,6 +1060,8 @@ run_back "the Grep glob exclusions are accepted" 's/^ *glob: "\(.*\)"$/\1/p' \
 export CLAUDE_PROJECT_DIR="$PROJ"
 run_back "the rg exclusion keeps the glob it was given" 's/^ *\(rg .*PATTERN.*\)$/\1/p' \
   "$(bash_in "$PROJ" "rg -g '.env*' API_KEY")" bash_in "$PROJ"
+run_back "the rg exclusion keeps --no-ignore, and is accepted" 's/^ *\(rg .*PATTERN.*\)$/\1/p' \
+  "$(bash_in "$PROJ" 'rg --no-ignore --hidden API_KEY')" bash_in "$PROJ"
 run_back "the find exclusion is accepted" 's/^ *\(find .*-prune.*\)$/\1/p' \
   "$(bash_in "$PROJ" 'find . -type f -exec grep -l API_KEY {} +')" bash_in "$PROJ"
 

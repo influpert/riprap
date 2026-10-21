@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# bin/check-router-sizes — the router's line counts must match the files they describe.
+#
+# plugin/instructions/README.md tells the model to budget context by the "(~N)" beside
+# each file in its map: two short files over one long one. A number that has drifted
+# turns that advice upside down. interaction-preferences.md was annotated ~260 while it
+# was ~400 lines, and handoffs.md ~105 while it was ~150 — and nothing noticed, because
+# no check read the annotations. This one does.
+#
+# An annotation passes when it is within 10% (and never less than 10 lines) of the
+# file's real length, so ordinary edits do not trip it but a section's worth does.
+# Round the new number to the nearest 5, as the rest of the map does.
+#
+# --self-test runs the check against a fixture built to break it, so the check is known
+# to fail for its own reason rather than merely known to pass.
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+check() { # $1 = router, $2 = directory the router's links resolve against
+  local router=$1 dir=$2 fail=0 seen=0 file want have slack
+  while read -r file want; do
+    seen=$((seen + 1))
+    if [ ! -f "$dir/$file" ]; then
+      echo "❌ $router annotates $file, which does not exist" >&2; fail=1; continue
+    fi
+    have=$(wc -l <"$dir/$file")
+    slack=$(( want / 10 > 10 ? want / 10 : 10 ))
+    if [ $(( have > want ? have - want : want - have )) -gt "$slack" ]; then
+      echo "❌ $router says $file is ~$want lines; it is $have. Round to the nearest 5." >&2
+      fail=1
+    fi
+  done < <(grep -oE '\[[A-Za-z0-9._-]+\.md\]\([A-Za-z0-9._-]+\.md\) \(~[0-9]+\)' "$router" |
+           sed -E 's/^\[[^]]+\]\(([^)]+)\) \(~([0-9]+)\)$/\1 \2/')
+  if [ "$seen" -eq 0 ]; then
+    echo "❌ $router has no (~N) annotations — has the map's format changed?" >&2; fail=1
+  fi
+  return "$fail"
+}
+
+if [ "${1:-}" = "--self-test" ]; then
+  tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+  seq 100 >"$tmp/a.md"
+  printf -- '- [a.md](a.md) (~100)\n' >"$tmp/ok.md"
+  printf -- '- [a.md](a.md) (~60)\n' >"$tmp/drift.md"
+  printf -- '- [b.md](b.md) (~100)\n' >"$tmp/missing.md"
+  printf -- 'no annotations here\n' >"$tmp/empty.md"
+  check "$tmp/ok.md" "$tmp" || { echo "❌ self-test: an accurate count was rejected" >&2; exit 1; }
+  for bad in drift missing empty; do
+    if check "$tmp/$bad.md" "$tmp" 2>/dev/null; then
+      echo "❌ self-test: the $bad fixture passed" >&2; exit 1
+    fi
+  done
+  echo "✅ check-router-sizes self-test: accurate passes; drift, missing file and no annotations fail"
+  exit 0
+fi
+
+check plugin/instructions/README.md plugin/instructions
+echo "✅ every line count in the router's map is within 10% of its file"

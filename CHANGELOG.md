@@ -5,7 +5,68 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.13.0
+## v0.14.0
+
+**Features**
+
+- **Agents no longer write outside their worktree, and a new hook blocks the writes that
+  try.** A file written anywhere else is in no diff and no `git status`, and it outlives
+  the worktree. In a sibling checkout it lands in somebody else's branch looking like
+  their work. `git.md` now states the rule. Scratch files go in the worktree's `tmp/`, but
+  only once `git check-ignore` confirms git ignores it. The new
+  `block-writes-outside-worktree.sh` hook checks Write, Edit and NotebookEdit paths, Bash
+  redirections, `tee`, `touch`, `mkdir`, the destination of `cp`, `mv`, `install` and
+  `ln`, and `mktemp` with no directory. It follows `cd`, `pushd` and `popd`, and handles
+  quoted `>` arguments, redirections glued to the word before them, and `>|`. `/dev/null`,
+  the host's plan and memory directories, and any prefixes a project adds in
+  `worktree-write-patterns.local.sh` stay writable. Two cases still pass unchecked: a
+  command that writes through its own flags (`curl -o`, `sed -i`), and a path held in a
+  variable.
+- **UI changes now need your approval twice: the mockup before any code, and the built
+  result before the pull request opens.** Each is shown rendered, not described or linked
+  as a file path. The built result is shown next to the mockup, against seeded data. Both
+  approvals are recorded in the plan or the pull request body. A run with nobody to answer
+  stops before code, or opens a draft naming the approval as outstanding.
+  `/riprap:implement` takes the built-result approval before its second review gate. The
+  suggested permissions now allow Claude Code's `Artifact` tool, which shows mockups.
+- **Blocking review findings are fixed without asking first.** An agent that receives a
+  review now starts every BLOCKER and MAJOR straight away. In the same message it tells
+  you about the MINOR findings and suggests which to take on, so they don't hold up the
+  rest. A finding the agent thinks is wrong, or one against the whole approach, still
+  stops the work. `/riprap:implement`, `/riprap:vet` and `/riprap:review` all follow the
+  new rule in `interaction-preferences.md`.
+- **Reviews and plan stress-tests need fewer agents: three at minimum, five
+  recommended.** Six agents cost more than they bought, because past five they mostly
+  check the same thing twice. `/riprap:review` keeps correctness, dependency creep and
+  should-this-exist as its minimum. The plan stress-test needs two critics and the
+  devil's advocate. `/riprap:vet` defaults to the recommended five. A project can still
+  set its own stress-test minimum in `stress-test-patterns.local.sh`.
+
+**Fixes**
+
+- **A failing tests-only commit stays local until the implementation passes.**
+  `/riprap:implement` commits the failing tests first. Agents then pushed that commit,
+  `pre-push` refused it, and the refusal suggested `--no-verify`. The skill and
+  `testing.md` now keep that commit local. The hook's message says to finish the
+  implementation first, and that `--no-verify` is only for when a person asks for a red
+  push.
+- **One check in riprap's own test suite was passing without checking anything on Debian
+  and Ubuntu.** mawk, the default `awk` there, crashed on one pattern without printing
+  anything. The check read that as no findings, so a skill that force-merges would have
+  passed. The pattern is rewritten, and the suite now refuses to run if the local `awk`
+  rejects any pattern it uses. A second test failed whenever the suite ran as root, and
+  stopped every check after it from running.
+- **The router's line counts are correct again, and CI fails when they drift.** Fourteen of
+  the twenty-one size hints in the router's "Which file covers what" map had drifted, one
+  by over 180 lines. A new check, `bin/check-router-sizes`, holds each hint within 10%, or 10 lines, of
+  the file's real length.
+
+**Internal**
+
+- The writing-style reference that `/riprap:write` uses has been refreshed from upstream.
+- The homepage's latest-release badge moved to 0.13.0.
+
+## v0.13.0 — 2026-10-13
 
 **Features**
 

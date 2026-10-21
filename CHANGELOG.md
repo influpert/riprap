@@ -5,7 +5,25 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.13.0
+## v0.14.0
+
+TODO: rewrite this. Every line below is a pull request title, which is what the
+author called the change — not what a reader needs to decide whether to upgrade.
+
+Merged since v0.13.0:
+
+- Correct the router's line counts, and fail CI when they drift (#69)
+- Fix blocking review findings first, then offer the rest (#67)
+- Lower the review skill's floor to three reviewers, five recommended (#66)
+- Read quoted > as an argument, and glued redirections, >| and pushd as writes (#65)
+- Never write outside the worktree, and block the writes that try (#64)
+- Keep tests-only commits local until the implementation passes (#63)
+- Lower the plan stress-test floor to three, and fix two tests that passed or failed for the wrong reason (#62)
+- Require UI approval of mockups and built results, and allow the mockup tool (#61)
+- Refresh the style guide reference from upstream (#60)
+- Bump the homepage's latest-release badge to 0.13.0 (#59)
+
+## v0.13.0 — 2026-10-13
 
 **Features**
 

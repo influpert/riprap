@@ -47,6 +47,9 @@ write() {  # write PATH -> a Write payload with cwd = REPO
 bash_in() {  # bash_in CWD COMMAND -> a Bash payload; COMMAND must be JSON-safe
   printf '{"tool_name":"Bash","cwd":"%s","tool_input":{"command":"%s"}}' "$1" "$2"
 }
+bash_raw() {  # bash_raw CWD COMMAND -> a Bash payload; COMMAND is any text, escaped by jq
+  jq -n --arg d "$1" --arg c "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}'
+}
 
 echo "--- File tools ---"
 check "Write inside the worktree -> allow" 0 "$(write "$REPO/src/a.txt")"
@@ -129,6 +132,73 @@ check "2>| outside -> block" 2 "$(bash_in "$REPO" "make 2>| $OTHER/err")"
 check "...2>| inside -> allow" 0 "$(bash_in "$REPO" "make 2>| tmp/err")"
 
 echo
+echo "--- A process substitution is a command of its own, and an operand of the one around it ---"
+check "tee to a file outside, after a process substitution -> block" 2 \
+  "$(bash_in "$REPO" "echo hi | tee >(wc -l) $OTHER/log")"
+check "...the same tee, to a file inside -> allow" 0 "$(bash_in "$REPO" "echo hi | tee >(wc -l) tmp/log")"
+check "tee to a process substitution alone -> allow (/dev/fd is not a file)" 0 \
+  "$(bash_in "$REPO" "echo hi | tee >(wc -l)")"
+check "a write inside the process substitution -> block" 2 \
+  "$(bash_in "$REPO" "echo hi | tee >(cat > $OTHER/x) tmp/log")"
+check "...the same write, inside the worktree -> allow" 0 \
+  "$(bash_in "$REPO" "echo hi | tee >(cat > tmp/x) tmp/log")"
+check "cp from an input substitution to outside -> block" 2 "$(bash_in "$REPO" "cp <(echo x) $OTHER/y")"
+check "...to inside -> allow" 0 "$(bash_in "$REPO" "cp <(echo x) tmp/y")"
+check "redirect into a process substitution that writes outside -> block" 2 \
+  "$(bash_in "$REPO" "echo hi > >(tee $OTHER/z)")"
+check "redirect into a process substitution that writes inside -> allow" 0 \
+  "$(bash_in "$REPO" "echo hi > >(tee tmp/z)")"
+check "a redirected-to substitution is not an operand: cp keeps its destination -> block" 2 \
+  "$(bash_in "$REPO" "cp src/a.txt $OTHER/b > >(cat)")"
+check "...with the destination inside -> allow" 0 "$(bash_in "$REPO" "cp src/a.txt tmp/b > >(cat)")"
+check "nested substitutions keep each level's operands -> block" 2 \
+  "$(bash_in "$REPO" "tee >(tee >(wc -l) $OTHER/inner) tmp/outer")"
+check "...with both levels inside -> allow" 0 "$(bash_in "$REPO" "tee >(tee >(wc -l) tmp/inner) tmp/outer")"
+check "a cd inside a substitution does not leak out -> allow" 0 \
+  "$(bash_in "$REPO" "diff <(cd $OTHER && ls) <(ls); touch inside.txt")"
+check "...and does apply inside it -> block" 2 "$(bash_in "$REPO" "diff <(cd $OTHER && touch x) <(ls)")"
+check "a quoted > before a subshell is not a substitution -> block (the subshell still runs)" 2 \
+  "$(bash_in "$REPO" "echo '>'; (touch $OTHER/x)")"
+check "an unclosed substitution still checks what it holds -> block" 2 \
+  "$(bash_in "$REPO" "tee >(touch $OTHER/x")"
+
+echo
+echo "--- A command substitution inside double quotes still runs, and is checked ---"
+check "tee >(cmd) to a file outside, in quoted backticks -> block" 2 \
+  "$(bash_raw "$REPO" "x=\"\`echo hi | tee >(wc -l) $OTHER/log\`\"")"
+check "...the same tee, to a file inside -> allow" 0 \
+  "$(bash_raw "$REPO" "x=\"\`echo hi | tee >(wc -l) tmp/log\`\"")"
+check "tee >(cmd) to a file outside, unquoted backticks -> block" 2 \
+  "$(bash_raw "$REPO" "x=\`echo hi | tee >(wc -l) $OTHER/log\`")"
+check "...to a file inside -> allow" 0 "$(bash_raw "$REPO" "x=\`echo hi | tee >(wc -l) tmp/log\`")"
+check "a write inside the process substitution, in quoted \$( ) -> block" 2 \
+  "$(bash_raw "$REPO" "x=\"\$(echo hi | tee >(cat > $OTHER/x))\"")"
+check "...the same write, inside the worktree -> allow" 0 \
+  "$(bash_raw "$REPO" "x=\"\$(echo hi | tee >(cat > tmp/x))\"")"
+check "a redirect outside, in quoted backticks -> block" 2 "$(bash_raw "$REPO" "x=\"\`echo hi > $OTHER/x\`\"")"
+check "...inside -> allow" 0 "$(bash_raw "$REPO" "x=\"\`echo hi > tmp/x\`\"")"
+check "a quoted substitution as a redirection target still runs -> block (bare mktemp)" 2 \
+  "$(bash_raw "$REPO" "echo hi > \"\$(mktemp)\"")"
+check "...with mktemp in tmp/ -> allow" 0 "$(bash_raw "$REPO" "echo hi > \"\$(mktemp tmp/x.XXXXXX)\"")"
+check "a quoted substitution runs where the cd before it went -> block" 2 \
+  "$(bash_raw "$REPO" "cd $OTHER && x=\"\$(touch y)\"")"
+check "...a cd into the worktree -> allow" 0 "$(bash_raw "$REPO" "cd src && x=\"\$(touch y)\"")"
+check "...a cd the hook cannot follow leaves it unchecked, not refused -> allow" 0 \
+  "$(bash_raw "$REPO" "cd \"\$X\" && x=\"\$(touch y)\"")"
+check "a quoted substitution with no cwd still fails closed -> block" 2 \
+  "$(jq -n '{tool_name: "Bash", tool_input: {command: "x=\"$(touch y)\""}}')"
+check "nested quoted substitutions -> block" 2 \
+  "$(bash_raw "$REPO" "x=\"\$(echo \"\$(touch $OTHER/x)\")\"")"
+check "...nested, inside -> allow" 0 "$(bash_raw "$REPO" "x=\"\$(echo \"\$(touch tmp/x)\")\"")"
+check "single-quoted \$( ) is text, not a command -> allow" 0 \
+  "$(bash_raw "$REPO" "echo '\$(touch $OTHER/x)'")"
+check "escaped \$( ) in double quotes is text -> allow" 0 \
+  "$(bash_raw "$REPO" "echo \"\\\$(touch $OTHER/x)\"")"
+check "escaped backticks in double quotes are text -> allow" 0 \
+  "$(bash_raw "$REPO" "echo \"\\\`touch $OTHER/x\\\`\"")"
+check "arithmetic \$(( )) runs no command -> allow" 0 "$(bash_raw "$REPO" "echo \"\$((1 > 2))\"")"
+
+echo
 echo "--- Bash commands that write ---"
 check "tee outside -> block" 2 "$(bash_in "$REPO" "echo hi | tee -a $OTHER/log")"
 check "tee inside -> allow" 0 "$(bash_in "$REPO" "echo hi | tee tmp/log")"
@@ -167,6 +237,20 @@ check "pushd in two levels, popd twice -> allow" 0 \
   "$(bash_in "$REPO" "pushd src; pushd $OTHER; popd; touch x")"
 check "...but an absolute write after a pushd is still checked -> block" 2 \
   "$(bash_in "$REPO" "pushd src && touch $OTHER/x")"
+check "a subshell's pushd does not reach the popd after it -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER; (pushd src; ls); popd; touch x")"
+check "...without the subshell, that popd lands outside -> block" 2 \
+  "$(bash_in "$REPO" "pushd $OTHER; pushd src; ls; popd; touch x")"
+check "a subshell's popd does not empty the stack outside it -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER; (popd); popd; touch x")"
+check "a popd inside a subshell uses the stack it inherited -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER; (popd; touch x)")"
+check "...without that popd, the subshell is still outside -> block" 2 \
+  "$(bash_in "$REPO" "pushd $OTHER; (touch x)")"
+check "a process substitution's pushd does not leak either -> allow" 0 \
+  "$(bash_in "$REPO" "pushd $OTHER; diff <(pushd src) <(ls); popd; touch x")"
+check "a pushd out inside a subshell, then a relative write there -> block" 2 \
+  "$(bash_in "$REPO" "(pushd $OTHER; touch x)")"
 
 echo
 echo "--- A cd the hook cannot expand leaves relative targets unchecked, not refused ---"

@@ -7,15 +7,36 @@ per-version file, never this one: `bin/release --changelog` regenerates it, and
 
 ## v0.14.1
 
-TODO: rewrite this. Every line below is a pull request title, which is what the
-author called the change — not what a reader needs to decide whether to upgrade.
+**Fixes**
 
-Merged since v0.14.0:
+- **The worktree-write hook now catches writes it missed around and inside
+  substitutions.** v0.14.0's `block-writes-outside-worktree.sh` let three kinds of write
+  outside the worktree through, and wrongly refused one inside it:
+  - A process substitution split the command around it in two, so
+    `tee >(wc -l) /tmp/x` and `cp <(echo x) /tmp/y` passed. The surrounding command is
+    now checked as a whole, and `tee >(wc -l)` on its own is still allowed.
+  - A command substitution inside double quotes was read as plain text, so
+    `x="$(echo hi > /tmp/x)"` and `echo hi > "$(mktemp)"` passed. The hook now checks
+    the command inside, from the directory where it sits.
+  - A `pushd` or `popd` inside a `( … )` subshell changed the directory stack outside
+    it. That made `pushd /tmp; (pushd src); popd; touch x` refuse a write that lands
+    inside the worktree. Each subshell now gets its own copy of the stack, as in bash.
 
-- Remove the homepage's latest-release badge (#73)
-- Bump the homepage's latest-release badge to 0.14.0 (#72)
-- Fail CI when a quoted section citation no longer names a section (#70)
-- Check writes around and inside substitutions, and keep pushd inside its subshell (#68)
+  Two cases still pass unchecked: what follows an unquoted command substitution, as in
+  `` cp `ls a` /tmp/x ``, and command substitutions in the body of a heredoc.
+
+**Internal**
+
+- **CI now fails when a quoted section citation names a section that no longer
+  exists.** Skills and guardrail documents cite sections by name, as in
+  `interaction-preferences.md`'s "fix, then offer". A new check in `bin/check-skills`
+  confirms each quoted name still matches a heading or a bold phrase in the cited
+  document. Until now, renaming a heading left every citation of it pointing at
+  nothing, and nothing failed.
+- **The homepage no longer shows a "Latest release" badge.** Keeping it current added a
+  commit of its own to every release, and CI failed on unrelated pull requests until
+  that commit landed. The GitHub releases page already shows the same thing.
+  `bin/release --finish` now ends when the release is verified.
 
 ## v0.14.0 — 2026-10-21
 

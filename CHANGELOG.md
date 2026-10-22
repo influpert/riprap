@@ -5,7 +5,19 @@ each file there is also that release's published GitHub release body. Edit the
 per-version file, never this one: `bin/release --changelog` regenerates it, and
 `bin/test` refuses a stale copy.
 
-## v0.14.0
+## v0.14.1
+
+TODO: rewrite this. Every line below is a pull request title, which is what the
+author called the change — not what a reader needs to decide whether to upgrade.
+
+Merged since v0.14.0:
+
+- Remove the homepage's latest-release badge (#73)
+- Bump the homepage's latest-release badge to 0.14.0 (#72)
+- Fail CI when a quoted section citation no longer names a section (#70)
+- Check writes around and inside substitutions, and keep pushd inside its subshell (#68)
+
+## v0.14.0 — 2026-10-21
 
 **Features**
 

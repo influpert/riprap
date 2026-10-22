@@ -5,22 +5,6 @@ layout: default
   <div class="container hero-grid">
     <div class="hero-copy">
       <p class="section-eyebrow section-eyebrow-dash gradient-text">{{ page.eyebrow }}</p>
-      {%- comment %}
-        latest_release_version is set in this page's own front matter (docs/index.md).
-        bin/release --finish writes and commits the bump locally, right after
-        confirming the release it names is live — see set_release_badge() in
-        bin/release — but never pushes on its own; that's still a person typing
-        `git push`. A CI check (.github/workflows/ci.yml's "site and repository
-        agree" step) backstops the field against the newest tag in the meantime, and
-        for the rarer case the write itself fails. The "thirteen shared skills" copy
-        nearby is unrelated and still needs a by-hand bump if the skill count moves.
-      {%- endcomment %}
-      {%- if page.latest_release_version and page.latest_release_version != empty %}
-      <a class="hero-release" href="https://github.com/influpert/riprap/releases/tag/v{{ page.latest_release_version }}">
-        <span class="hero-release-dot" aria-hidden="true"></span>
-        Latest release — v{{ page.latest_release_version }}
-      </a>
-      {%- endif %}
       <h1 class="hero-title">{{ page.hero_title }}</h1>
       <p class="hero-lede">{{ page.hero_lede }}</p>
       <div class="hero-actions">

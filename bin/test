@@ -78,10 +78,6 @@ echo "--- Native Codex package and shared plugin surface ---"
 bin/check-codex-plugin
 
 echo
-echo "--- The homepage release badge bumps correctly, in isolation ---"
-bin/tests/test-release-badge-bump.sh
-
-echo
 # The payload's hook tests above cannot reach the plugin's half: they ship to adopters
 # and only ever call ../claude. This is where the dispatcher and session-start are run
 # with a real payload behind them, and where the two copies of the project resolver are

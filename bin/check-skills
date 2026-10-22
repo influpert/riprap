@@ -736,6 +736,115 @@ check_stored_answers() {
   return "$bad"
 }
 
+# A10. A section cited by its quoted name still has that name.
+#
+# Prose cites a section of a guardrail document by quoting it beside the file:
+# interaction-preferences.md's "fix, then offer". That is a link with no target
+# a link checker can see — ci.yml's fragment checks cover docs/ only — so
+# renaming the heading leaves every citation pointing at nothing, and nothing
+# fails. The reader is sent to look for a section that no longer exists and
+# either gives up or follows a remembered version of the rule instead.
+#
+# The form matched is the possessive one riprap's prose actually uses: a
+# document name, optionally backticked or written as a link, then 's and a
+# double-quoted name, with any line wrap in between. The name must equal, in any
+# case, one of the cited file's headings, the part of a heading after its last
+# ": " (so "fix, then offer" names "When review findings arrive: fix, then
+# offer"), or a **bolded** phrase in it. Not a substring of one: a quote that
+# survives a rename only because a few of its words still appear somewhere is
+# the silent pass this assertion exists to end.
+#
+# Only documents under $3 (plugin/instructions/ by default) are resolved. A
+# citation of anything else is not a guardrail section, and a name that does not
+# resolve at all is A1's to report, not this check's.
+#
+# Straight ASCII quotes and apostrophes only. riprap's prose uses no curly ones,
+# and widening the pattern for a form that does not occur is a pattern nobody
+# has seen fire — shellcheck also refuses a curly quote in a script as a likely
+# paste error, which is usually what one is.
+check_quoted_sections() {
+  local label=$1 file=$2 dir=${3:-$INSTRUCTIONS} bad=0 cites ln doc want names
+  # The file is read whole, with lines joined by spaces, because these documents
+  # are hard-wrapped and the quoted name routinely starts on the line after the
+  # document name. A line-bounded scan would make the verdict depend on where
+  # the wrap fell. The line printed is the one the citation starts on.
+  cites=$(awk '
+    { start[NR] = length(text) + 1; text = text $0 " " }
+    END {
+      re = "[A-Za-z0-9_-]+\\.md`?(\\]\\([^)]*\\))?`?\047s[ ]+\"[^\"]+\""
+      s = text; off = 0
+      while (match(s, re)) {
+        # Saved before anything else: the match() below that pulls out the
+        # document name overwrites RSTART and RLENGTH, and advancing by those
+        # walked the scan backwards into the same citation for ever.
+        at = RSTART; len = RLENGTH
+        m = substr(s, at, len)
+        p = off + at
+        for (n = NR; n > 1 && start[n] > p; n--) ;
+        match(m, /[A-Za-z0-9_-]+\.md/); doc = substr(m, RSTART, RLENGTH)
+        q = m; sub(/^[^"]*"/, "", q); sub(/"$/, "", q); gsub(/[ \t]+/, " ", q)
+        printf "%d\t%s\t%s\n", n, doc, q
+        off += at + len - 1
+        s = substr(s, at + len)
+      }
+    }' "$file") || { echo "❌ $label: awk failed reading $file"; return 1; }
+  [ -n "$cites" ] || return 0
+
+  while IFS=$'\t' read -r ln doc want; do
+    [ -f "$dir/$doc" ] || continue
+    names=$(section_names "$dir/$doc") || {
+      echo "❌ $label: awk failed reading $dir/$doc"; bad=1; continue; }
+    printf '%s\n' "$names" | grep -qxF -- "$(normalize_section_name "$want")" || {
+      echo "❌ $label line $ln cites $doc's \"$want\", which is no heading or bolded phrase in it"
+      echo "   A renamed section leaves its citations pointing at nothing. Cite the current"
+      echo "   name, or restore the old one if the rename was the mistake."
+      bad=1; }
+  done <<<"$cites"
+  return "$bad"
+}
+
+# One spelling for both sides of the comparison: lower case, runs of whitespace
+# collapsed, and leading heading hashes and trailing punctuation dropped. The
+# punctuation is the part that matters — a bolded phrase is usually a sentence,
+# "**Never merge your own pull request.**", and the citation quotes it without
+# the full stop.
+normalize_section_name() {
+  printf '%s\n' "$1" | awk '{
+    s = tolower($0)
+    gsub(/[ \t]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s)
+    sub(/^#+ /, "", s); sub(/[.:,;]+$/, "", s)
+    print s }'
+}
+
+# Every name a section of $1 can be cited by, one per line, normalized as above.
+section_names() {
+  awk '
+    function norm(s) {
+      s = tolower(s)
+      gsub(/[ \t]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s)
+      sub(/[.:,;]+$/, "", s)
+      return s
+    }
+    /^```/ { fence = !fence; next }
+    fence { next }
+    /^#+ / {
+      h = $0; sub(/^#+ /, "", h); sub(/[ #]+$/, "", h)
+      print norm(h)
+      if ((i = index(h, ": ")) > 0) {
+        t = h
+        while ((i = index(t, ": ")) > 0) t = substr(t, i + 2)
+        print norm(t)
+      }
+    }
+    {
+      s = $0
+      while (match(s, /\*\*[^*]+\*\*/)) {
+        print norm(substr(s, RSTART + 2, RLENGTH - 4))
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }' "$1"
+}
+
 # ---------------------------------------------------------------------------
 # --self-test: every assertion, against a fixture built to break it — and
 # checked for firing on its OWN reason.
@@ -1083,6 +1192,47 @@ EOF
   fires "A7 duplicated section counted once" "records 2 answers" \
     check_stored_answers fx "$tmp/a7-ok.md" riprap:review "$tmp/answers-dup.md"
 
+  # --- A10 ------------------------------------------------------------------
+  # A guardrail directory of its own, so the fixture cannot pass or fail on
+  # whatever plugin/instructions/ happens to say today.
+  mkdir -p "$tmp/a10-docs"
+  cat >"$tmp/a10-docs/prefs.md" <<'EOF'
+# Prefs
+
+## Push back
+
+### When review findings arrive: fix, then offer
+
+**Never merge your own pull request.** Not even a small one.
+EOF
+  # The heading renamed out from under its citation: the failure this exists for.
+  # The quote starts on the line after the document name, so a line-bounded scan
+  # would have missed it — the shape vet's SKILL.md actually has.
+  cat >"$tmp/a10-renamed.md" <<'EOF'
+Offer the MINORs (`prefs.md`'s
+"fix, then ask").
+EOF
+  fires "A10 renamed section" "cites prefs.md's \"fix, then ask\"" \
+    check_quoted_sections fx "$tmp/a10-renamed.md" "$tmp/a10-docs"
+
+  # A word of the heading is not the heading. A substring match would pass this.
+  echo "See prefs.md's \"then offer\"." >"$tmp/a10-partial.md"
+  fires "A10 partial name is not a match" "cites prefs.md's \"then offer\"" \
+    check_quoted_sections fx "$tmp/a10-partial.md" "$tmp/a10-docs"
+
+  # Every form that must resolve: the after-the-colon half of a heading, a whole
+  # heading in another case, a link, a bolded sentence quoted without its full
+  # stop, a wrapped line, and a document outside the guardrail directory, which
+  # is not this check's to resolve.
+  cat >"$tmp/a10-ok.md" <<'EOF'
+Follow [prefs.md](prefs.md)'s "fix, then offer", and prefs.md's "push back".
+The hard rule is prefs.md's "Never merge your own pull request". `prefs.md`'s
+"When review findings arrive: fix, then offer" is the whole heading.
+A skill's own notes.md's "anything at all" is not a guardrail document.
+EOF
+  passes "A10 every citation form" \
+    check_quoted_sections fx "$tmp/a10-ok.md" "$tmp/a10-docs"
+
   echo
   if [ "$st" -eq 0 ]; then
     echo "✅ self-test passed: every assertion fires on its own fixture, for its own reason"
@@ -1136,6 +1286,7 @@ for d in plugin/skills/*/; do
     check_class_vocabulary     "$name" "$extra" || fail=1
     check_no_pasted_tables     "$name" "$extra" || fail=1
     check_never_merges         "$name" "$extra" || fail=1
+    check_quoted_sections      "$name" "$extra" || fail=1
     case " $REQUIRED_SKILLS " in *" $name "*)
       check_never_edits        "$name" "$extra" || fail=1 ;;
     esac
@@ -1159,6 +1310,17 @@ for f in plugin/agents/*.md; do
   check_class_vocabulary     "$name" "$f" || fail=1
   check_no_pasted_tables     "$name" "$f" || fail=1
   check_never_merges         "$name" "$f" || fail=1
+  check_quoted_sections      "$name" "$f" || fail=1
+done
+
+# The guardrail documents cite one another's sections too — code-review.md sends
+# its reader to interaction-preferences.md's "fix, then offer" — and they are
+# the citations a reader of the router meets first. Only A10 applies here: every
+# other assertion in this file is about a skill not restating these documents,
+# which is meaningless against the documents themselves.
+for f in "$INSTRUCTIONS"/*.md; do
+  [ -f "$f" ] || continue
+  check_quoted_sections "$(basename "$f")" "$f" || fail=1
 done
 
 # A skill that must exist, checked before its contract, so a rename or a bad
@@ -1181,7 +1343,8 @@ if [ "$fail" -eq 0 ]; then
   echo "   the reviewer is gone from the document it left, and no skill instructs a"
   echo "   merge or an approval. Prose that restates a rule in its own words is not"
   echo "   detectable here — see the header."
-  echo "   $agent_count agent(s) in plugin/agents/ get the same four checks, minus the"
-  echo "   SKILL.md-specific contract."
+  echo "   $agent_count agent(s) in plugin/agents/ get the same five checks, minus the"
+  echo "   SKILL.md-specific contract. Every section a skill, agent or guardrail"
+  echo "   document cites by its quoted name still has that name."
 fi
 exit "$fail"
